@@ -134,7 +134,8 @@ class AIService:
                 "Every mathematical expression, equation, or scientific notation must be written in "
                 "LaTeX inline math mode using \\( ... \\). "
                 "The first line of your output must begin with exactly 'Problem (verbatim): ' followed by "
-                "the prompt text copied exactly as provided, with no edits."
+                "the prompt text copied exactly as provided, with no edits. "
+                "End with a line that starts exactly with 'Final answer: ' and provide the computed final result."
             ),
             (
                 "Write a worked solution.\n"
@@ -153,31 +154,25 @@ class AIService:
         )
 
     def generate_mc_options(self, question: Question) -> list[MCChoice]:
-        bundle = self.generate_mc_options_with_solution(question)
-        return bundle["choices"]
+        return self.generate_mc_options_from_solution(question, question.solution.worked_solution_md)
 
-    def generate_mc_options_with_solution(self, question: Question) -> dict[str, Any]:
+    def generate_mc_options_from_solution(self, question: Question, solution_md: str) -> list[MCChoice]:
         raw = self._text_with_question_context(
             (
-                "Generate complete multiple-choice options for a physics question and provide a worked solution. "
-                "Return strict JSON object with keys: choices, solution_md. "
-                "choices must be an array with exactly 5 objects (A-E) with keys: label, content_md, is_correct, rationale. "
-                "solution_md must be markdown. "
-                "The solution must be concise (roughly 3-5 short lines plus final answer). "
-                "In solution_md, the first line must begin exactly with 'Problem (verbatim): ' followed by the prompt copied exactly, no edits. "
-                "All equations and scientific notation in solution_md must use LaTeX inline math mode \\( ... \\)."
+                "Generate complete multiple-choice options from an existing worked solution. "
+                "Return strict JSON array with exactly 5 objects (A-E). "
+                "Each object must have keys: label, content_md, is_correct, rationale. "
+                "Exactly one option must be correct. "
+                "Do not return any additional keys or narrative text."
             ),
             (
                 f"Question prompt:\n{question.prompt_md}\n"
-                "Generate exactly options A, B, C, D, E. "
-                "You may infer and mark one correct answer using is_correct=true."
+                f"Worked solution (authoritative, use this to determine final answer):\n{solution_md}\n"
+                "Generate exactly options A, B, C, D, E."
             ),
             question,
         )
-        payload = self._parse_json_object(raw)
-        items = payload.get("choices")
-        if not isinstance(items, list):
-            raise ValueError("AI choices payload must be a list.")
+        items = self._parse_json_payload(raw)
         if len(items) != 5:
             raise ValueError("AI did not return exactly five options (A-E).")
         out: list[MCChoice] = []
@@ -197,7 +192,4 @@ class AIService:
         if sum(1 for c in out if c.is_correct) != 1:
             raise ValueError("AI must mark exactly one correct option.")
         out.sort(key=lambda c: c.label)
-        solution_md = str(payload.get("solution_md", "")).strip()
-        if not solution_md:
-            raise ValueError("AI did not return solution_md.")
-        return {"choices": out, "solution_md": solution_md}
+        return out

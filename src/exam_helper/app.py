@@ -195,15 +195,23 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         _ = count
         try:
             q = repo.get_question(question_id)
-            bundle = app.state.ai.generate_mc_options_with_solution(q)
-            choices = bundle["choices"]
-            return {
+            existing_solution = (q.solution.worked_solution_md or "").strip()
+            solution_was_generated = False
+            solution_md = existing_solution
+            if not existing_solution:
+                solution_md = app.state.ai.draft_solution(q)
+                solution_was_generated = True
+            choices = app.state.ai.generate_mc_options_from_solution(q, solution_md)
+            payload = {
                 "ok": True,
                 "choices_yaml": yaml.safe_dump(
                     [c.model_dump(mode="json") for c in choices], sort_keys=False
                 ),
-                "solution_md": bundle["solution_md"],
+                "solution_was_generated": solution_was_generated,
             }
+            if solution_was_generated:
+                payload["solution_md"] = solution_md
+            return payload
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
