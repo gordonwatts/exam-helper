@@ -6,4 +6,15 @@ Use DOCX export to hand off exam drafts for Word-based collaboration.
 uv run exam-helper export docx my-exam --output exam.docx
 ```
 
-Rich question rendering is completed in later phases.
+To exclude worked solutions:
+
+```bash
+uv run exam-helper export docx my-exam --output exam-student.docx --no-include-solutions
+```
+
+The export includes:
+
+- question titles and prompts
+- embedded figures when renderable by Word
+- MC options
+- optional solution and rubric section

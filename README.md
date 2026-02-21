@@ -1,37 +1,45 @@
 # exam-helper
 
-Local-first exam authoring app for calculus-based intro physics (mechanics, E&M, waves), with support for advanced courses.
+Local-first app for creating and validating physics exam questions (free-response and multiple-choice), with Word DOCX export.
 
-## Quickstart (Windows/macOS)
+## Instructor Quickstart (Windows/macOS)
 
 1. Install `uv`: https://docs.astral.sh/uv/
-2. Run locally in development:
-   - `uv run exam-helper serve`
-3. Initialize a project:
-   - `uv run exam-helper init my-exam`
-4. Validate project files:
+2. Create a project:
+   - `uv run exam-helper init my-exam --name "Midterm 1" --course "Calc-based Intro Physics"`
+3. Run the app:
+   - `uv run exam-helper serve --project my-exam`
+4. Open `http://127.0.0.1:8000`.
+5. Create/edit questions, then validate:
    - `uv run exam-helper validate my-exam`
-5. Export to Word:
-   - `uv run exam-helper export docx my-exam --output exam.docx`
+6. Export for Word collaboration:
+   - `uv run exam-helper export docx my-exam --output midterm1.docx`
 
-## OpenAI key configuration
+## OpenAI Key
 
-You can provide the key in either of these ways:
+Option 1: put in home `.env`:
 
-- Home directory `.env` file:
-  - `OPENAI_API_KEY=...`
-- Command line:
-  - `uv run exam-helper serve --openai-key sk-...`
+- Windows: `C:\Users\<you>\.env`
+- macOS: `/Users/<you>/.env`
+- Content: `OPENAI_API_KEY=sk-...`
 
-Command line key overrides `.env`.
+Option 2: pass directly on command line:
 
-## uvx distribution target
+- `uv run exam-helper serve --project my-exam --openai-key sk-...`
 
-After publishing this package to GitHub/PyPI, the app is expected to run via:
+Command line key takes precedence.
 
-- `uvx exam-helper serve`
+## Question Portability
 
-## Docs
+Each question lives in one YAML file and includes embedded figures (base64 + MIME + hash), so you can email one file and keep the question self-contained.
+
+## Future `uvx` Usage
+
+After publishing the package:
+
+- `uvx exam-helper serve --project my-exam`
+
+## Documentation
 
 - `docs/getting-started.md`
 - `docs/images-and-math.md`

@@ -1,9 +1,24 @@
 # Validation
 
-Validation checks in v1 include:
+Validation is deterministic and code-based (not LLM arithmetic).
+
+## What is checked
 
 - schema correctness
 - deterministic checker execution
 - symbolic equivalence and units
 
-This is scaffolded in early phases and completed in later phases.
+## Checker contract
+
+In each question YAML, checker code must define:
+
+```python
+def grade(student_answer, context):
+    return {"verdict": "correct" | "partial" | "incorrect", "score": 0.0, "feedback": "..."}
+```
+
+## Run validation
+
+```bash
+uv run exam-helper validate my-exam
+```
