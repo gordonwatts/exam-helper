@@ -2,6 +2,21 @@
 
 Local-first app for creating and validating physics exam questions (free-response and multiple-choice), with Word DOCX export.
 
+## Pandoc For DOCX Math
+
+DOCX math rendering uses Pandoc when available. This converts LaTeX-style math
+delimiters (for example `$...$`, `$$...$$`, `\(...\)`, `\[...\]`) into proper
+Word math objects.
+
+Install Pandoc:
+
+- Windows: `winget install --id JohnMacFarlane.Pandoc -e`
+- macOS: `brew install pandoc`
+- Linux (Debian/Ubuntu): `sudo apt-get install pandoc`
+
+If Pandoc is not installed, export still works but math is downgraded to plain
+text markdown and a warning is shown.
+
 ## Instructor Quickstart (Windows/macOS)
 
 1. Install `uv`: https://docs.astral.sh/uv/

@@ -109,6 +109,11 @@ Priority test areas:
   - transport/UI layer (FastAPI routes + Jinja)
 - If frontend complexity grows, keep routes/API shapes stable to ease future SPA migration.
 
+## DOCX Export Notes
+
+- DOCX export is Pandoc-first for best math rendering; keep fallback behavior intact when Pandoc is unavailable.
+- For MC options in Pandoc markdown, use `A)`, `B)`, ... markers (not `A.`), since this is the reliable way to get lettered Word list semantics in generated DOCX.
+
 ## Documentation Expectations
 
 User-facing docs should prioritize exam authors (Windows/macOS):

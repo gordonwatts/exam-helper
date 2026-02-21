@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import re
 from hashlib import sha256
 from pathlib import Path
 import yaml
 from fastapi import Body, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from exam_helper.ai_service import AIService
+from exam_helper.export_docx import render_project_docx_bytes
 from exam_helper.models import MCChoice, Question, QuestionType
 from exam_helper.repository import ProjectRepository
 from exam_helper.validation import validate_question
@@ -24,6 +26,12 @@ class AutosavePayload(BaseModel):
     checker_code: str = ""
     figures_json: str = "[]"
     points: int = 5
+
+
+def _sanitize_docx_filename_stem(project_name: str) -> str:
+    stem = re.sub(r"[^a-z0-9]+", "-", project_name.lower()).strip("-")
+    stem = re.sub(r"-{2,}", "-", stem)
+    return stem or "exam"
 
 
 def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
@@ -49,15 +57,20 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def home(request: Request) -> HTMLResponse:
         questions = repo.list_questions() if repo.project_file.exists() else []
         project = repo.load_project() if repo.project_file.exists() else None
-        return templates.TemplateResponse(
+        export_warning = request.cookies.get("exam_helper_export_warning")
+        response = templates.TemplateResponse(
             request,
             "index.html",
             {
                 "project_root": str(project_root),
                 "project": project,
                 "questions": questions,
+                "export_warning": export_warning,
             },
         )
+        if export_warning:
+            response.delete_cookie("exam_helper_export_warning")
+        return response
 
     @app.get("/questions/new", response_class=HTMLResponse)
     def new_question(request: Request) -> HTMLResponse:
@@ -125,6 +138,33 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         )
         repo.save_question(question)
         return RedirectResponse("/", status_code=303)
+
+    @app.post("/export/docx")
+    def export_docx(include_solutions: str | None = Form(None)) -> Response:
+        include = include_solutions is not None
+        content, warnings = render_project_docx_bytes(
+            project_root=project_root, include_solutions=include
+        )
+        project = repo.load_project()
+        filename = f"{_sanitize_docx_filename_stem(project.name)}.docx"
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        }
+        if warnings:
+            headers["X-Exam-Helper-Export-Warnings"] = " | ".join(warnings)
+        response = Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers,
+        )
+        if warnings:
+            response.set_cookie(
+                "exam_helper_export_warning",
+                " | ".join(warnings),
+                max_age=300,
+                samesite="lax",
+            )
+        return response
 
     @app.post("/questions/{question_id}/autosave")
     def autosave_question(question_id: str, payload: AutosavePayload = Body(...)) -> JSONResponse:

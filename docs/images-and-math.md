@@ -2,6 +2,9 @@
 
 Questions support markdown-style text and LaTeX-style math syntax in prompt and solution fields.
 
+For DOCX export, install Pandoc to render math into native Word equations.
+Without Pandoc, export falls back to plain text math and prints a warning.
+
 ## Image handling
 
 - Open question editor page.

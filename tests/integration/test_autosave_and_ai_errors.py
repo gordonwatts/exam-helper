@@ -8,6 +8,39 @@ from exam_helper.app import create_app
 from exam_helper.repository import ProjectRepository
 
 
+def test_ai_draft_solution_returns_ai_text_verbatim(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q0",
+            "title": "T",
+            "question_type": "free_response",
+            "prompt_md": "P",
+            "choices_yaml": "[]",
+            "solution_md": "",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    class _AI:
+        def draft_solution(self, question):
+            return "Problem (verbatim): P\nFinal answer: 1"
+
+    app.state.ai = _AI()
+    resp = client.post("/questions/q0/ai/draft-solution")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "Problem (verbatim): P" in data["solution_md"]
+    assert "Final answer: 1" in data["solution_md"]
+
+
 def test_autosave_persists_question(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
@@ -95,6 +128,7 @@ def test_ai_mc_endpoint_returns_choices_and_solution(tmp_path) -> None:
             from exam_helper.models import MCChoice
 
             assert "Problem (verbatim): P" in solution_md
+            assert "Final answer: 1" in solution_md
             return [
                 MCChoice(label="A", content_md="a", is_correct=False),
                 MCChoice(label="B", content_md="b", is_correct=True),
@@ -111,6 +145,8 @@ def test_ai_mc_endpoint_returns_choices_and_solution(tmp_path) -> None:
     assert "choices_yaml" in data
     assert data["solution_was_generated"] is True
     assert "solution_md" in data
+    assert "Problem (verbatim): P" in data["solution_md"]
+    assert "Final answer: 1" in data["solution_md"]
 
 
 def test_ai_mc_endpoint_keeps_existing_solution(tmp_path) -> None:

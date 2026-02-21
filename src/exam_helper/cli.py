@@ -36,11 +36,13 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_export_docx(args: argparse.Namespace) -> int:
-    export_project_to_docx(
+    warnings = export_project_to_docx(
         project_root=Path(args.path),
         output_path=Path(args.output),
         include_solutions=args.include_solutions,
     )
+    for warning in warnings:
+        print(f"WARNING: {warning}")
     print(f"Wrote {args.output}")
     return 0
 

@@ -133,14 +133,13 @@ class AIService:
                 "Be concise: target 3-5 short lines plus one final answer line unless complexity requires more. "
                 "Every mathematical expression, equation, or scientific notation must be written in "
                 "LaTeX inline math mode using \\( ... \\). "
-                "The first line of your output must begin with exactly 'Problem (verbatim): ' followed by "
-                "the prompt text copied exactly as provided, with no edits. "
+                "Do not repeat the problem statement or include any 'Problem (verbatim):' line. "
                 "End with a line that starts exactly with 'Final answer: ' and provide the computed final result."
             ),
             (
                 "Write a worked solution.\n"
                 f"Title: {question.title}\n"
-                "Prompt to repeat exactly (do not edit):\n"
+                "Prompt:\n"
                 f"{question.prompt_md}"
             ),
             question,
