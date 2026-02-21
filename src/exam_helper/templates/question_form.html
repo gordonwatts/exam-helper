@@ -89,6 +89,19 @@
         </div>
       </div>
 
+      <div class="row">
+        <div class="card">
+          <label>Worked Solution (Markdown)</label>
+          <textarea name="solution_md" id="solution_md">{{ question.solution.worked_solution_md if question else '' }}</textarea>
+          <button type="button" class="btn" id="btn_ai_solution">Improve Solution</button>
+          <button type="button" class="btn" id="btn_undo_solution">Undo</button>
+        </div>
+        <div class="card preview">
+          <strong>Solution Preview</strong>
+          <div id="solution_preview"></div>
+        </div>
+      </div>
+
       <div id="mc_block" class="card">
         <label>MC Options YAML (A-E)</label>
         <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
@@ -103,19 +116,6 @@
             <strong>MC Preview (Answers + Rationale)</strong>
             <div id="mc_preview_rationale"></div>
           </div>
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="card">
-          <label>Worked Solution (Markdown)</label>
-          <textarea name="solution_md" id="solution_md">{{ question.solution.worked_solution_md if question else '' }}</textarea>
-          <button type="button" class="btn" id="btn_ai_solution">Improve Solution</button>
-          <button type="button" class="btn" id="btn_undo_solution">Undo</button>
-        </div>
-        <div class="card preview">
-          <strong>Solution Preview</strong>
-          <div id="solution_preview"></div>
         </div>
       </div>
 
