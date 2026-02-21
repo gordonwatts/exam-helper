@@ -129,7 +129,8 @@ class AIService:
     def draft_solution(self, question: Question) -> str:
         return self._text_with_question_context(
             (
-                "You write concise but complete worked solutions for calculus-based physics exams. "
+                "You write brief but complete worked solutions for calculus-based physics exams. "
+                "Be concise: target 3-5 short lines plus one final answer line unless complexity requires more. "
                 "Every mathematical expression, equation, or scientific notation must be written in "
                 "LaTeX inline math mode using \\( ... \\). "
                 "The first line of your output must begin with exactly 'Problem (verbatim): ' followed by "
@@ -162,6 +163,7 @@ class AIService:
                 "Return strict JSON object with keys: choices, solution_md. "
                 "choices must be an array with exactly 5 objects (A-E) with keys: label, content_md, is_correct, rationale. "
                 "solution_md must be markdown. "
+                "The solution must be concise (roughly 3-5 short lines plus final answer). "
                 "In solution_md, the first line must begin exactly with 'Problem (verbatim): ' followed by the prompt copied exactly, no edits. "
                 "All equations and scientific notation in solution_md must use LaTeX inline math mode \\( ... \\)."
             ),

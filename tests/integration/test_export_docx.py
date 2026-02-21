@@ -54,3 +54,23 @@ def test_export_docx_with_embedded_figure(tmp_path: Path) -> None:
     assert "1. [5 points] p" in text
     assert "A. A1" in text
     assert "E. E1" in text
+    assert "Solution:" not in text
+
+
+def test_export_docx_includes_solution_when_enabled(tmp_path: Path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    q = Question(
+        id="q1",
+        prompt_md="p",
+        points=5,
+        solution={"worked_solution_md": "Line 1\n\n\nLine 2"},
+    )
+    repo.save_question(q)
+    out = tmp_path / "exam_with_solution.docx"
+    export_project_to_docx(tmp_path, out, include_solutions=True)
+    doc = Document(out)
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Solution:" in text
+    assert "Line 1" in text
+    assert "Line 2" in text

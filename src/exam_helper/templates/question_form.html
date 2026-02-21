@@ -201,9 +201,15 @@
         return text.replace(/(\d+(?:\.\d+)?)\s*[xX]\s*10\s*-\s*(\d+)/g, "$1 \\\\times 10^{-$2}");
       }
 
+      function normalizeMathDelimitersForPreview(text) {
+        return (text || "")
+          .replace(/\\\[(.*?)\\\]/gs, (_, inner) => `$$${inner}$$`)
+          .replace(/\\\((.*?)\\\)/gs, (_, inner) => `$${inner}$`);
+      }
+
       function renderMarkdown() {
-        promptPreview.innerHTML = marked.parse(promptEl.value || "");
-        solutionPreview.innerHTML = marked.parse(solutionEl.value || "");
+        promptPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(promptEl.value));
+        solutionPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(solutionEl.value));
         if (window.MathJax && window.MathJax.typesetPromise) {
           window.MathJax.typesetPromise([promptPreview, solutionPreview]);
         }
@@ -225,11 +231,20 @@
         }
         choices = choices.slice().sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
         mcPreviewAnswers.innerHTML = choices.map((c) => {
-          return `<div class="preview-item"><strong>${c.label || "?"}.</strong> ${marked.parseInline(String(c.content_md || ""))}</div>`;
+          const content = marked.parseInline(normalizeMathDelimitersForPreview(String(c.content_md || "")));
+          return `<div class="preview-item"><strong>${c.label || "?"}.</strong> ${content}</div>`;
         }).join("");
         mcPreviewRationale.innerHTML = choices.map((c) => {
-          const rationale = c.rationale ? `<div class="preview-rationale">Rationale: ${marked.parseInline(String(c.rationale))}</div>` : "";
-          return `<div class="preview-item"><strong>${c.label || "?"}.</strong> ${marked.parseInline(String(c.content_md || ""))}${rationale}</div>`;
+          const content = marked.parseInline(normalizeMathDelimitersForPreview(String(c.content_md || "")));
+          const rationaleText = c.rationale
+            ? marked.parseInline(normalizeMathDelimitersForPreview(String(c.rationale)))
+            : "";
+          const isCorrect = Boolean(c.is_correct);
+          const answerLine = isCorrect
+            ? `<strong>${c.label || "?"}. ${content}</strong>`
+            : `<span>${c.label || "?"}. ${content}</span>`;
+          const rationale = c.rationale ? `<div class="preview-rationale">Rationale: ${rationaleText}</div>` : "";
+          return `<div class="preview-item">${answerLine}${rationale}</div>`;
         }).join("");
         if (window.MathJax && window.MathJax.typesetPromise) {
           window.MathJax.typesetPromise([mcPreviewAnswers, mcPreviewRationale]);

@@ -82,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_docx = export_sub.add_parser("docx", help="Export DOCX.")
     p_docx.add_argument("path")
     p_docx.add_argument("--output", required=True)
-    p_docx.add_argument("--include-solutions", action=argparse.BooleanOptionalAction, default=True)
+    p_docx.add_argument("--include-solutions", action="store_true")
     p_docx.set_defaults(func=cmd_export_docx)
 
     return parser
