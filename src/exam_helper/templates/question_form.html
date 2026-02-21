@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Question Editor</title>
+    <style>
+      body { font-family: "Segoe UI", Arial, sans-serif; margin: 2rem; }
+      form { max-width: 980px; }
+      label { display: block; margin-top: 0.8rem; font-weight: 600; }
+      input, textarea, select { width: 100%; box-sizing: border-box; padding: 0.5rem; }
+      textarea { min-height: 110px; }
+      .row { display: flex; gap: 1rem; }
+      .row > div { flex: 1; }
+      .thumb { max-width: 180px; max-height: 140px; border: 1px solid #ccc; margin-right: 0.5rem; margin-top: 0.5rem; }
+      .help { color: #444; }
+      button { margin-top: 1rem; padding: 0.6rem 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>{{ "Edit Question" if question else "New Question" }}</h1>
+    <p><a href="/">Back to list</a></p>
+    <form method="post" action="/questions/save">
+      <div class="row">
+        <div>
+          <label>Question ID</label>
+          <input name="question_id" value="{{ question.id if question else '' }}" required />
+        </div>
+        <div>
+          <label>Type</label>
+          <select name="question_type">
+            <option value="free_response" {% if question and question.question_type.value=="free_response" %}selected{% endif %}>Free Response</option>
+            <option value="multiple_choice" {% if question and question.question_type.value=="multiple_choice" %}selected{% endif %}>Multiple Choice</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Title</label>
+      <input name="title" value="{{ question.title if question else '' }}" required />
+
+      <div class="row">
+        <div>
+          <label>Topic</label>
+          <input name="topic" value="{{ question.topic if question else '' }}" />
+        </div>
+        <div>
+          <label>Course Level</label>
+          <input name="course_level" value="{{ question.course_level if question else 'intro' }}" />
+        </div>
+      </div>
+
+      <label>Tags (comma separated)</label>
+      <input name="tags" value="{{ ', '.join(question.tags) if question else '' }}" />
+
+      <label>Prompt (Markdown + math)</label>
+      <textarea name="prompt_md">{{ question.prompt_md if question else '' }}</textarea>
+
+      <label>Choices YAML (for MC)</label>
+      <textarea name="choices_yaml">{{ choices_yaml }}</textarea>
+      <p class="help">Set at least one choice with <code>is_correct: true</code>.</p>
+
+      <label>Worked Solution (Markdown)</label>
+      <textarea name="solution_md">{{ question.solution.worked_solution_md if question else '' }}</textarea>
+
+      <label>Checker Python Code</label>
+      <textarea name="checker_code">{{ question.checker.python_code if question else '' }}</textarea>
+
+      <label>Figures (paste image from clipboard here while this page is focused)</label>
+      <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
+      <div id="figures_preview"></div>
+      <p class="help">Pasted image is embedded directly in YAML as base64 (portable single file).</p>
+
+      <button type="submit">Save Question</button>
+    </form>
+
+    <script>
+      const figuresInput = document.getElementById("figures_json");
+      const preview = document.getElementById("figures_preview");
+
+      function renderFigures() {
+        const figures = JSON.parse(figuresInput.value || "[]");
+        preview.innerHTML = "";
+        for (const f of figures) {
+          const img = document.createElement("img");
+          img.className = "thumb";
+          img.alt = f.caption || f.id;
+          img.src = `data:${f.mime_type};base64,${f.data_base64}`;
+          preview.appendChild(img);
+        }
+      }
+
+      async function sha256FromBytes(bytes) {
+        const hash = await crypto.subtle.digest("SHA-256", bytes);
+        return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      }
+
+      async function pasteImageToFigures(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        for (const b of bytes) binary += String.fromCharCode(b);
+        const dataBase64 = btoa(binary);
+        const hash = await sha256FromBytes(bytes);
+        const figures = JSON.parse(figuresInput.value || "[]");
+        figures.push({
+          id: `fig_${figures.length + 1}`,
+          mime_type: file.type || "image/png",
+          data_base64: dataBase64,
+          sha256: hash,
+          caption: ""
+        });
+        figuresInput.value = JSON.stringify(figures);
+        renderFigures();
+      }
+
+      document.addEventListener("paste", async (event) => {
+        const items = event.clipboardData?.items || [];
+        for (const item of items) {
+          if (item.type.startsWith("image/")) {
+            const file = item.getAsFile();
+            if (file) {
+              event.preventDefault();
+              await pasteImageToFigures(file);
+              break;
+            }
+          }
+        }
+      });
+
+      renderFigures();
+    </script>
+  </body>
+</html>
