@@ -4,6 +4,8 @@ import base64
 import hashlib
 from pathlib import Path
 
+import yaml
+
 from exam_helper.models import FigureData, Question, QuestionType
 from exam_helper.repository import ProjectRepository
 
@@ -37,3 +39,28 @@ def test_question_defaults_allow_empty_title() -> None:
     q = Question(id="q2", prompt_md="p")
     assert q.title == ""
     assert q.points == 5
+
+
+def test_project_defaults_include_ai_config(tmp_path: Path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    project = repo.load_project()
+    assert project.ai.model == "gpt-5.2"
+    assert project.ai.prompts.overall == ""
+    assert project.ai.usage.total_tokens == 0
+
+
+def test_project_load_back_compat_without_ai_block(tmp_path: Path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.ensure_layout()
+    (tmp_path / "project.yaml").write_text("name: Exam\ncourse: Physics\n", encoding="utf-8")
+    project = repo.load_project()
+    assert project.ai.model == "gpt-5.2"
+    assert project.ai.usage.total_cost_usd == 0.0
+
+
+def test_init_project_accepts_custom_model(tmp_path: Path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics", openai_model="gpt-5.2-custom")
+    data = yaml.safe_load((tmp_path / "project.yaml").read_text(encoding="utf-8"))
+    assert data["ai"]["model"] == "gpt-5.2-custom"

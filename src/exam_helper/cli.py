@@ -15,7 +15,7 @@ from exam_helper.validation import validate_project
 def cmd_init(args: argparse.Namespace) -> int:
     root = Path(args.path)
     repo = ProjectRepository(root)
-    repo.init_project(name=args.name, course=args.course)
+    repo.init_project(name=args.name, course=args.course, openai_model=args.openai_model)
     return 0
 
 
@@ -66,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("path")
     p_init.add_argument("--name", default="Example Exam Project")
     p_init.add_argument("--course", default="Calculus-based Intro Physics")
+    p_init.add_argument("--openai-model", default="gpt-5.2")
     p_init.set_defaults(func=cmd_init)
 
     p_serve = sub.add_parser("serve", help="Serve the local web app.")

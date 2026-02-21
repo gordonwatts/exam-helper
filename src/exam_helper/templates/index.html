@@ -10,18 +10,46 @@
       table { border-collapse: collapse; width: 100%; }
       th, td { border-bottom: 1px solid #ddd; padding: 0.5rem; text-align: left; }
       .btn { padding: 0.4rem 0.8rem; background: #0a6; color: #fff; text-decoration: none; border-radius: 4px; }
+      .btn-secondary { background: #666; border: 0; }
       .controls { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1rem; flex-wrap: wrap; }
       .export-form { display: flex; flex-direction: column; gap: 0.35rem; }
       .warning { border: 1px solid #d68f00; background: #fff4d6; color: #5a3d00; padding: 0.6rem; border-radius: 4px; margin-bottom: 1rem; }
+      .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+      .meta { color: #555; font-size: 0.9rem; margin-top: -0.4rem; }
+      .model-line { font-size: 0.9rem; color: #444; margin-top: 0.7rem; }
+      .usage-line { font-size: 0.82rem; color: #666; margin-top: 0.2rem; }
+      .settings { border: 1px solid #ddd; border-radius: 6px; padding: 0.8rem; margin: 1rem 0; }
+      .settings textarea, .settings input { width: 100%; box-sizing: border-box; }
+      .settings select { width: 100%; box-sizing: border-box; padding: 0.45rem; }
+      .settings textarea { min-height: 88px; }
+      details { margin: 0.6rem 0; }
+      .settings-wrap { margin-top: 1.8rem; }
+      .settings-status { font-size: 0.85rem; color: #666; margin-left: 0.6rem; }
     </style>
   </head>
   <body>
-    <h1>Exam Helper</h1>
+    <div class="topbar">
+      <div>
+        <h1>Exam Helper</h1>
+        <div class="meta">
+          <strong>Project:</strong> {{ project.name if project else "Not initialized" }}
+          {% if project %}&nbsp;|&nbsp;<strong>Root:</strong> {{ project_root }}{% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="model-line"><strong>model:</strong> {{ ai_model }}</div>
+        <div class="usage-line">
+          in {{ ai_usage.input_tokens }},
+          out {{ ai_usage.output_tokens }},
+          total {{ ai_usage.total_tokens }},
+          ${{ "%.6f"|format(ai_usage.total_cost_usd) }}
+        </div>
+      </div>
+    </div>
     {% if export_warning %}
     <p class="warning"><strong>Export warning:</strong> {{ export_warning }}</p>
     {% endif %}
-    <p><strong>Project:</strong> {{ project.name if project else "Not initialized" }}</p>
-    <p><strong>Root:</strong> {{ project_root }}</p>
+
     <div class="controls">
       <a class="btn" href="/questions/new">New Question</a>
       <form class="export-form" method="post" action="/export/docx">
@@ -44,5 +72,111 @@
         {% endfor %}
       </tbody>
     </table>
+
+    {% if project %}
+    <div class="settings-wrap">
+    <details>
+      <summary><strong>Project AI Settings</strong></summary>
+      <form class="settings" id="project-ai-settings" method="post" action="/project/settings">
+      <label><strong>OpenAI Model</strong></label>
+      <select name="openai_model" id="openai_model">
+        <option value="{{ project.ai.model }}">{{ project.ai.model }}</option>
+      </select>
+
+      <details>
+        <summary><strong>Overall Prompt (applies to all AI actions)</strong></summary>
+        <textarea name="prompt_overall" id="prompt_overall">{{ project.ai.prompts.overall }}</textarea>
+      </details>
+
+      <details>
+        <summary><strong>Solution + MC Prompt</strong></summary>
+        <textarea name="prompt_solution_and_mc" id="prompt_solution_and_mc">{{ project.ai.prompts.solution_and_mc }}</textarea>
+      </details>
+
+      <details>
+        <summary><strong>Problem Statement Review Prompt</strong></summary>
+        <textarea name="prompt_prompt_review" id="prompt_prompt_review">{{ project.ai.prompts.prompt_review }}</textarea>
+      </details>
+      <button class="btn" type="submit">Save AI Settings</button>
+      <span class="settings-status" id="settings_status">Ready</span>
+    </form>
+    </details>
+    </div>
+
+    <form method="post" action="/project/usage/reset">
+      <button class="btn btn-secondary" type="submit">Reset AI Usage Totals</button>
+    </form>
+
+    <script>
+      const settingsForm = document.getElementById("project-ai-settings");
+      const settingsStatus = document.getElementById("settings_status");
+      const openaiModelEl = document.getElementById("openai_model");
+      const settingsFields = [
+        openaiModelEl,
+        document.getElementById("prompt_overall"),
+        document.getElementById("prompt_solution_and_mc"),
+        document.getElementById("prompt_prompt_review"),
+      ];
+      let settingsTimer = null;
+
+      function setSettingsStatus(text) {
+        settingsStatus.textContent = text;
+      }
+
+      function populateModelDropdown(models) {
+        const current = "{{ project.ai.model }}";
+        const unique = Array.from(new Set([current, ...models])).filter(Boolean);
+        unique.sort();
+        openaiModelEl.innerHTML = "";
+        unique.forEach((id) => {
+          const opt = document.createElement("option");
+          opt.value = id;
+          opt.textContent = id;
+          if (id === current) opt.selected = true;
+          openaiModelEl.appendChild(opt);
+        });
+      }
+
+      async function autosaveSettingsNow() {
+        setSettingsStatus("Saving...");
+        const formData = new FormData(settingsForm);
+        const res = await fetch("/project/settings/autosave", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          setSettingsStatus(`Save error: ${data.error || res.statusText}`);
+          return;
+        }
+        setSettingsStatus("Saved");
+      }
+
+      function scheduleSettingsAutosave() {
+        setSettingsStatus("Unsaved changes");
+        if (settingsTimer) clearTimeout(settingsTimer);
+        settingsTimer = setTimeout(() => {
+          autosaveSettingsNow().catch((err) => setSettingsStatus(`Save error: ${err.message}`));
+        }, 1200);
+      }
+
+      settingsFields.forEach((el) => {
+        el.addEventListener("input", scheduleSettingsAutosave);
+        el.addEventListener("change", scheduleSettingsAutosave);
+      });
+      settingsForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        autosaveSettingsNow().catch((err) => setSettingsStatus(`Save error: ${err.message}`));
+      });
+
+      fetch("/openai/models")
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok || !Array.isArray(data.models)) return;
+          populateModelDropdown(data.models);
+        })
+        .catch(() => {});
+    </script>
+    {% endif %}
   </body>
 </html>

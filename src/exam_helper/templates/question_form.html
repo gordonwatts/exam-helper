@@ -43,6 +43,8 @@
       .modal img { max-width: 92vw; max-height: 92vh; border: 2px solid #fff; background: #fff; }
       .preview-item { margin: 0.3rem 0; }
       .preview-rationale { color: #555; font-size: 0.9rem; margin-left: 1.2rem; }
+      .prompt-preview-body { background: #fff; max-width: 860px; width: 92vw; max-height: 88vh; overflow: auto; border-radius: 6px; padding: 1rem; }
+      .prompt-preview-body pre { white-space: pre-wrap; word-break: break-word; background: #f7f7f7; padding: 0.6rem; border-radius: 4px; border: 1px solid #ddd; }
       @media (max-width: 900px) {
         .row, .row3 { grid-template-columns: 1fr; }
       }
@@ -74,6 +76,7 @@
       <label>Title (optional)</label>
       <input name="title" id="title" value="{{ question.title if question else '' }}" />
       <button type="button" class="btn" id="btn_ai_title">Generate Title</button>
+      <button type="button" class="btn" id="btn_preview_title">Preview Prompt</button>
       <button type="button" class="btn" id="btn_undo_title">Undo</button>
 
       <div class="row">
@@ -81,6 +84,7 @@
           <label>Question Text (Markdown + math)</label>
           <textarea name="prompt_md" id="prompt_md">{{ question.prompt_md if question else '' }}</textarea>
           <button type="button" class="btn" id="btn_ai_prompt">Improve Text</button>
+          <button type="button" class="btn" id="btn_preview_prompt">Preview Prompt</button>
           <button type="button" class="btn" id="btn_undo_prompt">Undo</button>
         </div>
         <div class="card preview">
@@ -94,6 +98,7 @@
           <label>Worked Solution (Markdown)</label>
           <textarea name="solution_md" id="solution_md">{{ question.solution.worked_solution_md if question else '' }}</textarea>
           <button type="button" class="btn" id="btn_ai_solution">Improve Solution</button>
+          <button type="button" class="btn" id="btn_preview_solution">Preview Prompt</button>
           <button type="button" class="btn" id="btn_undo_solution">Undo</button>
         </div>
         <div class="card preview">
@@ -106,6 +111,7 @@
         <label>MC Options YAML (A-E)</label>
         <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
         <button type="button" class="btn" id="btn_ai_mc">Generate MC A-E</button>
+        <button type="button" class="btn" id="btn_preview_mc">Preview Prompt</button>
         <button type="button" class="btn" id="btn_undo_choices">Undo</button>
         <div class="row">
           <div class="card preview">
@@ -138,6 +144,18 @@
     <div id="image_modal" class="modal">
       <img id="image_modal_img" alt="Expanded figure" />
     </div>
+    <div id="prompt_preview_modal" class="modal">
+      <div class="prompt-preview-body">
+        <h3 id="prompt_preview_title"></h3>
+        <h4>System Prompt</h4>
+        <pre id="prompt_preview_system"></pre>
+        <h4>User Prompt</h4>
+        <pre id="prompt_preview_user"></pre>
+        <h4>Figures Sent</h4>
+        <pre id="prompt_preview_figures"></pre>
+        <button type="button" class="btn" id="btn_close_prompt_preview">Close</button>
+      </div>
+    </div>
 
     <script>
       const form = document.getElementById("question-form");
@@ -159,6 +177,11 @@
       const mcPreviewRationale = document.getElementById("mc_preview_rationale");
       const imageModal = document.getElementById("image_modal");
       const imageModalImg = document.getElementById("image_modal_img");
+      const promptPreviewModal = document.getElementById("prompt_preview_modal");
+      const promptPreviewTitle = document.getElementById("prompt_preview_title");
+      const promptPreviewSystem = document.getElementById("prompt_preview_system");
+      const promptPreviewUser = document.getElementById("prompt_preview_user");
+      const promptPreviewFigures = document.getElementById("prompt_preview_figures");
       const defaultChoicesYaml = `- label: A
   content_md: ''
   is_correct: true
@@ -390,6 +413,32 @@
         }
       }
 
+      async function previewAiPrompt(action, label) {
+        const qid = questionIdEl.value.trim();
+        if (!qid) {
+          setStatus("Set question ID before AI actions.", "warn");
+          return;
+        }
+        setStatus("Loading prompt preview...", "warn");
+        try {
+          await autosaveNow();
+          const res = await fetch(`/questions/${qid}/ai/preview/${action}`, { method: "POST" });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || res.statusText);
+          }
+          promptPreviewTitle.textContent = `${label} Prompt Preview`;
+          promptPreviewSystem.textContent = data.system_prompt || "";
+          promptPreviewUser.textContent = data.user_prompt || "";
+          const figs = data.figure_placeholders || [];
+          promptPreviewFigures.textContent = figs.length ? figs.join("\n") : "(none)";
+          promptPreviewModal.style.display = "flex";
+          setStatus("Prompt preview ready", "good");
+        } catch (err) {
+          setStatus(`Preview error: ${err.message}`, "warn");
+        }
+      }
+
       document.addEventListener("paste", async (event) => {
         const items = event.clipboardData?.items || [];
         for (const item of items) {
@@ -424,14 +473,17 @@
         pushUndo("title", titleEl.value);
         await aiApply(e.target, "/ai/suggest-title", (data) => { titleEl.value = data.title || ""; });
       });
+      document.getElementById("btn_preview_title").addEventListener("click", () => previewAiPrompt("suggest-title", "Generate Title"));
       document.getElementById("btn_ai_prompt").addEventListener("click", async (e) => {
         pushUndo("prompt", promptEl.value);
         await aiApply(e.target, "/ai/improve-prompt", (data) => { promptEl.value = data.prompt_md || ""; renderMarkdown(); });
       });
+      document.getElementById("btn_preview_prompt").addEventListener("click", () => previewAiPrompt("improve-prompt", "Improve Text"));
       document.getElementById("btn_ai_solution").addEventListener("click", async (e) => {
         pushUndo("solution", solutionEl.value);
         await aiApply(e.target, "/ai/draft-solution", (data) => { solutionEl.value = data.solution_md || ""; renderMarkdown(); });
       });
+      document.getElementById("btn_preview_solution").addEventListener("click", () => previewAiPrompt("draft-solution", "Improve Solution"));
       document.getElementById("btn_ai_mc").addEventListener("click", async (e) => {
         pushUndo("choices", choicesEl.value);
         pushUndo("solution", solutionEl.value);
@@ -442,6 +494,7 @@
           renderMCPreviews();
         });
       });
+      document.getElementById("btn_preview_mc").addEventListener("click", () => previewAiPrompt("distractors", "Generate MC"));
 
       document.getElementById("btn_undo_title").addEventListener("click", () => undo("title", (v) => { titleEl.value = v; }));
       document.getElementById("btn_undo_prompt").addEventListener("click", () => undo("prompt", (v) => { promptEl.value = v; renderMarkdown(); }));
@@ -457,6 +510,14 @@
       imageModal.addEventListener("click", () => {
         imageModal.style.display = "none";
         imageModalImg.src = "";
+      });
+      document.getElementById("btn_close_prompt_preview").addEventListener("click", () => {
+        promptPreviewModal.style.display = "none";
+      });
+      promptPreviewModal.addEventListener("click", (event) => {
+        if (event.target === promptPreviewModal) {
+          promptPreviewModal.style.display = "none";
+        }
       });
 
       window.addEventListener("beforeunload", (event) => {

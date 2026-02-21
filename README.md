@@ -44,13 +44,20 @@ Option 2: pass directly on command line:
 
 Command line key takes precedence.
 
+Model defaults to `gpt-5.2`. You can set project model at init time:
+
+- `uv run exam-helper init my-exam --name "Midterm 1" --course "Physics 1" --openai-model gpt-5.2`
+
 ## Editor behavior
 
 - AI actions only run when you click a button.
+- Each AI action has a `Preview Prompt` button showing final system/user text plus figure placeholders.
 - AI output is applied directly to the main field (single copy), with Undo per section.
 - Autosave runs while you type (1.5s debounce).
 - Multiple choice editor is hidden unless question type is `Multiple Choice`.
 - MC generation creates full A-E options and marks a guessed correct answer.
+- Project page shows active model and cumulative AI usage (input/output/total tokens + total cost).
+- You can configure project-level AI prompt overrides and reset usage totals from the project page.
 
 ## Question Portability
 

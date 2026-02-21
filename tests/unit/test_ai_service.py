@@ -28,7 +28,9 @@ def test_ai_service_improve_prompt(monkeypatch) -> None:
     monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient("better prompt"))
     svc = AIService(api_key="k")
     q = Question(id="q1", title="t", prompt_md="old")
-    assert svc.improve_prompt(q) == "better prompt"
+    result = svc.improve_prompt(q)
+    assert result.text == "better prompt"
+    assert result.usage.total_tokens == 0
 
 
 def test_ai_service_generate_mc_options(monkeypatch) -> None:
@@ -46,6 +48,7 @@ def test_ai_service_generate_mc_options(monkeypatch) -> None:
     monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
     svc = AIService(api_key="k")
     q = Question(id="q1", title="t", prompt_md="old")
-    out = svc.generate_mc_options_from_solution(q, "Problem (verbatim): old")
+    out, usage = svc.generate_mc_options_from_solution(q, "Problem (verbatim): old")
     assert len(out) == 5
     assert sum(1 for c in out if c.is_correct) == 1
+    assert usage.total_tokens == 0

@@ -8,7 +8,7 @@
 ## 2. Create an exam project
 
 ```bash
-uv run exam-helper init my-exam --name "Exam Draft" --course "Physics 1"
+uv run exam-helper init my-exam --name "Exam Draft" --course "Physics 1" --openai-model gpt-5.2
 ```
 
 This creates:
@@ -30,7 +30,10 @@ Open `http://127.0.0.1:8000`.
 - Fill prompt, solution, checker code
 - Paste images from clipboard directly into the editor page
 - Use AI buttons when needed (`Improve Text`, `Improve Solution`, `Generate MC A-E`)
+- Use `Preview Prompt` buttons to inspect what will be sent before an AI call
 - Autosave runs automatically as you edit
+- Configure project AI model and optional prompt overrides from the main project page
+- Monitor cumulative token/cost usage on the main page (with reset button)
 
 Optional OpenAI key sources:
 

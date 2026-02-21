@@ -78,6 +78,26 @@ class Question(BaseModel):
         return self
 
 
+class AIPromptConfig(BaseModel):
+    overall: str = ""
+    solution_and_mc: str = ""
+    prompt_review: str = ""
+
+
+class AIUsageTotals(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    total_cost_usd: float = 0.0
+
+
+class AIConfig(BaseModel):
+    model: str = "gpt-5.2"
+    prompts: AIPromptConfig = Field(default_factory=AIPromptConfig)
+    usage: AIUsageTotals = Field(default_factory=AIUsageTotals)
+
+
 class ProjectConfig(BaseModel):
     name: str
     course: str
+    ai: AIConfig = Field(default_factory=AIConfig)

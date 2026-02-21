@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from exam_helper.ai_service import AIService
 from exam_helper.export_docx import render_project_docx_bytes
-from exam_helper.models import MCChoice, Question, QuestionType
+from exam_helper.models import AIUsageTotals, MCChoice, ProjectConfig, Question, QuestionType
 from exam_helper.repository import ProjectRepository
 from exam_helper.validation import validate_question
 
@@ -37,10 +37,34 @@ def _sanitize_docx_filename_stem(project_name: str) -> str:
 def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     app = FastAPI(title="Exam Helper")
     repo = ProjectRepository(project_root)
+    project = repo.load_project() if repo.project_file.exists() else ProjectConfig(name="(uninitialized)", course="")
+
+    def make_ai_service(config: ProjectConfig) -> AIService:
+        return AIService(
+            api_key=openai_key,
+            model=config.ai.model,
+            prompts_override=config.ai.prompts,
+        )
+
+    def unpack_ai_text_and_usage(result: object) -> tuple[str, AIUsageTotals]:
+        if isinstance(result, str):
+            return result, AIUsageTotals()
+        if hasattr(result, "text") and hasattr(result, "usage"):
+            text = str(getattr(result, "text", ""))
+            usage = getattr(result, "usage")
+            if isinstance(usage, AIUsageTotals):
+                return text, usage
+            return text, AIUsageTotals.model_validate(usage)
+        raise ValueError("Unexpected AI response shape.")
+
+    def refresh_ai_service() -> None:
+        latest = repo.load_project()
+        app.state.ai = make_ai_service(latest)
+
     app.state.project_root = project_root
     app.state.openai_key = openai_key
     app.state.repo = repo
-    app.state.ai = AIService(api_key=openai_key)
+    app.state.ai = make_ai_service(project)
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
     def default_mc_choices_yaml() -> str:
@@ -66,6 +90,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "project": project,
                 "questions": questions,
                 "export_warning": export_warning,
+                "ai_model": (project.ai.model if project else "gpt-5.2"),
+                "ai_usage": (project.ai.usage if project else AIUsageTotals()),
+                "ai_prompts": (project.ai.prompts if project else None),
             },
         )
         if export_warning:
@@ -166,6 +193,54 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             )
         return response
 
+    @app.post("/project/settings")
+    def save_project_settings(
+        openai_model: str = Form("gpt-5.2"),
+        prompt_overall: str = Form(""),
+        prompt_solution_and_mc: str = Form(""),
+        prompt_prompt_review: str = Form(""),
+    ) -> RedirectResponse:
+        project = repo.load_project()
+        project.ai.model = openai_model.strip() or "gpt-5.2"
+        project.ai.prompts.overall = prompt_overall
+        project.ai.prompts.solution_and_mc = prompt_solution_and_mc
+        project.ai.prompts.prompt_review = prompt_prompt_review
+        repo.save_project(project)
+        refresh_ai_service()
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/project/settings/autosave")
+    def autosave_project_settings(
+        openai_model: str = Form("gpt-5.2"),
+        prompt_overall: str = Form(""),
+        prompt_solution_and_mc: str = Form(""),
+        prompt_prompt_review: str = Form(""),
+    ) -> JSONResponse:
+        try:
+            project = repo.load_project()
+            project.ai.model = openai_model.strip() or "gpt-5.2"
+            project.ai.prompts.overall = prompt_overall
+            project.ai.prompts.solution_and_mc = prompt_solution_and_mc
+            project.ai.prompts.prompt_review = prompt_prompt_review
+            repo.save_project(project)
+            refresh_ai_service()
+            return JSONResponse({"ok": True})
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
+    @app.get("/openai/models")
+    def list_openai_models() -> dict:
+        try:
+            models = app.state.ai.list_models()
+            return {"ok": True, "models": models}
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex), "models": []}, status_code=422)
+
+    @app.post("/project/usage/reset")
+    def reset_project_usage() -> RedirectResponse:
+        repo.reset_ai_usage()
+        return RedirectResponse("/", status_code=303)
+
     @app.post("/questions/{question_id}/autosave")
     def autosave_question(question_id: str, payload: AutosavePayload = Body(...)) -> JSONResponse:
         try:
@@ -207,7 +282,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def ai_improve_prompt(question_id: str) -> dict:
         try:
             q = repo.get_question(question_id)
-            text = app.state.ai.improve_prompt(q)
+            result = app.state.ai.improve_prompt(q)
+            text, usage = unpack_ai_text_and_usage(result)
+            repo.add_ai_usage(usage)
             return {"ok": True, "prompt_md": text}
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
@@ -216,7 +293,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def ai_draft_solution(question_id: str) -> dict:
         try:
             q = repo.get_question(question_id)
-            text = app.state.ai.draft_solution(q)
+            result = app.state.ai.draft_solution(q)
+            text, usage = unpack_ai_text_and_usage(result)
+            repo.add_ai_usage(usage)
             return {"ok": True, "solution_md": text}
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
@@ -225,7 +304,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def ai_suggest_title(question_id: str) -> dict:
         try:
             q = repo.get_question(question_id)
-            text = app.state.ai.suggest_title(q)
+            result = app.state.ai.suggest_title(q)
+            text, usage = unpack_ai_text_and_usage(result)
+            repo.add_ai_usage(usage)
             return {"ok": True, "title": text}
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
@@ -239,9 +320,16 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             solution_was_generated = False
             solution_md = existing_solution
             if not existing_solution:
-                solution_md = app.state.ai.draft_solution(q)
+                draft_result = app.state.ai.draft_solution(q)
+                solution_md, draft_usage = unpack_ai_text_and_usage(draft_result)
+                repo.add_ai_usage(draft_usage)
                 solution_was_generated = True
-            choices = app.state.ai.generate_mc_options_from_solution(q, solution_md)
+            choices_result = app.state.ai.generate_mc_options_from_solution(q, solution_md)
+            if isinstance(choices_result, tuple):
+                choices, usage = choices_result
+                repo.add_ai_usage(AIUsageTotals.model_validate(usage))
+            else:
+                choices = choices_result
             payload = {
                 "ok": True,
                 "choices_yaml": yaml.safe_dump(
@@ -252,6 +340,24 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             if solution_was_generated:
                 payload["solution_md"] = solution_md
             return payload
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
+    @app.post("/questions/{question_id}/ai/preview/{action}")
+    def ai_preview_prompt(question_id: str, action: str) -> dict:
+        try:
+            q = repo.get_question(question_id)
+            valid_actions = {"suggest-title", "improve-prompt", "draft-solution", "distractors"}
+            if action not in valid_actions:
+                raise ValueError("Unknown preview action.")
+            normalized_action = action.replace("-", "_")
+            solution_md = q.solution.worked_solution_md if normalized_action == "distractors" else ""
+            preview = app.state.ai.preview_prompt(
+                action=normalized_action,
+                question=q,
+                solution_md=solution_md,
+            )
+            return {"ok": True, **preview}
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 

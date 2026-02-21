@@ -7,18 +7,43 @@ from typing import Any
 
 from openai import OpenAI
 
-from exam_helper.models import MCChoice, Question
+from exam_helper.models import AIPromptConfig, AIUsageTotals, MCChoice, Question
+from exam_helper.prompt_catalog import PromptBundle, PromptCatalog
 
 
 @dataclass
 class AIService:
     api_key: str | None
-    model: str = "gpt-4.1-mini"
+    model: str = "gpt-5.2"
+    prompts_override: AIPromptConfig | None = None
+    prompt_catalog: PromptCatalog | None = None
+
+    @dataclass
+    class AIResult:
+        text: str
+        usage: AIUsageTotals
 
     def _client(self) -> OpenAI:
         if not self.api_key:
             raise ValueError("OpenAI API key is not configured.")
         return OpenAI(api_key=self.api_key)
+
+    def _catalog(self) -> PromptCatalog:
+        if self.prompt_catalog is None:
+            self.prompt_catalog = PromptCatalog.from_package_yaml()
+        return self.prompt_catalog
+
+    def list_models(self) -> list[str]:
+        client = self._client()
+        response = client.models.list()
+        ids = sorted(
+            {
+                str(getattr(item, "id", "")).strip()
+                for item in getattr(response, "data", [])
+                if str(getattr(item, "id", "")).strip()
+            }
+        )
+        return ids
 
     @staticmethod
     def _figure_content(question: Question) -> list[dict]:
@@ -35,36 +60,100 @@ class AIService:
             )
         return items
 
-    def _text(self, system_prompt: str, user_prompt: str) -> str:
+    def compose_prompt(self, action: str, question: Question, solution_md: str = "") -> PromptBundle:
+        return self._catalog().compose(
+            action=action,
+            question=question,
+            prompts_override=self.prompts_override,
+            solution_md=solution_md,
+        )
+
+    def preview_prompt(self, action: str, question: Question, solution_md: str = "") -> dict[str, Any]:
+        bundle = self.compose_prompt(action=action, question=question, solution_md=solution_md)
+        return {
+            "action": action,
+            "system_prompt": bundle.system_prompt,
+            "user_prompt": bundle.user_prompt,
+            "figure_placeholders": self._catalog().figure_placeholders(question),
+        }
+
+    def _usage_from_response(self, response: Any) -> AIUsageTotals:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return AIUsageTotals()
+        if hasattr(usage, "model_dump"):
+            data = usage.model_dump()
+        elif isinstance(usage, dict):
+            data = usage
+        else:
+            data = {
+                "input_tokens": getattr(usage, "input_tokens", None),
+                "output_tokens": getattr(usage, "output_tokens", None),
+                "total_tokens": getattr(usage, "total_tokens", None),
+                "total_cost": getattr(usage, "total_cost", None),
+            }
+        input_tokens = self._to_int(data.get("input_tokens") or data.get("prompt_tokens"))
+        output_tokens = self._to_int(data.get("output_tokens") or data.get("completion_tokens"))
+        total_tokens = self._to_int(data.get("total_tokens"))
+        if total_tokens == 0:
+            total_tokens = input_tokens + output_tokens
+        total_cost = self._to_float(
+            data.get("total_cost")
+            or data.get("cost")
+            or data.get("estimated_cost")
+            or data.get("total_cost_usd")
+        )
+        return AIUsageTotals(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            total_cost_usd=total_cost,
+        )
+
+    @staticmethod
+    def _to_int(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _to_float(value: Any) -> float:
+        try:
+            return float(value or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _text(self, bundle: PromptBundle) -> AIResult:
         client = self._client()
-        user_content = [{"type": "input_text", "text": user_prompt}]
+        user_content = [{"type": "input_text", "text": bundle.user_prompt}]
         response = client.responses.create(
             model=self.model,
             input=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": bundle.system_prompt},
                 {"role": "user", "content": user_content},
             ],
         )
         text = getattr(response, "output_text", "").strip()
         if not text:
             raise ValueError("Empty AI response.")
-        return text
+        return AIService.AIResult(text=text, usage=self._usage_from_response(response))
 
-    def _text_with_question_context(self, system_prompt: str, user_prompt: str, question: Question) -> str:
+    def _text_with_question_context(self, bundle: PromptBundle, question: Question) -> AIResult:
         client = self._client()
-        user_content = [{"type": "input_text", "text": user_prompt}]
+        user_content = [{"type": "input_text", "text": bundle.user_prompt}]
         user_content.extend(self._figure_content(question))
         response = client.responses.create(
             model=self.model,
             input=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": bundle.system_prompt},
                 {"role": "user", "content": user_content},
             ],
         )
         text = getattr(response, "output_text", "").strip()
         if not text:
             raise ValueError("Empty AI response.")
-        return text
+        return AIService.AIResult(text=text, usage=self._usage_from_response(response))
 
     @staticmethod
     def _parse_json_payload(raw: str) -> list[dict]:
@@ -119,59 +208,28 @@ class AIService:
 
         raise ValueError("AI response was not parseable JSON object.")
 
-    def improve_prompt(self, question: Question) -> str:
-        return self._text_with_question_context(
-            "You improve physics exam problem statements for clarity and precision.",
-            f"Improve this prompt while preserving intent and difficulty:\n{question.prompt_md}",
-            question,
-        )
+    def improve_prompt(self, question: Question) -> AIResult:
+        bundle = self.compose_prompt(action="improve_prompt", question=question)
+        return self._text_with_question_context(bundle, question)
 
-    def draft_solution(self, question: Question) -> str:
-        return self._text_with_question_context(
-            (
-                "You write brief but complete worked solutions for calculus-based physics exams. "
-                "Be concise: target 3-5 short lines plus one final answer line unless complexity requires more. "
-                "Every mathematical expression, equation, or scientific notation must be written in "
-                "LaTeX inline math mode using \\( ... \\). "
-                "Do not repeat the problem statement or include any 'Problem (verbatim):' line. "
-                "End with a line that starts exactly with 'Final answer: ' and provide the computed final result."
-            ),
-            (
-                "Write a worked solution.\n"
-                f"Title: {question.title}\n"
-                "Prompt:\n"
-                f"{question.prompt_md}"
-            ),
-            question,
-        )
+    def draft_solution(self, question: Question) -> AIResult:
+        bundle = self.compose_prompt(action="draft_solution", question=question)
+        return self._text_with_question_context(bundle, question)
 
-    def suggest_title(self, question: Question) -> str:
-        return self._text_with_question_context(
-            "You generate short, descriptive titles for physics exam problems.",
-            f"Generate a concise title (max 8 words) for:\n{question.prompt_md}",
-            question,
-        )
+    def suggest_title(self, question: Question) -> AIResult:
+        bundle = self.compose_prompt(action="suggest_title", question=question)
+        return self._text_with_question_context(bundle, question)
 
     def generate_mc_options(self, question: Question) -> list[MCChoice]:
-        return self.generate_mc_options_from_solution(question, question.solution.worked_solution_md)
+        choices, _ = self.generate_mc_options_from_solution(question, question.solution.worked_solution_md)
+        return choices
 
-    def generate_mc_options_from_solution(self, question: Question, solution_md: str) -> list[MCChoice]:
-        raw = self._text_with_question_context(
-            (
-                "Generate complete multiple-choice options from an existing worked solution. "
-                "Return strict JSON array with exactly 5 objects (A-E). "
-                "Each object must have keys: label, content_md, is_correct, rationale. "
-                "Exactly one option must be correct. "
-                "Do not return any additional keys or narrative text."
-            ),
-            (
-                f"Question prompt:\n{question.prompt_md}\n"
-                f"Worked solution (authoritative, use this to determine final answer):\n{solution_md}\n"
-                "Generate exactly options A, B, C, D, E."
-            ),
-            question,
-        )
-        items = self._parse_json_payload(raw)
+    def generate_mc_options_from_solution(
+        self, question: Question, solution_md: str
+    ) -> tuple[list[MCChoice], AIUsageTotals]:
+        bundle = self.compose_prompt(action="distractors", question=question, solution_md=solution_md)
+        result = self._text_with_question_context(bundle, question)
+        items = self._parse_json_payload(result.text)
         if len(items) != 5:
             raise ValueError("AI did not return exactly five options (A-E).")
         out: list[MCChoice] = []
@@ -191,4 +249,4 @@ class AIService:
         if sum(1 for c in out if c.is_correct) != 1:
             raise ValueError("AI must mark exactly one correct option.")
         out.sort(key=lambda c: c.label)
-        return out
+        return out, result.usage
