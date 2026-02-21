@@ -8,6 +8,7 @@ import uvicorn
 from exam_helper.app import create_app
 from exam_helper.config import resolve_openai_api_key
 from exam_helper.repository import ProjectRepository
+from exam_helper.validation import validate_project
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -24,7 +25,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if path.is_file():
         path = path.parent
     repo = ProjectRepository(path)
-    errors = repo.validate_all()
+    errors = validate_project(repo)
     if errors:
         for err in errors:
             print(f"ERROR: {err}")

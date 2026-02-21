@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from exam_helper.models import MCChoice, Question, QuestionType
 from exam_helper.repository import ProjectRepository
+from exam_helper.validation import validate_question
 
 
 def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
@@ -107,5 +108,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
         raw = base64.b64decode(data_base64.encode("ascii"))
         return {"sha256": sha256(raw).hexdigest(), "size": len(raw)}
+
+    @app.post("/questions/{question_id}/validate")
+    def validate_question_endpoint(question_id: str) -> dict:
+        q = repo.get_question(question_id)
+        errors = validate_question(q)
+        return {"question_id": question_id, "errors": errors, "ok": not errors}
 
     return app
