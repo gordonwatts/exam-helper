@@ -9,6 +9,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from exam_helper.ai_service import AIService
 from exam_helper.models import MCChoice, Question, QuestionType
 from exam_helper.repository import ProjectRepository
 from exam_helper.validation import validate_question
@@ -20,6 +21,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     app.state.project_root = project_root
     app.state.openai_key = openai_key
     app.state.repo = repo
+    app.state.ai = AIService(api_key=openai_key)
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
     @app.get("/", response_class=HTMLResponse)
@@ -114,5 +116,23 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         q = repo.get_question(question_id)
         errors = validate_question(q)
         return {"question_id": question_id, "errors": errors, "ok": not errors}
+
+    @app.post("/questions/{question_id}/ai/improve-prompt")
+    def ai_improve_prompt(question_id: str) -> dict:
+        q = repo.get_question(question_id)
+        text = app.state.ai.improve_prompt(q)
+        return {"draft_prompt_md": text}
+
+    @app.post("/questions/{question_id}/ai/draft-solution")
+    def ai_draft_solution(question_id: str) -> dict:
+        q = repo.get_question(question_id)
+        text = app.state.ai.draft_solution(q)
+        return {"draft_solution_md": text}
+
+    @app.post("/questions/{question_id}/ai/distractors")
+    def ai_distractors(question_id: str, count: int = Form(3)) -> dict:
+        q = repo.get_question(question_id)
+        choices = app.state.ai.distractors(q, count=count)
+        return {"choices": [c.model_dump(mode="json") for c in choices]}
 
     return app

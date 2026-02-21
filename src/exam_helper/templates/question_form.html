@@ -54,6 +54,8 @@
 
       <label>Prompt (Markdown + math)</label>
       <textarea name="prompt_md">{{ question.prompt_md if question else '' }}</textarea>
+      <button type="button" id="btn_ai_prompt">Draft Improved Prompt</button>
+      <textarea id="ai_prompt_draft" placeholder="AI prompt draft will appear here for manual copy/edit"></textarea>
 
       <label>Choices YAML (for MC)</label>
       <textarea name="choices_yaml">{{ choices_yaml }}</textarea>
@@ -61,9 +63,13 @@
 
       <label>Worked Solution (Markdown)</label>
       <textarea name="solution_md">{{ question.solution.worked_solution_md if question else '' }}</textarea>
+      <button type="button" id="btn_ai_solution">Draft Solution</button>
+      <textarea id="ai_solution_draft" placeholder="AI solution draft will appear here for manual copy/edit"></textarea>
 
       <label>Checker Python Code</label>
       <textarea name="checker_code">{{ question.checker.python_code if question else '' }}</textarea>
+      <button type="button" id="btn_ai_distractors">Generate Distractors</button>
+      <textarea id="ai_distractor_draft" placeholder="AI distractors JSON will appear here for manual merge"></textarea>
 
       <label>Figures (paste image from clipboard here while this page is focused)</label>
       <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
@@ -125,6 +131,34 @@
             }
           }
         }
+      });
+
+      async function postJson(url, formData) {
+        const r = await fetch(url, { method: "POST", body: formData || new FormData() });
+        if (!r.ok) throw new Error(await r.text());
+        return await r.json();
+      }
+
+      function currentQuestionId() {
+        return document.querySelector("input[name='question_id']").value;
+      }
+
+      document.getElementById("btn_ai_prompt").addEventListener("click", async () => {
+        const id = currentQuestionId();
+        const data = await postJson(`/questions/${id}/ai/improve-prompt`);
+        document.getElementById("ai_prompt_draft").value = data.draft_prompt_md || "";
+      });
+
+      document.getElementById("btn_ai_solution").addEventListener("click", async () => {
+        const id = currentQuestionId();
+        const data = await postJson(`/questions/${id}/ai/draft-solution`);
+        document.getElementById("ai_solution_draft").value = data.draft_solution_md || "";
+      });
+
+      document.getElementById("btn_ai_distractors").addEventListener("click", async () => {
+        const id = currentQuestionId();
+        const data = await postJson(`/questions/${id}/ai/distractors`);
+        document.getElementById("ai_distractor_draft").value = JSON.stringify(data.choices || [], null, 2);
       });
 
       renderFigures();
