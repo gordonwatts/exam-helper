@@ -31,13 +31,21 @@ def test_ai_service_improve_prompt(monkeypatch) -> None:
     assert svc.improve_prompt(q) == "better prompt"
 
 
-def test_ai_service_distractors(monkeypatch) -> None:
+def test_ai_service_generate_mc_options(monkeypatch) -> None:
     from exam_helper import ai_service as mod
 
-    payload = '[{"label":"B","content_md":"wrong","rationale":"sign error"}]'
+    payload = """```json
+[
+  {"label":"A","content_md":"1","is_correct":false,"rationale":"r1"},
+  {"label":"B","content_md":"2","is_correct":true,"rationale":"r2"},
+  {"label":"C","content_md":"3","is_correct":false,"rationale":"r3"},
+  {"label":"D","content_md":"4","is_correct":false,"rationale":"r4"},
+  {"label":"E","content_md":"5","is_correct":false,"rationale":"r5"}
+]
+```"""
     monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
     svc = AIService(api_key="k")
     q = Question(id="q1", title="t", prompt_md="old")
-    out = svc.distractors(q, count=1)
-    assert len(out) == 1
-    assert out[0].is_correct is False
+    out = svc.generate_mc_options(q)
+    assert len(out) == 5
+    assert sum(1 for c in out if c.is_correct) == 1

@@ -4,94 +4,256 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Question Editor</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+      window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
-      body { font-family: "Segoe UI", Arial, sans-serif; margin: 2rem; }
-      form { max-width: 980px; }
+      body { font-family: "Segoe UI", Arial, sans-serif; margin: 1.2rem; }
+      form { max-width: 1200px; }
       label { display: block; margin-top: 0.8rem; font-weight: 600; }
       input, textarea, select { width: 100%; box-sizing: border-box; padding: 0.5rem; }
-      textarea { min-height: 110px; }
-      .row { display: flex; gap: 1rem; }
-      .row > div { flex: 1; }
-      .thumb { max-width: 180px; max-height: 140px; border: 1px solid #ccc; margin-right: 0.5rem; margin-top: 0.5rem; }
-      .help { color: #444; }
-      button { margin-top: 1rem; padding: 0.6rem 1rem; }
+      textarea { min-height: 120px; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+      .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8rem; }
+      .card { border: 1px solid #ddd; border-radius: 6px; padding: 0.8rem; margin-top: 0.8rem; }
+      .preview { background: #fafafa; max-height: 360px; overflow: auto; }
+      .thumb { max-width: 180px; max-height: 140px; border: 1px solid #ccc; margin-right: 0.6rem; margin-top: 0.5rem; }
+      .figure-card { display: inline-block; margin-right: 0.5rem; }
+      .help { color: #444; font-size: 0.95rem; }
+      .status { margin-top: 0.5rem; min-height: 1.2rem; font-size: 0.95rem; }
+      .good { color: #0a6; }
+      .warn { color: #c50; }
+      .btn { padding: 0.45rem 0.8rem; margin-top: 0.45rem; margin-right: 0.45rem; }
+      .actions { margin-top: 1rem; }
+      @media (max-width: 900px) {
+        .row, .row3 { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
     <h1>{{ "Edit Question" if question else "New Question" }}</h1>
     <p><a href="/">Back to list</a></p>
-    <form method="post" action="/questions/save">
-      <div class="row">
+
+    <form method="post" action="/questions/save" id="question-form">
+      <div class="row3">
         <div>
           <label>Question ID</label>
-          <input name="question_id" value="{{ question.id if question else '' }}" required />
+          <input name="question_id" id="question_id" value="{{ question.id if question else '' }}" required />
         </div>
         <div>
           <label>Type</label>
-          <select name="question_type">
+          <select name="question_type" id="question_type">
             <option value="free_response" {% if question and question.question_type.value=="free_response" %}selected{% endif %}>Free Response</option>
             <option value="multiple_choice" {% if question and question.question_type.value=="multiple_choice" %}selected{% endif %}>Multiple Choice</option>
           </select>
         </div>
+        <div>
+          <label>Points</label>
+          <input name="points" id="points" type="number" min="0" value="{{ question.points if question else 5 }}" />
+        </div>
       </div>
 
-      <label>Title</label>
-      <input name="title" value="{{ question.title if question else '' }}" required />
+      <label>Title (optional)</label>
+      <input name="title" id="title" value="{{ question.title if question else '' }}" />
+      <button type="button" class="btn" id="btn_ai_title">Generate Title</button>
+      <button type="button" class="btn" id="btn_undo_title">Undo</button>
 
       <div class="row">
-        <div>
-          <label>Topic</label>
-          <input name="topic" value="{{ question.topic if question else '' }}" />
+        <div class="card">
+          <label>Question Text (Markdown + math)</label>
+          <textarea name="prompt_md" id="prompt_md">{{ question.prompt_md if question else '' }}</textarea>
+          <button type="button" class="btn" id="btn_ai_prompt">Improve Text</button>
+          <button type="button" class="btn" id="btn_undo_prompt">Undo</button>
         </div>
-        <div>
-          <label>Course Level</label>
-          <input name="course_level" value="{{ question.course_level if question else 'intro' }}" />
+        <div class="card preview">
+          <strong>Question Preview</strong>
+          <div id="prompt_preview"></div>
         </div>
       </div>
 
-      <label>Tags (comma separated)</label>
-      <input name="tags" value="{{ ', '.join(question.tags) if question else '' }}" />
+      <div id="mc_block" class="card">
+        <label>MC Options YAML (A-E)</label>
+        <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
+        <button type="button" class="btn" id="btn_ai_mc">Generate MC A-E</button>
+        <button type="button" class="btn" id="btn_undo_choices">Undo</button>
+      </div>
 
-      <label>Prompt (Markdown + math)</label>
-      <textarea name="prompt_md">{{ question.prompt_md if question else '' }}</textarea>
-      <button type="button" id="btn_ai_prompt">Draft Improved Prompt</button>
-      <textarea id="ai_prompt_draft" placeholder="AI prompt draft will appear here for manual copy/edit"></textarea>
-
-      <label>Choices YAML (for MC)</label>
-      <textarea name="choices_yaml">{{ choices_yaml }}</textarea>
-      <p class="help">Set at least one choice with <code>is_correct: true</code>.</p>
-
-      <label>Worked Solution (Markdown)</label>
-      <textarea name="solution_md">{{ question.solution.worked_solution_md if question else '' }}</textarea>
-      <button type="button" id="btn_ai_solution">Draft Solution</button>
-      <textarea id="ai_solution_draft" placeholder="AI solution draft will appear here for manual copy/edit"></textarea>
+      <div class="row">
+        <div class="card">
+          <label>Worked Solution (Markdown)</label>
+          <textarea name="solution_md" id="solution_md">{{ question.solution.worked_solution_md if question else '' }}</textarea>
+          <button type="button" class="btn" id="btn_ai_solution">Improve Solution</button>
+          <button type="button" class="btn" id="btn_undo_solution">Undo</button>
+        </div>
+        <div class="card preview">
+          <strong>Solution Preview</strong>
+          <div id="solution_preview"></div>
+        </div>
+      </div>
 
       <label>Checker Python Code</label>
-      <textarea name="checker_code">{{ question.checker.python_code if question else '' }}</textarea>
-      <button type="button" id="btn_ai_distractors">Generate Distractors</button>
-      <textarea id="ai_distractor_draft" placeholder="AI distractors JSON will appear here for manual merge"></textarea>
+      <textarea name="checker_code" id="checker_code">{{ question.checker.python_code if question else '' }}</textarea>
 
-      <label>Figures (paste image from clipboard here while this page is focused)</label>
-      <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
-      <div id="figures_preview"></div>
-      <p class="help">Pasted image is embedded directly in YAML as base64 (portable single file).</p>
+      <div class="card" id="figures_section">
+        <label>Figures</label>
+        <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
+        <p class="help">Paste copied image (`Ctrl+V` / `Cmd+V`) anywhere on this page. Each image is embedded directly in YAML.</p>
+        <div id="figures_preview"></div>
+        <button type="button" class="btn" id="btn_undo_figures">Undo Figure Change</button>
+      </div>
 
-      <button type="submit">Save Question</button>
+      <div class="actions">
+        <button type="submit" class="btn">Save and Return</button>
+        <span id="save_status" class="status"></span>
+      </div>
     </form>
 
     <script>
+      const form = document.getElementById("question-form");
+      const saveStatus = document.getElementById("save_status");
+      const questionIdEl = document.getElementById("question_id");
+      const questionTypeEl = document.getElementById("question_type");
+      const titleEl = document.getElementById("title");
+      const pointsEl = document.getElementById("points");
+      const promptEl = document.getElementById("prompt_md");
+      const choicesEl = document.getElementById("choices_yaml");
+      const solutionEl = document.getElementById("solution_md");
+      const checkerEl = document.getElementById("checker_code");
       const figuresInput = document.getElementById("figures_json");
-      const preview = document.getElementById("figures_preview");
+      const figuresPreview = document.getElementById("figures_preview");
+      const promptPreview = document.getElementById("prompt_preview");
+      const solutionPreview = document.getElementById("solution_preview");
+      const mcBlock = document.getElementById("mc_block");
+      const defaultChoicesYaml = `- label: A
+  content_md: ''
+  is_correct: true
+- label: B
+  content_md: ''
+  is_correct: false
+- label: C
+  content_md: ''
+  is_correct: false
+- label: D
+  content_md: ''
+  is_correct: false
+- label: E
+  content_md: ''
+  is_correct: false
+`;
 
-      function renderFigures() {
+      let autosaveTimer = null;
+      const undoStacks = { title: [], prompt: [], solution: [], choices: [], figures: [] };
+
+      function pushUndo(section, value) {
+        undoStacks[section].push(value);
+        if (undoStacks[section].length > 20) undoStacks[section].shift();
+      }
+
+      function undo(section, setter) {
+        const prev = undoStacks[section].pop();
+        if (prev !== undefined) {
+          setter(prev);
+          scheduleAutosave();
+        }
+      }
+
+      function setStatus(text, cls) {
+        saveStatus.textContent = text;
+        saveStatus.className = `status ${cls || ""}`;
+      }
+
+      function scientificNotationNormalize(text) {
+        return text.replace(/(\d+(?:\.\d+)?)\s*[xX]\s*10\s*-\s*(\d+)/g, "$1 \\\\times 10^{-$2}");
+      }
+
+      function renderMarkdown() {
+        promptPreview.innerHTML = marked.parse(promptEl.value || "");
+        solutionPreview.innerHTML = marked.parse(solutionEl.value || "");
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([promptPreview, solutionPreview]);
+        }
+      }
+
+      function isMC() {
+        return questionTypeEl.value === "multiple_choice";
+      }
+
+      function updateMCVisibility() {
+        if (isMC() && !(choicesEl.value || "").trim()) {
+          choicesEl.value = defaultChoicesYaml;
+        }
+        mcBlock.style.display = isMC() ? "block" : "none";
+      }
+
+      function serializePayload() {
+        return {
+          title: titleEl.value,
+          question_type: questionTypeEl.value,
+          prompt_md: promptEl.value,
+          choices_yaml: choicesEl.value,
+          solution_md: solutionEl.value,
+          checker_code: checkerEl.value,
+          figures_json: figuresInput.value || "[]",
+          points: Number(pointsEl.value || 5),
+        };
+      }
+
+      async function autosaveNow() {
+        const qid = questionIdEl.value.trim();
+        if (!qid) return;
+        setStatus("Saving...", "warn");
+        const res = await fetch(`/questions/${qid}/autosave`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(serializePayload()),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          setStatus(`Save error: ${data.error || res.statusText}`, "warn");
+          return;
+        }
+        setStatus("Saved", "good");
+      }
+
+      function scheduleAutosave() {
+        setStatus("Unsaved changes", "warn");
+        if (autosaveTimer) clearTimeout(autosaveTimer);
+        autosaveTimer = setTimeout(() => {
+          autosaveNow().catch((err) => setStatus(`Save error: ${err.message}`, "warn"));
+        }, 1500);
+      }
+
+      function renderFigures(scrollToEnd = false) {
         const figures = JSON.parse(figuresInput.value || "[]");
-        preview.innerHTML = "";
-        for (const f of figures) {
+        figuresPreview.innerHTML = "";
+        for (let i = 0; i < figures.length; i++) {
+          const f = figures[i];
+          const card = document.createElement("div");
+          card.className = "figure-card";
           const img = document.createElement("img");
           img.className = "thumb";
           img.alt = f.caption || f.id;
           img.src = `data:${f.mime_type};base64,${f.data_base64}`;
-          preview.appendChild(img);
+          const del = document.createElement("button");
+          del.type = "button";
+          del.textContent = `Delete ${f.id}`;
+          del.className = "btn";
+          del.addEventListener("click", () => {
+            pushUndo("figures", figuresInput.value);
+            const next = JSON.parse(figuresInput.value || "[]");
+            next.splice(i, 1);
+            figuresInput.value = JSON.stringify(next);
+            renderFigures();
+            scheduleAutosave();
+          });
+          card.appendChild(img);
+          card.appendChild(del);
+          figuresPreview.appendChild(card);
+        }
+        if (scrollToEnd) {
+          document.getElementById("figures_section").scrollIntoView({ behavior: "smooth", block: "end" });
         }
       }
 
@@ -107,6 +269,7 @@
         for (const b of bytes) binary += String.fromCharCode(b);
         const dataBase64 = btoa(binary);
         const hash = await sha256FromBytes(bytes);
+        pushUndo("figures", figuresInput.value);
         const figures = JSON.parse(figuresInput.value || "[]");
         figures.push({
           id: `fig_${figures.length + 1}`,
@@ -116,7 +279,34 @@
           caption: ""
         });
         figuresInput.value = JSON.stringify(figures);
-        renderFigures();
+        renderFigures(true);
+        setStatus("Image pasted", "good");
+        scheduleAutosave();
+      }
+
+      async function aiApply(btn, endpoint, applyFn) {
+        const qid = questionIdEl.value.trim();
+        if (!qid) {
+          setStatus("Set question ID before AI actions.", "warn");
+          return;
+        }
+        btn.disabled = true;
+        setStatus("Calling AI...", "warn");
+        try {
+          await autosaveNow();
+          const res = await fetch(`/questions/${qid}${endpoint}`, { method: "POST" });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || res.statusText);
+          }
+          applyFn(data);
+          setStatus("AI update applied", "good");
+          scheduleAutosave();
+        } catch (err) {
+          setStatus(`AI error: ${err.message}`, "warn");
+        } finally {
+          btn.disabled = false;
+        }
       }
 
       document.addEventListener("paste", async (event) => {
@@ -127,41 +317,67 @@
             if (file) {
               event.preventDefault();
               await pasteImageToFigures(file);
-              break;
+              return;
+            }
+          }
+        }
+        const pasted = event.clipboardData?.getData("text/plain");
+        if (pasted) {
+          const normalized = scientificNotationNormalize(pasted);
+          if (normalized !== pasted) {
+            const active = document.activeElement;
+            if (active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT")) {
+              event.preventDefault();
+              const start = active.selectionStart || 0;
+              const end = active.selectionEnd || 0;
+              active.value = active.value.slice(0, start) + normalized + active.value.slice(end);
+              if (active === promptEl) renderMarkdown();
+              if (active === solutionEl) renderMarkdown();
+              scheduleAutosave();
             }
           }
         }
       });
 
-      async function postJson(url, formData) {
-        const r = await fetch(url, { method: "POST", body: formData || new FormData() });
-        if (!r.ok) throw new Error(await r.text());
-        return await r.json();
-      }
-
-      function currentQuestionId() {
-        return document.querySelector("input[name='question_id']").value;
-      }
-
-      document.getElementById("btn_ai_prompt").addEventListener("click", async () => {
-        const id = currentQuestionId();
-        const data = await postJson(`/questions/${id}/ai/improve-prompt`);
-        document.getElementById("ai_prompt_draft").value = data.draft_prompt_md || "";
+      document.getElementById("btn_ai_title").addEventListener("click", async (e) => {
+        pushUndo("title", titleEl.value);
+        await aiApply(e.target, "/ai/suggest-title", (data) => { titleEl.value = data.title || ""; });
+      });
+      document.getElementById("btn_ai_prompt").addEventListener("click", async (e) => {
+        pushUndo("prompt", promptEl.value);
+        await aiApply(e.target, "/ai/improve-prompt", (data) => { promptEl.value = data.prompt_md || ""; renderMarkdown(); });
+      });
+      document.getElementById("btn_ai_solution").addEventListener("click", async (e) => {
+        pushUndo("solution", solutionEl.value);
+        await aiApply(e.target, "/ai/draft-solution", (data) => { solutionEl.value = data.solution_md || ""; renderMarkdown(); });
+      });
+      document.getElementById("btn_ai_mc").addEventListener("click", async (e) => {
+        pushUndo("choices", choicesEl.value);
+        await aiApply(e.target, "/ai/distractors", (data) => { choicesEl.value = data.choices_yaml || ""; });
       });
 
-      document.getElementById("btn_ai_solution").addEventListener("click", async () => {
-        const id = currentQuestionId();
-        const data = await postJson(`/questions/${id}/ai/draft-solution`);
-        document.getElementById("ai_solution_draft").value = data.draft_solution_md || "";
+      document.getElementById("btn_undo_title").addEventListener("click", () => undo("title", (v) => { titleEl.value = v; }));
+      document.getElementById("btn_undo_prompt").addEventListener("click", () => undo("prompt", (v) => { promptEl.value = v; renderMarkdown(); }));
+      document.getElementById("btn_undo_solution").addEventListener("click", () => undo("solution", (v) => { solutionEl.value = v; renderMarkdown(); }));
+      document.getElementById("btn_undo_choices").addEventListener("click", () => undo("choices", (v) => { choicesEl.value = v; }));
+      document.getElementById("btn_undo_figures").addEventListener("click", () => undo("figures", (v) => { figuresInput.value = v; renderFigures(); }));
+
+      [questionTypeEl, titleEl, promptEl, choicesEl, solutionEl, checkerEl, pointsEl].forEach((el) => {
+        el.addEventListener("input", () => { renderMarkdown(); updateMCVisibility(); scheduleAutosave(); });
+        el.addEventListener("change", () => { renderMarkdown(); updateMCVisibility(); scheduleAutosave(); });
       });
 
-      document.getElementById("btn_ai_distractors").addEventListener("click", async () => {
-        const id = currentQuestionId();
-        const data = await postJson(`/questions/${id}/ai/distractors`);
-        document.getElementById("ai_distractor_draft").value = JSON.stringify(data.choices || [], null, 2);
+      window.addEventListener("beforeunload", (event) => {
+        if (saveStatus.textContent.includes("Unsaved")) {
+          event.preventDefault();
+          event.returnValue = "";
+        }
       });
 
+      renderMarkdown();
+      updateMCVisibility();
       renderFigures();
+      setStatus("Ready", "good");
     </script>
   </body>
 </html>

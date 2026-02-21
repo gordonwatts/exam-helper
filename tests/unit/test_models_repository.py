@@ -30,3 +30,10 @@ def test_repo_save_and_load_question(tmp_path: Path) -> None:
     repo.save_question(q)
     loaded = repo.get_question("q1")
     assert loaded.title == "Kinematics"
+    assert loaded.points == 5
+
+
+def test_question_defaults_allow_empty_title() -> None:
+    q = Question(id="q2", prompt_md="p")
+    assert q.title == ""
+    assert q.points == 5

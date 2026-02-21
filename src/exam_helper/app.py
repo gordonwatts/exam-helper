@@ -3,16 +3,27 @@ from __future__ import annotations
 import json
 from hashlib import sha256
 from pathlib import Path
-
 import yaml
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Body, FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from exam_helper.ai_service import AIService
 from exam_helper.models import MCChoice, Question, QuestionType
 from exam_helper.repository import ProjectRepository
 from exam_helper.validation import validate_question
+
+
+class AutosavePayload(BaseModel):
+    title: str = ""
+    question_type: str = "free_response"
+    prompt_md: str = ""
+    choices_yaml: str = "[]"
+    solution_md: str = ""
+    checker_code: str = ""
+    figures_json: str = "[]"
+    points: int = 5
 
 
 def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
@@ -23,6 +34,16 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     app.state.repo = repo
     app.state.ai = AIService(api_key=openai_key)
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+    def default_mc_choices_yaml() -> str:
+        defaults = [
+            {"label": "A", "content_md": "", "is_correct": True},
+            {"label": "B", "content_md": "", "is_correct": False},
+            {"label": "C", "content_md": "", "is_correct": False},
+            {"label": "D", "content_md": "", "is_correct": False},
+            {"label": "E", "content_md": "", "is_correct": False},
+        ]
+        return yaml.safe_dump(defaults, sort_keys=False)
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
@@ -45,8 +66,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             "question_form.html",
             {
                 "question": None,
-                "choices_yaml": "- label: A\n  content_md: ''\n  is_correct: true\n"
-                "- label: B\n  content_md: ''\n  is_correct: false\n",
+                "choices_yaml": default_mc_choices_yaml(),
                 "figures_json": "[]",
             },
         )
@@ -63,7 +83,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             "question_form.html",
             {
                 "question": q,
-                "choices_yaml": choices_yaml,
+                "choices_yaml": choices_yaml if choices_yaml.strip() else default_mc_choices_yaml(),
                 "figures_json": figures_json,
             },
         )
@@ -71,10 +91,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     @app.post("/questions/save")
     def save_question(
         question_id: str = Form(...),
-        title: str = Form(...),
+        title: str = Form(""),
         topic: str = Form(""),
         course_level: str = Form("intro"),
         tags: str = Form(""),
+        points: int = Form(5),
         question_type: str = Form("free_response"),
         prompt_md: str = Form(""),
         choices_yaml: str = Form("[]"),
@@ -93,6 +114,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "topic": topic,
                 "course_level": course_level,
                 "tags": [t.strip() for t in tags.split(",") if t.strip()],
+                "points": points,
                 "question_type": QuestionType(question_type),
                 "prompt_md": prompt_md,
                 "choices": choices,
@@ -103,6 +125,30 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         )
         repo.save_question(question)
         return RedirectResponse("/", status_code=303)
+
+    @app.post("/questions/{question_id}/autosave")
+    def autosave_question(question_id: str, payload: AutosavePayload = Body(...)) -> JSONResponse:
+        try:
+            raw_choices = yaml.safe_load(payload.choices_yaml) or []
+            choices = [MCChoice.model_validate(c) for c in raw_choices]
+            figures = json.loads(payload.figures_json or "[]")
+            question = Question.model_validate(
+                {
+                    "id": question_id,
+                    "title": payload.title,
+                    "question_type": QuestionType(payload.question_type),
+                    "prompt_md": payload.prompt_md,
+                    "choices": choices,
+                    "solution": {"worked_solution_md": payload.solution_md},
+                    "checker": {"python_code": payload.checker_code},
+                    "figures": figures,
+                    "points": payload.points,
+                }
+            )
+            repo.save_question(question)
+            return JSONResponse({"ok": True})
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/figures/validate")
     def validate_figure(data_base64: str = Form(...)) -> dict:
@@ -119,20 +165,44 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
     @app.post("/questions/{question_id}/ai/improve-prompt")
     def ai_improve_prompt(question_id: str) -> dict:
-        q = repo.get_question(question_id)
-        text = app.state.ai.improve_prompt(q)
-        return {"draft_prompt_md": text}
+        try:
+            q = repo.get_question(question_id)
+            text = app.state.ai.improve_prompt(q)
+            return {"ok": True, "prompt_md": text}
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/questions/{question_id}/ai/draft-solution")
     def ai_draft_solution(question_id: str) -> dict:
-        q = repo.get_question(question_id)
-        text = app.state.ai.draft_solution(q)
-        return {"draft_solution_md": text}
+        try:
+            q = repo.get_question(question_id)
+            text = app.state.ai.draft_solution(q)
+            return {"ok": True, "solution_md": text}
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
+    @app.post("/questions/{question_id}/ai/suggest-title")
+    def ai_suggest_title(question_id: str) -> dict:
+        try:
+            q = repo.get_question(question_id)
+            text = app.state.ai.suggest_title(q)
+            return {"ok": True, "title": text}
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/questions/{question_id}/ai/distractors")
-    def ai_distractors(question_id: str, count: int = Form(3)) -> dict:
-        q = repo.get_question(question_id)
-        choices = app.state.ai.distractors(q, count=count)
-        return {"choices": [c.model_dump(mode="json") for c in choices]}
+    def ai_distractors(question_id: str, count: int = 3) -> dict:
+        _ = count
+        try:
+            q = repo.get_question(question_id)
+            choices = app.state.ai.generate_mc_options(q)
+            return {
+                "ok": True,
+                "choices_yaml": yaml.safe_dump(
+                    [c.model_dump(mode="json") for c in choices], sort_keys=False
+                ),
+            }
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     return app

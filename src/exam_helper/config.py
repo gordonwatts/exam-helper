@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_api_key: str | None = Field(default=None, alias="EXAM_HELPER_OPENAI_KEY")
 
 
 def load_home_env() -> dict[str, str]:
@@ -25,4 +25,4 @@ def resolve_openai_api_key(cli_key: str | None) -> str | None:
     if cli_key:
         return cli_key
     home_env = load_home_env()
-    return home_env.get("OPENAI_API_KEY")
+    return home_env.get("EXAM_HELPER_OPENAI_KEY")

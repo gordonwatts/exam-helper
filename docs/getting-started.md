@@ -29,7 +29,13 @@ Open `http://127.0.0.1:8000`.
 - Click **New Question**
 - Fill prompt, solution, checker code
 - Paste images from clipboard directly into the editor page
-- Save
+- Use AI buttons when needed (`Improve Text`, `Improve Solution`, `Generate MC A-E`)
+- Autosave runs automatically as you edit
+
+Optional OpenAI key sources:
+
+- `--openai-key` CLI argument
+- `~/.env` with `EXAM_HELPER_OPENAI_KEY`
 
 ## 5. Validate questions
 

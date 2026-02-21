@@ -11,8 +11,8 @@ from exam_helper.repository import ProjectRepository
 
 
 def _add_question(doc: Document, index: int, q: Question, include_solutions: bool) -> None:
-    doc.add_heading(f"Question {index}: {q.title}", level=2)
-    doc.add_paragraph(q.prompt_md)
+    question_text = q.prompt_md.strip() or (q.title.strip() if q.title else "")
+    doc.add_paragraph(f"{index}. [{q.points} points] {question_text}")
 
     for figure in q.figures:
         raw = base64.b64decode(figure.data_base64.encode("ascii"))
@@ -25,14 +25,15 @@ def _add_question(doc: Document, index: int, q: Question, include_solutions: boo
             doc.add_paragraph("[Figure could not be rendered in DOCX]")
 
     if q.question_type == QuestionType.multiple_choice and q.choices:
-        for choice in q.choices:
-            doc.add_paragraph(f"{choice.label}. {choice.content_md}")
+        sorted_choices = sorted(q.choices, key=lambda c: c.label)
+        for choice in sorted_choices:
+            doc.add_paragraph(f"  {choice.label}. {choice.content_md}")
 
     if include_solutions:
-        doc.add_heading("Solution", level=3)
+        doc.add_paragraph("Solution:")
         doc.add_paragraph(q.solution.worked_solution_md)
         if q.solution.rubric:
-            doc.add_paragraph("Rubric:")
+            doc.add_paragraph("Rubric")
             for item in q.solution.rubric:
                 doc.add_paragraph(f"- {item}")
 
@@ -45,7 +46,7 @@ def export_project_to_docx(
     questions = repo.list_questions()
 
     doc = Document()
-    doc.add_heading(project.name, level=1)
+    doc.add_heading(project.name or "Exam", level=1)
     doc.add_paragraph(project.course)
     for i, q in enumerate(questions, start=1):
         _add_question(doc, i, q, include_solutions=include_solutions)

@@ -17,3 +17,9 @@ No separate figure file is required.
 ## Portability
 
 Because images are embedded, sending a single question YAML file is enough to share the full question content.
+
+## Paste normalization
+
+When possible, pasted scientific notation such as `7.30 x 10-26` is normalized to markdown math form:
+
+- `7.30 \times 10^{-26}`

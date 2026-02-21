@@ -21,13 +21,21 @@ Option 1: put in home `.env`:
 
 - Windows: `C:\Users\<you>\.env`
 - macOS: `/Users/<you>/.env`
-- Content: `OPENAI_API_KEY=sk-...`
+- Content: `EXAM_HELPER_OPENAI_KEY=sk-...`
 
 Option 2: pass directly on command line:
 
 - `uv run exam-helper serve --project my-exam --openai-key sk-...`
 
 Command line key takes precedence.
+
+## Editor behavior
+
+- AI actions only run when you click a button.
+- AI output is applied directly to the main field (single copy), with Undo per section.
+- Autosave runs while you type (1.5s debounce).
+- Multiple choice editor is hidden unless question type is `Multiple Choice`.
+- MC generation creates full A-E options and marks a guessed correct answer.
 
 ## Question Portability
 

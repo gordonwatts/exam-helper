@@ -14,7 +14,7 @@ uv run exam-helper export docx my-exam --output exam-student.docx --no-include-s
 
 The export includes:
 
-- question titles and prompts
+- numbered format: `1. [5 points] <question text>`
 - embedded figures when renderable by Word
-- MC options
+- MC options in `A.` through `E.` form
 - optional solution and rubric section

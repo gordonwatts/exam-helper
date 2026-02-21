@@ -48,13 +48,14 @@ class CheckerSpec(BaseModel):
 
 class Question(BaseModel):
     id: str
-    title: str
+    title: str = ""
     topic: str = ""
     course_level: str = "intro"
     tags: list[str] = Field(default_factory=list)
     difficulty: int = 3
+    points: int = 5
     question_type: QuestionType = QuestionType.free_response
-    prompt_md: str
+    prompt_md: str = ""
     figures: list[FigureData] = Field(default_factory=list)
     choices: list[MCChoice] = Field(default_factory=list)
     solution: Solution = Field(default_factory=Solution)

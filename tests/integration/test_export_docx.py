@@ -4,8 +4,10 @@ import base64
 import hashlib
 from pathlib import Path
 
+from docx import Document
+
 from exam_helper.export_docx import export_project_to_docx
-from exam_helper.models import FigureData, Question
+from exam_helper.models import FigureData, MCChoice, Question, QuestionType
 from exam_helper.repository import ProjectRepository
 
 
@@ -26,10 +28,29 @@ def test_export_docx_with_embedded_figure(tmp_path: Path) -> None:
         sha256=raw_hash,
         caption="tiny",
     )
-    q = Question(id="q1", title="t", prompt_md="p", figures=[fig])
+    q = Question(
+        id="q1",
+        title="t",
+        prompt_md="p",
+        points=5,
+        figures=[fig],
+        question_type=QuestionType.multiple_choice,
+        choices=[
+            MCChoice(label="A", content_md="A1", is_correct=True),
+            MCChoice(label="B", content_md="B1", is_correct=False),
+            MCChoice(label="C", content_md="C1", is_correct=False),
+            MCChoice(label="D", content_md="D1", is_correct=False),
+            MCChoice(label="E", content_md="E1", is_correct=False),
+        ],
+    )
     repo.save_question(q)
 
     out = tmp_path / "exam.docx"
     export_project_to_docx(tmp_path, out)
     assert out.exists()
     assert out.stat().st_size > 0
+    doc = Document(out)
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "1. [5 points] p" in text
+    assert "A. A1" in text
+    assert "E. E1" in text

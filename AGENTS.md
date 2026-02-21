@@ -63,7 +63,7 @@ Core requirements:
 
 4. OpenAI key resolution order is fixed:
    - first: `--openai-key`
-   - fallback: `~/.env` (`OPENAI_API_KEY`)
+   - fallback: `~/.env` (`EXAM_HELPER_OPENAI_KEY`)
 
 ## Developer Commands
 

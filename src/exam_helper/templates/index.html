@@ -25,7 +25,7 @@
         {% for q in questions %}
         <tr>
           <td>{{ q.id }}</td>
-          <td>{{ q.title }}</td>
+          <td>{{ q.title if q.title else "(untitled)" }}</td>
           <td>{{ q.question_type.value }}</td>
           <td><a href="/questions/{{ q.id }}/edit">Edit</a></td>
         </tr>
