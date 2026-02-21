@@ -7,6 +7,7 @@ import uvicorn
 
 from exam_helper.app import create_app
 from exam_helper.config import resolve_openai_api_key
+from exam_helper.export_docx import export_project_to_docx
 from exam_helper.repository import ProjectRepository
 from exam_helper.validation import validate_project
 
@@ -35,18 +36,11 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_export_docx(args: argparse.Namespace) -> int:
-    from docx import Document
-
-    repo = ProjectRepository(Path(args.path))
-    project = repo.load_project()
-    questions = repo.list_questions()
-    doc = Document()
-    doc.add_heading(project.name, level=1)
-    doc.add_paragraph(project.course)
-    for i, q in enumerate(questions, start=1):
-        doc.add_heading(f"Question {i}: {q.title}", level=2)
-        doc.add_paragraph(q.prompt_md)
-    doc.save(args.output)
+    export_project_to_docx(
+        project_root=Path(args.path),
+        output_path=Path(args.output),
+        include_solutions=args.include_solutions,
+    )
     print(f"Wrote {args.output}")
     return 0
 
@@ -88,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_docx = export_sub.add_parser("docx", help="Export DOCX.")
     p_docx.add_argument("path")
     p_docx.add_argument("--output", required=True)
+    p_docx.add_argument("--include-solutions", action=argparse.BooleanOptionalAction, default=True)
     p_docx.set_defaults(func=cmd_export_docx)
 
     return parser
