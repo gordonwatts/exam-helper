@@ -195,12 +195,14 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         _ = count
         try:
             q = repo.get_question(question_id)
-            choices = app.state.ai.generate_mc_options(q)
+            bundle = app.state.ai.generate_mc_options_with_solution(q)
+            choices = bundle["choices"]
             return {
                 "ok": True,
                 "choices_yaml": yaml.safe_dump(
                     [c.model_dump(mode="json") for c in choices], sort_keys=False
                 ),
+                "solution_md": bundle["solution_md"],
             }
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)

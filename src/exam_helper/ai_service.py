@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from openai import OpenAI
 
@@ -93,6 +94,31 @@ class AIService:
 
         raise ValueError("AI response was not parseable JSON list.")
 
+    @staticmethod
+    def _parse_json_object(raw: str) -> dict[str, Any]:
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            pass
+
+        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, flags=re.DOTALL)
+        if fence_match:
+            data = json.loads(fence_match.group(1))
+            if isinstance(data, dict):
+                return data
+
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            candidate = raw[start : end + 1]
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                return data
+
+        raise ValueError("AI response was not parseable JSON object.")
+
     def improve_prompt(self, question: Question) -> str:
         return self._text_with_question_context(
             "You improve physics exam problem statements for clarity and precision.",
@@ -102,8 +128,19 @@ class AIService:
 
     def draft_solution(self, question: Question) -> str:
         return self._text_with_question_context(
-            "You write concise but complete worked solutions for calculus-based physics exams.",
-            f"Write a worked solution for:\nTitle: {question.title}\nPrompt:\n{question.prompt_md}",
+            (
+                "You write concise but complete worked solutions for calculus-based physics exams. "
+                "Every mathematical expression, equation, or scientific notation must be written in "
+                "LaTeX inline math mode using \\( ... \\). "
+                "The first line of your output must begin with exactly 'Problem (verbatim): ' followed by "
+                "the prompt text copied exactly as provided, with no edits."
+            ),
+            (
+                "Write a worked solution.\n"
+                f"Title: {question.title}\n"
+                "Prompt to repeat exactly (do not edit):\n"
+                f"{question.prompt_md}"
+            ),
             question,
         )
 
@@ -115,11 +152,18 @@ class AIService:
         )
 
     def generate_mc_options(self, question: Question) -> list[MCChoice]:
+        bundle = self.generate_mc_options_with_solution(question)
+        return bundle["choices"]
+
+    def generate_mc_options_with_solution(self, question: Question) -> dict[str, Any]:
         raw = self._text_with_question_context(
             (
-                "Generate complete multiple-choice options for a physics question. "
-                "Return strict JSON array with exactly 5 objects (A-E) with keys: "
-                "label, content_md, is_correct, rationale."
+                "Generate complete multiple-choice options for a physics question and provide a worked solution. "
+                "Return strict JSON object with keys: choices, solution_md. "
+                "choices must be an array with exactly 5 objects (A-E) with keys: label, content_md, is_correct, rationale. "
+                "solution_md must be markdown. "
+                "In solution_md, the first line must begin exactly with 'Problem (verbatim): ' followed by the prompt copied exactly, no edits. "
+                "All equations and scientific notation in solution_md must use LaTeX inline math mode \\( ... \\)."
             ),
             (
                 f"Question prompt:\n{question.prompt_md}\n"
@@ -128,7 +172,10 @@ class AIService:
             ),
             question,
         )
-        items = self._parse_json_payload(raw)
+        payload = self._parse_json_object(raw)
+        items = payload.get("choices")
+        if not isinstance(items, list):
+            raise ValueError("AI choices payload must be a list.")
         if len(items) != 5:
             raise ValueError("AI did not return exactly five options (A-E).")
         out: list[MCChoice] = []
@@ -148,4 +195,7 @@ class AIService:
         if sum(1 for c in out if c.is_correct) != 1:
             raise ValueError("AI must mark exactly one correct option.")
         out.sort(key=lambda c: c.label)
-        return out
+        solution_md = str(payload.get("solution_md", "")).strip()
+        if not solution_md:
+            raise ValueError("AI did not return solution_md.")
+        return {"choices": out, "solution_md": solution_md}

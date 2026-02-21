@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Question Editor</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <script>
       window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
     </script>
@@ -27,6 +28,21 @@
       .warn { color: #c50; }
       .btn { padding: 0.45rem 0.8rem; margin-top: 0.45rem; margin-right: 0.45rem; }
       .actions { margin-top: 1rem; }
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 999;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.72);
+        align-items: center;
+        justify-content: center;
+      }
+      .modal img { max-width: 92vw; max-height: 92vh; border: 2px solid #fff; background: #fff; }
+      .preview-item { margin: 0.3rem 0; }
+      .preview-rationale { color: #555; font-size: 0.9rem; margin-left: 1.2rem; }
       @media (max-width: 900px) {
         .row, .row3 { grid-template-columns: 1fr; }
       }
@@ -78,6 +94,16 @@
         <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
         <button type="button" class="btn" id="btn_ai_mc">Generate MC A-E</button>
         <button type="button" class="btn" id="btn_undo_choices">Undo</button>
+        <div class="row">
+          <div class="card preview">
+            <strong>MC Preview (Answers)</strong>
+            <div id="mc_preview_answers"></div>
+          </div>
+          <div class="card preview">
+            <strong>MC Preview (Answers + Rationale)</strong>
+            <div id="mc_preview_rationale"></div>
+          </div>
+        </div>
       </div>
 
       <div class="row">
@@ -109,6 +135,9 @@
         <span id="save_status" class="status"></span>
       </div>
     </form>
+    <div id="image_modal" class="modal">
+      <img id="image_modal_img" alt="Expanded figure" />
+    </div>
 
     <script>
       const form = document.getElementById("question-form");
@@ -126,6 +155,10 @@
       const promptPreview = document.getElementById("prompt_preview");
       const solutionPreview = document.getElementById("solution_preview");
       const mcBlock = document.getElementById("mc_block");
+      const mcPreviewAnswers = document.getElementById("mc_preview_answers");
+      const mcPreviewRationale = document.getElementById("mc_preview_rationale");
+      const imageModal = document.getElementById("image_modal");
+      const imageModalImg = document.getElementById("image_modal_img");
       const defaultChoicesYaml = `- label: A
   content_md: ''
   is_correct: true
@@ -176,6 +209,33 @@
         }
       }
 
+      function renderMCPreviews() {
+        if (!isMC()) {
+          mcPreviewAnswers.innerHTML = "";
+          mcPreviewRationale.innerHTML = "";
+          return;
+        }
+        let choices = [];
+        try {
+          choices = jsyaml.load(choicesEl.value) || [];
+        } catch {
+          mcPreviewAnswers.innerHTML = "<em>Invalid YAML</em>";
+          mcPreviewRationale.innerHTML = "<em>Invalid YAML</em>";
+          return;
+        }
+        choices = choices.slice().sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
+        mcPreviewAnswers.innerHTML = choices.map((c) => {
+          return `<div class="preview-item"><strong>${c.label || "?"}.</strong> ${marked.parseInline(String(c.content_md || ""))}</div>`;
+        }).join("");
+        mcPreviewRationale.innerHTML = choices.map((c) => {
+          const rationale = c.rationale ? `<div class="preview-rationale">Rationale: ${marked.parseInline(String(c.rationale))}</div>` : "";
+          return `<div class="preview-item"><strong>${c.label || "?"}.</strong> ${marked.parseInline(String(c.content_md || ""))}${rationale}</div>`;
+        }).join("");
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([mcPreviewAnswers, mcPreviewRationale]);
+        }
+      }
+
       function isMC() {
         return questionTypeEl.value === "multiple_choice";
       }
@@ -185,6 +245,7 @@
           choicesEl.value = defaultChoicesYaml;
         }
         mcBlock.style.display = isMC() ? "block" : "none";
+        renderMCPreviews();
       }
 
       function serializePayload() {
@@ -236,6 +297,11 @@
           img.className = "thumb";
           img.alt = f.caption || f.id;
           img.src = `data:${f.mime_type};base64,${f.data_base64}`;
+          img.style.cursor = "zoom-in";
+          img.addEventListener("click", () => {
+            imageModalImg.src = img.src;
+            imageModal.style.display = "flex";
+          });
           const del = document.createElement("button");
           del.type = "button";
           del.textContent = `Delete ${f.id}`;
@@ -353,7 +419,13 @@
       });
       document.getElementById("btn_ai_mc").addEventListener("click", async (e) => {
         pushUndo("choices", choicesEl.value);
-        await aiApply(e.target, "/ai/distractors", (data) => { choicesEl.value = data.choices_yaml || ""; });
+        pushUndo("solution", solutionEl.value);
+        await aiApply(e.target, "/ai/distractors", (data) => {
+          choicesEl.value = data.choices_yaml || "";
+          solutionEl.value = data.solution_md || solutionEl.value;
+          renderMarkdown();
+          renderMCPreviews();
+        });
       });
 
       document.getElementById("btn_undo_title").addEventListener("click", () => undo("title", (v) => { titleEl.value = v; }));
@@ -363,8 +435,13 @@
       document.getElementById("btn_undo_figures").addEventListener("click", () => undo("figures", (v) => { figuresInput.value = v; renderFigures(); }));
 
       [questionTypeEl, titleEl, promptEl, choicesEl, solutionEl, checkerEl, pointsEl].forEach((el) => {
-        el.addEventListener("input", () => { renderMarkdown(); updateMCVisibility(); scheduleAutosave(); });
-        el.addEventListener("change", () => { renderMarkdown(); updateMCVisibility(); scheduleAutosave(); });
+        el.addEventListener("input", () => { renderMarkdown(); updateMCVisibility(); renderMCPreviews(); scheduleAutosave(); });
+        el.addEventListener("change", () => { renderMarkdown(); updateMCVisibility(); renderMCPreviews(); scheduleAutosave(); });
+      });
+
+      imageModal.addEventListener("click", () => {
+        imageModal.style.display = "none";
+        imageModalImg.src = "";
       });
 
       window.addEventListener("beforeunload", (event) => {
@@ -376,6 +453,7 @@
 
       renderMarkdown();
       updateMCVisibility();
+      renderMCPreviews();
       renderFigures();
       setStatus("Ready", "good");
     </script>
