@@ -21,6 +21,7 @@ class AutosavePayload(BaseModel):
     title: str = ""
     question_type: str = "free_response"
     prompt_md: str = ""
+    mc_options_guidance: str = ""
     choices_yaml: str = "[]"
     solution_md: str = ""
     checker_code: str = ""
@@ -138,6 +139,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         points: int = Form(5),
         question_type: str = Form("free_response"),
         prompt_md: str = Form(""),
+        mc_options_guidance: str = Form(""),
         choices_yaml: str = Form("[]"),
         solution_md: str = Form(""),
         checker_code: str = Form(""),
@@ -157,6 +159,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "points": points,
                 "question_type": QuestionType(question_type),
                 "prompt_md": prompt_md,
+                "mc_options_guidance": mc_options_guidance,
                 "choices": choices,
                 "solution": {"worked_solution_md": solution_md},
                 "checker": {"python_code": checker_code},
@@ -253,6 +256,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "title": payload.title,
                     "question_type": QuestionType(payload.question_type),
                     "prompt_md": payload.prompt_md,
+                    "mc_options_guidance": payload.mc_options_guidance,
                     "choices": choices,
                     "solution": {"worked_solution_md": payload.solution_md},
                     "checker": {"python_code": payload.checker_code},
@@ -351,7 +355,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             if action not in valid_actions:
                 raise ValueError("Unknown preview action.")
             normalized_action = action.replace("-", "_")
-            solution_md = q.solution.worked_solution_md if normalized_action == "distractors" else ""
+            solution_md = q.solution.worked_solution_md if normalized_action in {"draft_solution", "distractors"} else ""
             preview = app.state.ai.preview_prompt(
                 action=normalized_action,
                 question=q,

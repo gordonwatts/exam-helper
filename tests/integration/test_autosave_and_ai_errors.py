@@ -51,6 +51,7 @@ def test_autosave_persists_question(tmp_path) -> None:
         "title": "",
         "question_type": "free_response",
         "prompt_md": "Find v(t)",
+        "mc_options_guidance": "Avoid reusing prior answer.",
         "choices_yaml": "[]",
         "solution_md": "Use kinematics",
         "checker_code": "",
@@ -63,6 +64,7 @@ def test_autosave_persists_question(tmp_path) -> None:
 
     saved = repo.get_question("q_auto")
     assert saved.prompt_md == "Find v(t)"
+    assert saved.mc_options_guidance == "Avoid reusing prior answer."
     assert saved.title == ""
 
 

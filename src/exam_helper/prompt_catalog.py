@@ -58,10 +58,13 @@ class PromptCatalog:
             if scoped:
                 system_parts.append(scoped)
         system_prompt = "\n\n".join(p for p in system_parts if p)
+        resolved_solution_md = solution_md or question.solution.worked_solution_md or ""
         values = {
             "title": question.title or "",
             "prompt_md": question.prompt_md or "",
-            "solution_md": solution_md or "",
+            "solution_md": resolved_solution_md,
+            "choices_yaml": self._choices_yaml(question),
+            "mc_options_guidance": question.mc_options_guidance or "",
         }
         user_template = payload["user_prompt_template"]
         user_prompt = self._safe_format(user_template, values)
@@ -89,8 +92,17 @@ class PromptCatalog:
     @staticmethod
     def _safe_format(template: str, values: dict[str, str]) -> str:
         formatter = Formatter()
-        allowed = {"title", "prompt_md", "solution_md"}
+        allowed = {"title", "prompt_md", "solution_md", "choices_yaml", "mc_options_guidance"}
         for _, field_name, _, _ in formatter.parse(template):
             if field_name and field_name not in allowed:
                 raise ValueError(f"Unsupported template key: {field_name}")
         return template.format(**values)
+
+    @staticmethod
+    def _choices_yaml(question: Question) -> str:
+        if not question.choices:
+            return "[]"
+        return yaml.safe_dump(
+            [choice.model_dump(mode="json", exclude_none=True) for choice in question.choices],
+            sort_keys=False,
+        ).strip()

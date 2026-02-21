@@ -45,6 +45,7 @@
       .preview-rationale { color: #555; font-size: 0.9rem; margin-left: 1.2rem; }
       .prompt-preview-body { background: #fff; max-width: 860px; width: 92vw; max-height: 88vh; overflow: auto; border-radius: 6px; padding: 1rem; }
       .prompt-preview-body pre { white-space: pre-wrap; word-break: break-word; background: #f7f7f7; padding: 0.6rem; border-radius: 4px; border: 1px solid #ddd; }
+      .mc-guidance { min-height: 60px; }
       @media (max-width: 900px) {
         .row, .row3 { grid-template-columns: 1fr; }
       }
@@ -110,6 +111,13 @@
       <div id="mc_block" class="card">
         <label>MC Options YAML (A-E)</label>
         <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
+        <label>MC Generation Guidance (optional)</label>
+        <textarea
+          name="mc_options_guidance"
+          id="mc_options_guidance"
+          class="mc-guidance"
+          placeholder="Please enter text to provide model further instructions for generating or improving the MC options and distractions"
+        >{{ question.mc_options_guidance if question else '' }}</textarea>
         <button type="button" class="btn" id="btn_ai_mc">Generate MC A-E</button>
         <button type="button" class="btn" id="btn_preview_mc">Preview Prompt</button>
         <button type="button" class="btn" id="btn_undo_choices">Undo</button>
@@ -166,6 +174,7 @@
       const pointsEl = document.getElementById("points");
       const promptEl = document.getElementById("prompt_md");
       const choicesEl = document.getElementById("choices_yaml");
+      const mcGuidanceEl = document.getElementById("mc_options_guidance");
       const solutionEl = document.getElementById("solution_md");
       const checkerEl = document.getElementById("checker_code");
       const figuresInput = document.getElementById("figures_json");
@@ -291,6 +300,7 @@
           title: titleEl.value,
           question_type: questionTypeEl.value,
           prompt_md: promptEl.value,
+          mc_options_guidance: mcGuidanceEl.value,
           choices_yaml: choicesEl.value,
           solution_md: solutionEl.value,
           checker_code: checkerEl.value,
@@ -502,7 +512,7 @@
       document.getElementById("btn_undo_choices").addEventListener("click", () => undo("choices", (v) => { choicesEl.value = v; }));
       document.getElementById("btn_undo_figures").addEventListener("click", () => undo("figures", (v) => { figuresInput.value = v; renderFigures(); }));
 
-      [questionTypeEl, titleEl, promptEl, choicesEl, solutionEl, checkerEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, promptEl, mcGuidanceEl, choicesEl, solutionEl, checkerEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => { renderMarkdown(); updateMCVisibility(); renderMCPreviews(); scheduleAutosave(); });
         el.addEventListener("change", () => { renderMarkdown(); updateMCVisibility(); renderMCPreviews(); scheduleAutosave(); });
       });

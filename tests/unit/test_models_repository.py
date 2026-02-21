@@ -27,11 +27,13 @@ def test_repo_save_and_load_question(tmp_path: Path) -> None:
         id="q1",
         title="Kinematics",
         prompt_md="Find acceleration.",
+        mc_options_guidance="Avoid sign-error distractors.",
         question_type=QuestionType.free_response,
     )
     repo.save_question(q)
     loaded = repo.get_question("q1")
     assert loaded.title == "Kinematics"
+    assert loaded.mc_options_guidance == "Avoid sign-error distractors."
     assert loaded.points == 5
 
 

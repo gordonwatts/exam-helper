@@ -91,6 +91,17 @@ When adding complex logic:
 - add integration tests for end-to-end flows when behavior crosses modules
 - ensure `uv run --extra dev pytest -q` passes before finishing
 
+### Test Run Playbook (from repo root)
+
+- full suite:
+  - `uv run --extra dev pytest -q`
+- single test file:
+  - `uv run --extra dev pytest -q tests/unit/test_prompt_catalog.py`
+- single test function:
+  - `uv run --extra dev pytest -q tests/unit/test_prompt_catalog.py -k distractors`
+
+If a command fails due to environment/sandbox restrictions, rerun with the same command pattern rather than switching tools.
+
 Priority test areas:
 - schema and YAML validation
 - figure integrity/hash behavior

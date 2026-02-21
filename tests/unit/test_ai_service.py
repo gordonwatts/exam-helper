@@ -52,3 +52,43 @@ def test_ai_service_generate_mc_options(monkeypatch) -> None:
     assert len(out) == 5
     assert sum(1 for c in out if c.is_correct) == 1
     assert usage.total_tokens == 0
+
+
+def test_usage_parses_total_cost_from_formatted_string() -> None:
+    svc = AIService(api_key="k")
+
+    class _Usage:
+        def model_dump(self):
+            return {
+                "input_tokens": 11,
+                "output_tokens": 7,
+                "total_tokens": 18,
+                "total_cost_usd": "$0.0123",
+            }
+
+    class _Response:
+        usage = _Usage()
+
+    usage = svc._usage_from_response(_Response())
+    assert usage.total_tokens == 18
+    assert abs(usage.total_cost_usd - 0.0123) < 1e-9
+
+
+def test_usage_parses_split_input_and_output_costs() -> None:
+    svc = AIService(api_key="k")
+
+    class _Usage:
+        def model_dump(self):
+            return {
+                "input_tokens": 20,
+                "output_tokens": 5,
+                "input_cost": "0.004",
+                "output_cost": "0.0015",
+            }
+
+    class _Response:
+        usage = _Usage()
+
+    usage = svc._usage_from_response(_Response())
+    assert usage.total_tokens == 25
+    assert abs(usage.total_cost_usd - 0.0055) < 1e-9

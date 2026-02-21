@@ -97,12 +97,7 @@ class AIService:
         total_tokens = self._to_int(data.get("total_tokens"))
         if total_tokens == 0:
             total_tokens = input_tokens + output_tokens
-        total_cost = self._to_float(
-            data.get("total_cost")
-            or data.get("cost")
-            or data.get("estimated_cost")
-            or data.get("total_cost_usd")
-        )
+        total_cost = self._extract_total_cost_usd(data)
         return AIUsageTotals(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -119,10 +114,45 @@ class AIService:
 
     @staticmethod
     def _to_float(value: Any) -> float:
+        if isinstance(value, str):
+            cleaned = re.sub(r"[^0-9eE+\-\.]", "", value.strip())
+            if not cleaned:
+                return 0.0
+            value = cleaned
         try:
             return float(value or 0.0)
         except (TypeError, ValueError):
             return 0.0
+
+    @classmethod
+    def _extract_total_cost_usd(cls, data: dict[str, Any]) -> float:
+        direct_keys = [
+            "total_cost_usd",
+            "total_cost",
+            "cost",
+            "estimated_cost",
+            "cost_usd",
+            "usd_cost",
+        ]
+        for key in direct_keys:
+            value = cls._to_float(data.get(key))
+            if value > 0:
+                return value
+
+        input_candidates = ["input_cost", "prompt_cost", "input_cost_usd", "prompt_cost_usd"]
+        output_candidates = ["output_cost", "completion_cost", "output_cost_usd", "completion_cost_usd"]
+        input_cost = max(cls._to_float(data.get(k)) for k in input_candidates)
+        output_cost = max(cls._to_float(data.get(k)) for k in output_candidates)
+        split_total = input_cost + output_cost
+        if split_total > 0:
+            return split_total
+
+        details = data.get("cost_details")
+        if isinstance(details, dict):
+            nested_total = cls._extract_total_cost_usd(details)
+            if nested_total > 0:
+                return nested_total
+        return 0.0
 
     def _text(self, bundle: PromptBundle) -> AIResult:
         client = self._client()
@@ -213,7 +243,11 @@ class AIService:
         return self._text_with_question_context(bundle, question)
 
     def draft_solution(self, question: Question) -> AIResult:
-        bundle = self.compose_prompt(action="draft_solution", question=question)
+        bundle = self.compose_prompt(
+            action="draft_solution",
+            question=question,
+            solution_md=question.solution.worked_solution_md,
+        )
         return self._text_with_question_context(bundle, question)
 
     def suggest_title(self, question: Question) -> AIResult:

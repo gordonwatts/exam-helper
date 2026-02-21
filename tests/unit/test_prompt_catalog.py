@@ -48,3 +48,40 @@ def test_figure_placeholders_show_ids_and_captions() -> None:
     )
     placeholders = PromptCatalog.figure_placeholders(q)
     assert placeholders == ["<figure fig_1: Free-body diagram>"]
+
+
+def test_draft_solution_prompt_includes_existing_solution_text() -> None:
+    catalog = PromptCatalog.from_package_yaml()
+    q = Question.model_validate(
+        {
+            "id": "q_sol",
+            "title": "Kinematics",
+            "prompt_md": "Find velocity.",
+            "solution": {"worked_solution_md": "Use v = v0 + at; Final answer: 12 m/s"},
+        }
+    )
+    bundle = catalog.compose(action="draft_solution", question=q)
+    assert "Current worked solution draft" in bundle.user_prompt
+    assert "Final answer: 12 m/s" in bundle.user_prompt
+
+
+def test_distractors_prompt_includes_existing_choices_yaml() -> None:
+    catalog = PromptCatalog.from_package_yaml()
+    q = Question.model_validate(
+        {
+            "id": "q_mc",
+            "prompt_md": "Find acceleration.",
+            "question_type": "multiple_choice",
+            "mc_options_guidance": "Avoid using the previous correct answer as a distractor.",
+            "choices": [
+                {"label": "A", "content_md": "1 m/s^2", "is_correct": False},
+                {"label": "B", "content_md": "2 m/s^2", "is_correct": True},
+            ],
+        }
+    )
+    bundle = catalog.compose(action="distractors", question=q, solution_md="Final answer: 2 m/s^2")
+    assert "Author guidance for distractors:" in bundle.user_prompt
+    assert "Current MC options draft (may be blank; revise or replace as needed):" in bundle.user_prompt
+    assert "Avoid using the previous correct answer as a distractor." in bundle.user_prompt
+    assert "label: A" in bundle.user_prompt
+    assert "content_md: 2 m/s^2" in bundle.user_prompt
