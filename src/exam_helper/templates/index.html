@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Exam Helper</title>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+      window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
       body { font-family: "Segoe UI", Arial, sans-serif; margin: 2rem; }
       table { border-collapse: collapse; width: 100%; }
@@ -65,7 +70,13 @@
         {% for q in questions %}
         <tr>
           <td>{{ q.id }}</td>
-          <td>{{ q.title if q.title else "(untitled)" }}</td>
+          <td>
+            {% if q.title %}
+            <span class="title-markdown" data-title-markdown="{{ q.title | e }}"></span>
+            {% else %}
+            (untitled)
+            {% endif %}
+          </td>
           <td>{{ q.question_type.value }}</td>
           <td><a href="/questions/{{ q.id }}/edit">Edit</a></td>
         </tr>
@@ -123,6 +134,33 @@
         settingsStatus.textContent = text;
       }
 
+      function escapeHtml(text) {
+        return String(text || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function normalizeMathDelimitersForPreview(text) {
+        return (text || "")
+          .replace(/\\\[(.*?)\\\]/gs, (_, inner) => `$$${inner}$$`)
+          .replace(/\\\((.*?)\\\)/gs, (_, inner) => `$${inner}$`);
+      }
+
+      function renderTitleMarkdownCells() {
+        const titleCells = document.querySelectorAll(".title-markdown[data-title-markdown]");
+        titleCells.forEach((el) => {
+          const titleMd = el.dataset.titleMarkdown || "";
+          const normalized = normalizeMathDelimitersForPreview(titleMd);
+          el.innerHTML = marked.parseInline(escapeHtml(normalized));
+        });
+        if (window.MathJax && window.MathJax.typesetPromise && titleCells.length) {
+          window.MathJax.typesetPromise(Array.from(titleCells));
+        }
+      }
+
       function populateModelDropdown(models) {
         const current = "{{ project.ai.model }}";
         const unique = Array.from(new Set([current, ...models])).filter(Boolean);
@@ -176,6 +214,8 @@
           populateModelDropdown(data.models);
         })
         .catch(() => {});
+
+      renderTitleMarkdownCells();
     </script>
     {% endif %}
   </body>

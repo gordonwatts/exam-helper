@@ -79,6 +79,10 @@
       <button type="button" class="btn" id="btn_ai_title">Generate Title</button>
       <button type="button" class="btn" id="btn_preview_title">Preview Prompt</button>
       <button type="button" class="btn" id="btn_undo_title">Undo</button>
+      <div class="card preview">
+        <strong>Title Preview</strong>
+        <div id="title_preview"></div>
+      </div>
 
       <div class="row">
         <div class="card">
@@ -181,6 +185,7 @@
       const figuresPreview = document.getElementById("figures_preview");
       const promptPreview = document.getElementById("prompt_preview");
       const solutionPreview = document.getElementById("solution_preview");
+      const titlePreviewEl = document.getElementById("title_preview");
       const mcBlock = document.getElementById("mc_block");
       const mcPreviewAnswers = document.getElementById("mc_preview_answers");
       const mcPreviewRationale = document.getElementById("mc_preview_rationale");
@@ -237,6 +242,25 @@
         return (text || "")
           .replace(/\\\[(.*?)\\\]/gs, (_, inner) => `$$${inner}$$`)
           .replace(/\\\((.*?)\\\)/gs, (_, inner) => `$${inner}$`);
+      }
+
+      function escapeHtml(text) {
+        return String(text || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function renderTitlePreview() {
+        const normalized = normalizeMathDelimitersForPreview(titleEl.value || "");
+        titlePreviewEl.innerHTML = normalized
+          ? marked.parseInline(escapeHtml(normalized))
+          : "<em>(untitled)</em>";
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([titlePreviewEl]);
+        }
       }
 
       function renderMarkdown() {
@@ -481,7 +505,10 @@
 
       document.getElementById("btn_ai_title").addEventListener("click", async (e) => {
         pushUndo("title", titleEl.value);
-        await aiApply(e.target, "/ai/suggest-title", (data) => { titleEl.value = data.title || ""; });
+        await aiApply(e.target, "/ai/suggest-title", (data) => {
+          titleEl.value = data.title || "";
+          renderTitlePreview();
+        });
       });
       document.getElementById("btn_preview_title").addEventListener("click", () => previewAiPrompt("suggest-title", "Generate Title"));
       document.getElementById("btn_ai_prompt").addEventListener("click", async (e) => {
@@ -506,15 +533,30 @@
       });
       document.getElementById("btn_preview_mc").addEventListener("click", () => previewAiPrompt("distractors", "Generate MC"));
 
-      document.getElementById("btn_undo_title").addEventListener("click", () => undo("title", (v) => { titleEl.value = v; }));
+      document.getElementById("btn_undo_title").addEventListener("click", () => undo("title", (v) => {
+        titleEl.value = v;
+        renderTitlePreview();
+      }));
       document.getElementById("btn_undo_prompt").addEventListener("click", () => undo("prompt", (v) => { promptEl.value = v; renderMarkdown(); }));
       document.getElementById("btn_undo_solution").addEventListener("click", () => undo("solution", (v) => { solutionEl.value = v; renderMarkdown(); }));
       document.getElementById("btn_undo_choices").addEventListener("click", () => undo("choices", (v) => { choicesEl.value = v; }));
       document.getElementById("btn_undo_figures").addEventListener("click", () => undo("figures", (v) => { figuresInput.value = v; renderFigures(); }));
 
       [questionTypeEl, titleEl, promptEl, mcGuidanceEl, choicesEl, solutionEl, checkerEl, pointsEl].forEach((el) => {
-        el.addEventListener("input", () => { renderMarkdown(); updateMCVisibility(); renderMCPreviews(); scheduleAutosave(); });
-        el.addEventListener("change", () => { renderMarkdown(); updateMCVisibility(); renderMCPreviews(); scheduleAutosave(); });
+        el.addEventListener("input", () => {
+          renderTitlePreview();
+          renderMarkdown();
+          updateMCVisibility();
+          renderMCPreviews();
+          scheduleAutosave();
+        });
+        el.addEventListener("change", () => {
+          renderTitlePreview();
+          renderMarkdown();
+          updateMCVisibility();
+          renderMCPreviews();
+          scheduleAutosave();
+        });
       });
 
       imageModal.addEventListener("click", () => {
@@ -537,6 +579,7 @@
         }
       });
 
+      renderTitlePreview();
       renderMarkdown();
       updateMCVisibility();
       renderMCPreviews();

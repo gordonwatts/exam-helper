@@ -20,6 +20,59 @@ def test_home_shows_model_and_usage(tmp_path) -> None:
     assert "total" in resp.text
 
 
+def test_home_has_title_markdown_render_hooks(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_title",
+            "title": "Speed is $v+1$",
+            "question_type": "free_response",
+            "prompt_md": "P",
+            "choices_yaml": "[]",
+            "solution_md": "",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert 'class="title-markdown"' in resp.text
+    assert "data-title-markdown=" in resp.text
+    assert "function renderTitleMarkdownCells()" in resp.text
+    assert "renderTitleMarkdownCells();" in resp.text
+
+
+def test_question_editor_has_title_preview_hooks(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_edit",
+            "title": "Speed is $v+1$",
+            "question_type": "free_response",
+            "prompt_md": "P",
+            "choices_yaml": "[]",
+            "solution_md": "",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    resp = client.get("/questions/q_edit/edit")
+    assert resp.status_code == 200
+    assert 'id="title_preview"' in resp.text
+    assert "function renderTitlePreview()" in resp.text
+    assert "renderTitlePreview();" in resp.text
+
+
 def test_project_settings_persist_model_and_prompts(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
