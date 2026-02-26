@@ -459,6 +459,104 @@ def test_autosave_persists_question(tmp_path) -> None:
     assert saved.title == ""
 
 
+def test_ai_improve_prompt_strips_inline_mc_options(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_mc_strip_prompt",
+            "title": "T",
+            "question_type": "multiple_choice",
+            "prompt_md": "Stem",
+            "choices_yaml": (
+                "- label: A\n  content_md: a\n  is_correct: false\n"
+                "- label: B\n  content_md: b\n  is_correct: true\n"
+            ),
+            "solution_md": "",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    class _AI:
+        def improve_prompt(self, question):
+            return (
+                "Question stem text.\n\n"
+                "A. Option A text\n"
+                "B. Option B text\n"
+                "C. Option C text\n"
+                "D. Option D text\n"
+                "E. Option E text\n"
+            )
+
+    app.state.ai = _AI()
+    resp = client.post("/questions/q_mc_strip_prompt/ai/improve-prompt")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "Question stem text." in data["prompt_md"]
+    assert "A. Option A text" not in data["prompt_md"]
+    assert "E. Option E text" not in data["prompt_md"]
+
+
+def test_ai_sync_parameters_strips_inline_mc_options(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_mc_strip_sync",
+            "title": "T",
+            "question_type": "multiple_choice",
+            "prompt_md": "Stem",
+            "choices_yaml": (
+                "- label: A\n  content_md: a\n  is_correct: false\n"
+                "- label: B\n  content_md: b\n  is_correct: true\n"
+            ),
+            "solution_md": "S",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    class _AI:
+        from exam_helper.models import AIUsageTotals
+
+        def sync_parameters_draft(self, question):
+            return (
+                {
+                    "prompt_md": (
+                        "Question stem text.\n\n"
+                        "A: Option A text\n"
+                        "B: Option B text\n"
+                        "C: Option C text\n"
+                        "D: Option D text\n"
+                        "E: Option E text\n"
+                    ),
+                    "worked_solution_md": "S2",
+                },
+                self.AIUsageTotals(),
+            )
+
+    app.state.ai = _AI()
+    resp = client.post("/questions/q_mc_strip_sync/ai/sync-parameters")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "Question stem text." in data["prompt_md"]
+    assert "A: Option A text" not in data["prompt_md"]
+    assert "E: Option E text" not in data["prompt_md"]
+
+
 def test_ai_mc_endpoint_returns_422_on_parse_error(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")

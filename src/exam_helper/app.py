@@ -108,6 +108,20 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             return block
         return f"{text}\n\n{block}".strip()
 
+    def strip_inline_mc_options(prompt_md: str) -> str:
+        text = (prompt_md or "").strip()
+        if not text:
+            return ""
+        filtered: list[str] = []
+        option_line = re.compile(r"^\s*(?:\*{0,2})[A-E](?:[.):]|\s*[-:])\s+")
+        for line in text.splitlines():
+            if option_line.match(line):
+                continue
+            filtered.append(line)
+        compact = "\n".join(filtered)
+        compact = re.sub(r"\n{3,}", "\n\n", compact).strip()
+        return compact
+
     def parse_choices_yaml(choices_yaml: str) -> list[MCChoice]:
         def _to_bool(value: Any) -> bool:
             if isinstance(value, bool):
@@ -471,6 +485,8 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             result = app.state.ai.improve_prompt(q)
             text, usage = unpack_ai_text_and_usage(result)
             repo.add_ai_usage(usage)
+            if q.question_type == QuestionType.multiple_choice:
+                text = strip_inline_mc_options(text)
             return {"ok": True, "prompt_md": text}
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
@@ -726,16 +742,19 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 raise ValueError("Current AI provider does not support parameter sync drafting.")
             draft, usage = app.state.ai.sync_parameters_draft(q)
             repo.add_ai_usage(AIUsageTotals.model_validate(usage))
+            prompt_md = draft["prompt_md"]
+            if q.question_type == QuestionType.multiple_choice:
+                prompt_md = strip_inline_mc_options(prompt_md)
             payload: dict[str, Any] = {
                 "ok": True,
-                "prompt_md": draft["prompt_md"],
+                "prompt_md": prompt_md,
                 "solution_md": draft["worked_solution_md"],
             }
             try:
                 run_result = run_solution_code(
                     q.solution.python_code,
                     q.solution.parameters,
-                    {"question_type": q.question_type.value, "prompt_md": draft["prompt_md"]},
+                    {"question_type": q.question_type.value, "prompt_md": prompt_md},
                 )
                 payload["final_answer_text"] = run_result.final_answer_text
                 payload["solution_md"] = apply_computed_output(
