@@ -109,7 +109,53 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return f"{text}\n\n{block}".strip()
 
     def parse_choices_yaml(choices_yaml: str) -> list[MCChoice]:
-        raw_choices = yaml.safe_load(choices_yaml) or []
+        raw_loaded = yaml.safe_load(choices_yaml)
+        if raw_loaded is None:
+            raw_choices: list[Any] = []
+        elif isinstance(raw_loaded, list):
+            raw_choices = raw_loaded
+        elif isinstance(raw_loaded, dict):
+            if isinstance(raw_loaded.get("choices"), list):
+                raw_choices = raw_loaded["choices"]
+            else:
+                labels = {str(k).strip().upper() for k in raw_loaded.keys()}
+                if labels.issubset({"A", "B", "C", "D", "E"}) and labels:
+                    raw_choices = []
+                    for label, value in raw_loaded.items():
+                        norm_label = str(label).strip().upper()
+                        if isinstance(value, dict):
+                            raw_choices.append(
+                                {
+                                    "label": norm_label,
+                                    "content_md": str(
+                                        value.get("content_md")
+                                        or value.get("content")
+                                        or value.get("answer")
+                                        or ""
+                                    ),
+                                    "is_correct": bool(value.get("is_correct", False)),
+                                    "rationale": (
+                                        str(value.get("rationale"))
+                                        if value.get("rationale") is not None
+                                        else None
+                                    ),
+                                }
+                            )
+                        else:
+                            raw_choices.append(
+                                {
+                                    "label": norm_label,
+                                    "content_md": str(value),
+                                    "is_correct": False,
+                                }
+                            )
+                else:
+                    raise ValueError(
+                        "choices_yaml must be a YAML list of choices or an A-E keyed mapping."
+                    )
+        else:
+            raise ValueError("choices_yaml YAML must parse to a list or mapping.")
+
         choices = [MCChoice.model_validate(c) for c in raw_choices]
         if len(choices) != 5:
             raise ValueError("choices_yaml must define exactly five options (A-E).")
@@ -431,6 +477,18 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                             candidate.solution.worked_solution_md,
                             run_result.final_answer_text,
                         )
+                        if candidate.question_type == QuestionType.multiple_choice:
+                            if not run_result.choices_yaml:
+                                error_feedback = (
+                                    "Missing choices_yaml from solve(...) for multiple_choice question."
+                                )
+                                logger.warning(
+                                    "ai_draft_solution structured missing choices_yaml question_id=%s attempt=%s",
+                                    question_id,
+                                    attempt,
+                                )
+                                q = candidate
+                                continue
                         payload: dict[str, Any] = {
                             "ok": True,
                             "solution_md": solution_md,
@@ -440,7 +498,18 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         }
                         if run_result.choices_yaml:
                             if candidate.question_type == QuestionType.multiple_choice:
-                                payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
+                                try:
+                                    payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
+                                except Exception as ex:
+                                    error_feedback = f"Invalid choices_yaml format: {ex}"
+                                    logger.warning(
+                                        "ai_draft_solution structured invalid choices_yaml question_id=%s attempt=%s error=%s",
+                                        question_id,
+                                        attempt,
+                                        ex,
+                                    )
+                                    q = candidate
+                                    continue
                             else:
                                 try:
                                     payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
