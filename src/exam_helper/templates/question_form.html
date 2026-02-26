@@ -497,13 +497,17 @@
         renderMarkdown();
         renderMCPreviews();
         setRuntimeStatus("Solution code ran successfully.", "good");
+        setStatus("Solution code ran successfully.", "good");
         scheduleAutosave();
       }
 
       function scheduleRunSolutionCode() {
         if (solutionRunTimer) clearTimeout(solutionRunTimer);
         solutionRunTimer = setTimeout(() => {
-          runSolutionCode(false).catch((err) => setRuntimeStatus(`Run error: ${err.message}`, "warn"));
+          runSolutionCode(false).catch((err) => {
+            setRuntimeStatus(`Run error: ${err.message}`, "warn");
+            setStatus(`Run error: ${err.message}`, "warn");
+          });
         }, 1200);
       }
 
@@ -606,6 +610,7 @@
           await runSolutionCode(true);
         } catch (err) {
           setRuntimeStatus(`Run error: ${err.message}`, "warn");
+          setStatus(`Run error: ${err.message}`, "warn");
         }
       });
       document.getElementById("btn_ai_mc").addEventListener("click", async (e) => {

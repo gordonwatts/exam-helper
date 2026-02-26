@@ -642,6 +642,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 payload["choices_yaml"] = normalize_choices_yaml(result.choices_yaml)
             return payload
         except Exception as ex:
+            logger.warning(
+                "solution_code_run failed question_id=%s error=%s",
+                question_id,
+                ex,
+            )
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/questions/{question_id}/ai/sync-parameters")
