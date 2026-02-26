@@ -392,41 +392,58 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         try:
             q = repo.get_question(question_id)
             if hasattr(app.state.ai, "draft_solution_with_code"):
-                error_feedback = ""
-                for _ in range(3):
-                    result = app.state.ai.draft_solution_with_code(q, error_feedback=error_feedback)
-                    repo.add_ai_usage(AIUsageTotals.model_validate(result.usage))
-                    candidate = q.model_copy(deep=True)
-                    candidate.solution.worked_solution_md = result.worked_solution_md
-                    candidate.solution.python_code = result.python_code
-                    candidate.solution.parameters = result.parameters
-                    try:
-                        run_result = run_solution_code(
-                            candidate.solution.python_code,
-                            candidate.solution.parameters,
-                            {"question_type": candidate.question_type.value, "prompt_md": candidate.prompt_md},
+                structured_failure: str | None = None
+                try:
+                    error_feedback = ""
+                    for _ in range(3):
+                        result = app.state.ai.draft_solution_with_code(q, error_feedback=error_feedback)
+                        repo.add_ai_usage(AIUsageTotals.model_validate(result.usage))
+                        candidate = q.model_copy(deep=True)
+                        candidate.solution.worked_solution_md = result.worked_solution_md
+                        candidate.solution.python_code = result.python_code
+                        candidate.solution.parameters = result.parameters
+                        try:
+                            run_result = run_solution_code(
+                                candidate.solution.python_code,
+                                candidate.solution.parameters,
+                                {"question_type": candidate.question_type.value, "prompt_md": candidate.prompt_md},
+                            )
+                        except SolutionRuntimeError as ex:
+                            error_feedback = str(ex)
+                            q = candidate
+                            continue
+                        solution_md = apply_computed_output(
+                            candidate.solution.worked_solution_md,
+                            run_result.final_answer_text,
                         )
-                    except SolutionRuntimeError as ex:
-                        error_feedback = str(ex)
-                        q = candidate
-                        continue
-                    solution_md = apply_computed_output(
-                        candidate.solution.worked_solution_md,
-                        run_result.final_answer_text,
+                        payload: dict[str, Any] = {
+                            "ok": True,
+                            "solution_md": solution_md,
+                            "solution_python_code": candidate.solution.python_code,
+                            "solution_parameters_yaml": dump_parameters_yaml(candidate.solution.parameters),
+                            "final_answer_text": run_result.final_answer_text,
+                        }
+                        if run_result.choices_yaml:
+                            payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
+                        return payload
+                    structured_failure = (
+                        "AI-generated solution code failed validation after 3 attempts. "
+                        f"Last error: {error_feedback}"
                     )
-                    payload: dict[str, Any] = {
-                        "ok": True,
-                        "solution_md": solution_md,
-                        "solution_python_code": candidate.solution.python_code,
-                        "solution_parameters_yaml": dump_parameters_yaml(candidate.solution.parameters),
-                        "final_answer_text": run_result.final_answer_text,
-                    }
-                    if run_result.choices_yaml:
-                        payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
-                    return payload
-                raise ValueError(
-                    f"AI-generated solution code failed validation after 3 attempts. Last error: {error_feedback}"
-                )
+                except Exception as ex:
+                    structured_failure = f"Structured solution generation failed: {ex}"
+
+                # Fallback keeps editing flow alive even when strict structured generation fails.
+                result = app.state.ai.draft_solution(q)
+                text, usage = unpack_ai_text_and_usage(result)
+                repo.add_ai_usage(usage)
+                return {
+                    "ok": True,
+                    "solution_md": text,
+                    "solution_python_code": q.solution.python_code,
+                    "solution_parameters_yaml": dump_parameters_yaml(q.solution.parameters),
+                    "warning": structured_failure,
+                }
             result = app.state.ai.draft_solution(q)
             text, usage = unpack_ai_text_and_usage(result)
             repo.add_ai_usage(usage)

@@ -41,6 +41,43 @@ def test_ai_draft_solution_returns_ai_text_verbatim(tmp_path) -> None:
     assert "Final answer: 1" in data["solution_md"]
 
 
+def test_ai_draft_solution_falls_back_when_structured_generation_fails(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_struct_fail",
+            "title": "T",
+            "question_type": "free_response",
+            "prompt_md": "P",
+            "choices_yaml": "[]",
+            "solution_md": "",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    class _AI:
+        def draft_solution_with_code(self, question, error_feedback=""):
+            raise ValueError("model returned invalid JSON")
+
+        def draft_solution(self, question):
+            return "Fallback solution text"
+
+    app.state.ai = _AI()
+    resp = client.post("/questions/q_struct_fail/ai/draft-solution")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["solution_md"] == "Fallback solution text"
+    assert "warning" in data
+    assert "Structured solution generation failed" in data["warning"]
+
+
 def test_autosave_persists_question(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
