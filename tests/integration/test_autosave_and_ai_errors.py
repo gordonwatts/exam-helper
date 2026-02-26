@@ -278,6 +278,160 @@ def test_ai_draft_solution_mc_accepts_text_and_correct_keys(tmp_path) -> None:
     assert "is_correct: true" in data["choices_yaml"]
 
 
+def test_ai_draft_solution_mc_retries_when_choices_not_parameterized(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_mc_param_retry",
+            "title": "T",
+            "question_type": "multiple_choice",
+            "prompt_md": "P",
+            "choices_yaml": (
+                "- label: A\n  content_md: a\n  is_correct: false\n"
+                "- label: B\n  content_md: b\n  is_correct: true\n"
+            ),
+            "solution_md": "",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    class _AI:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        class _Draft:
+            worked_solution_md = "Use lens equation."
+            python_code = ""
+            parameters = {"P_D": 2.0}
+            from exam_helper.models import AIUsageTotals
+
+            usage = AIUsageTotals()
+
+        def draft_solution_with_code(self, question, error_feedback=""):
+            self.calls += 1
+            d = self._Draft()
+            if self.calls == 1:
+                d.python_code = (
+                    "def solve(params, context):\n"
+                    "    p = float(params.get('P_D', 2.0))\n"
+                    "    return {\n"
+                    "      'final_answer_text': f'Final answer {p:.1f}',\n"
+                    "      'choices_yaml': \"\"\"A:\n"
+                    "  text: opt A at 2.0\n"
+                    "  correct: false\n"
+                    "B:\n"
+                    "  text: opt B at 2.0\n"
+                    "  correct: true\n"
+                    "C:\n"
+                    "  text: opt C at 2.0\n"
+                    "  correct: false\n"
+                    "D:\n"
+                    "  text: opt D at 2.0\n"
+                    "  correct: false\n"
+                    "E:\n"
+                    "  text: opt E at 2.0\n"
+                    "  correct: false\n"
+                    "\"\"\",\n"
+                    "    }\n"
+                )
+            else:
+                d.python_code = (
+                    "def solve(params, context):\n"
+                    "    p = float(params.get('P_D', 2.0))\n"
+                    "    return {\n"
+                    "      'final_answer_text': f'Final answer {p:.1f}',\n"
+                    "      'choices_yaml': f\"\"\"A:\n"
+                    "  text: opt A at {p:.1f}\n"
+                    "  correct: false\n"
+                    "B:\n"
+                    "  text: opt B at {p:.1f}\n"
+                    "  correct: true\n"
+                    "C:\n"
+                    "  text: opt C at {p:.1f}\n"
+                    "  correct: false\n"
+                    "D:\n"
+                    "  text: opt D at {p:.1f}\n"
+                    "  correct: false\n"
+                    "E:\n"
+                    "  text: opt E at {p:.1f}\n"
+                    "  correct: false\n"
+                    "\"\"\",\n"
+                    "    }\n"
+                )
+            return d
+
+        def draft_solution(self, question):
+            raise AssertionError("Should not fall back when retry can fix parameterization.")
+
+    app.state.ai = _AI()
+    resp = client.post("/questions/q_mc_param_retry/ai/draft-solution")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "choices_yaml" in data
+    assert "opt B at 2.0" in data["choices_yaml"]
+
+
+def test_solution_run_warns_when_mc_choices_not_parameterized(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_mc_param_warn",
+            "title": "T",
+            "question_type": "multiple_choice",
+            "prompt_md": "P",
+            "choices_yaml": (
+                "- label: A\n  content_md: a\n  is_correct: false\n"
+                "- label: B\n  content_md: b\n  is_correct: true\n"
+            ),
+            "solution_md": "",
+            "solution_python_code": (
+                "def solve(params, context):\n"
+                "    p = float(params.get('P_D', 2.0))\n"
+                "    return {\n"
+                "      'final_answer_text': f'Final answer {p:.1f}',\n"
+                "      'choices_yaml': \"\"\"A:\n"
+                "  text: opt A at 2.0\n"
+                "  correct: false\n"
+                "B:\n"
+                "  text: opt B at 2.0\n"
+                "  correct: true\n"
+                "C:\n"
+                "  text: opt C at 2.0\n"
+                "  correct: false\n"
+                "D:\n"
+                "  text: opt D at 2.0\n"
+                "  correct: false\n"
+                "E:\n"
+                "  text: opt E at 2.0\n"
+                "  correct: false\n"
+                "\"\"\",\n"
+                "    }\n"
+            ),
+            "solution_parameters_yaml": "{P_D: 2.0}",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    resp = client.post("/questions/q_mc_param_warn/solution-code/run")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "warning" in data
+    assert "choices_yaml appears unchanged" in data["warning"]
+
+
 def test_autosave_persists_question(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")

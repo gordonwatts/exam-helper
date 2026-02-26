@@ -203,6 +203,38 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def normalize_choices_yaml(choices_yaml: str) -> str:
         return dump_choices_yaml(parse_choices_yaml(choices_yaml))
 
+    def assess_mc_choices_parameterization(
+        python_code: str,
+        params: dict[str, Any],
+        context: dict[str, Any],
+        baseline_final_answer_text: str,
+        baseline_choices_yaml: str,
+    ) -> tuple[bool, str]:
+        numeric_keys = [k for k, v in (params or {}).items() if isinstance(v, (int, float))]
+        if not numeric_keys:
+            return True, ""
+        probe_key = numeric_keys[0]
+        probe_params = dict(params or {})
+        probe_value = float(probe_params[probe_key])
+        probe_params[probe_key] = (probe_value * 1.1) if probe_value != 0 else 1.0
+        try:
+            probe_result = run_solution_code(python_code, probe_params, context)
+        except Exception:
+            return True, ""
+        baseline_choices = (baseline_choices_yaml or "").strip()
+        probe_choices = (probe_result.choices_yaml or "").strip()
+        if (
+            baseline_final_answer_text.strip() != probe_result.final_answer_text.strip()
+            and baseline_choices
+            and baseline_choices == probe_choices
+        ):
+            return (
+                False,
+                "choices_yaml appears unchanged when numeric parameters change; use params/computed values "
+                "to build option text and rationale dynamically.",
+            )
+        return True, ""
+
     def default_mc_choices_yaml() -> str:
         defaults = [
             {"label": "A", "content_md": "", "is_correct": True},
@@ -526,6 +558,26 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                                     )
                                     q = candidate
                                     continue
+                                is_parameterized, param_msg = assess_mc_choices_parameterization(
+                                    candidate.solution.python_code,
+                                    candidate.solution.parameters,
+                                    {
+                                        "question_type": candidate.question_type.value,
+                                        "prompt_md": candidate.prompt_md,
+                                    },
+                                    run_result.final_answer_text,
+                                    run_result.choices_yaml,
+                                )
+                                if not is_parameterized:
+                                    error_feedback = f"Invalid choices_yaml format: {param_msg}"
+                                    logger.warning(
+                                        "ai_draft_solution structured non-parameterized choices_yaml question_id=%s attempt=%s reason=%s",
+                                        question_id,
+                                        attempt,
+                                        param_msg,
+                                    )
+                                    q = candidate
+                                    continue
                             else:
                                 try:
                                     payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
@@ -647,6 +699,16 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             }
             if result.choices_yaml:
                 payload["choices_yaml"] = normalize_choices_yaml(result.choices_yaml)
+                if q.question_type == QuestionType.multiple_choice:
+                    is_parameterized, param_msg = assess_mc_choices_parameterization(
+                        q.solution.python_code,
+                        q.solution.parameters,
+                        {"question_type": q.question_type.value, "prompt_md": q.prompt_md},
+                        result.final_answer_text,
+                        result.choices_yaml,
+                    )
+                    if not is_parameterized:
+                        payload["warning"] = param_msg
             return payload
         except Exception as ex:
             logger.warning(
