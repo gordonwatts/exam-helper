@@ -452,6 +452,14 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                             question_id,
                         )
                         result = app.state.ai.draft_solution_with_code(q, error_feedback=error_feedback)
+                        raw_excerpt = (getattr(result, "raw_text", "") or "")[:800].replace("\r", " ").replace("\n", "\\n")
+                        if raw_excerpt:
+                            logger.info(
+                                "ai_draft_solution structured raw_excerpt question_id=%s attempt=%s excerpt=%s",
+                                question_id,
+                                attempt,
+                                raw_excerpt,
+                            )
                         repo.add_ai_usage(AIUsageTotals.model_validate(result.usage))
                         candidate = q.model_copy(deep=True)
                         candidate.solution.worked_solution_md = result.worked_solution_md
@@ -503,10 +511,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                                 except Exception as ex:
                                     error_feedback = f"Invalid choices_yaml format: {ex}"
                                     logger.warning(
-                                        "ai_draft_solution structured invalid choices_yaml question_id=%s attempt=%s error=%s",
+                                        "ai_draft_solution structured invalid choices_yaml question_id=%s attempt=%s error=%s raw_choices_excerpt=%s",
                                         question_id,
                                         attempt,
                                         ex,
+                                        (run_result.choices_yaml or "")[:800].replace("\r", " ").replace("\n", "\\n"),
                                     )
                                     q = candidate
                                     continue

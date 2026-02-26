@@ -29,6 +29,7 @@ class AIService:
         python_code: str
         parameters: dict[str, Any]
         usage: AIUsageTotals
+        raw_text: str
 
     def _client(self) -> OpenAI:
         if not self.api_key:
@@ -281,7 +282,13 @@ class AIService:
                 user_prompt=f"{bundle.user_prompt}\n\nPrevious execution error:\n{error_feedback.strip()}",
             )
         result = self._text_with_question_context(bundle, question)
-        payload = self._parse_json_object(result.text)
+        try:
+            payload = self._parse_json_object(result.text)
+        except Exception as ex:
+            excerpt = result.text[:800].replace("\r", " ").replace("\n", "\\n")
+            raise ValueError(
+                f"AI structured solution response was not valid JSON object. Raw excerpt: {excerpt}"
+            ) from ex
         worked_solution_md = str(payload.get("worked_solution_md", "")).strip()
         python_code = str(payload.get("python_code", "")).strip()
         parameters_raw = payload.get("parameters") or {}
@@ -296,6 +303,7 @@ class AIService:
             python_code=python_code,
             parameters=parameters_raw,
             usage=result.usage,
+            raw_text=result.text,
         )
 
     def sync_parameters_draft(self, question: Question) -> tuple[dict[str, Any], AIUsageTotals]:
