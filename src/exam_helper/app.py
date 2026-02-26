@@ -109,6 +109,39 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return f"{text}\n\n{block}".strip()
 
     def parse_choices_yaml(choices_yaml: str) -> list[MCChoice]:
+        def _to_bool(value: Any) -> bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return bool(value)
+            if isinstance(value, str):
+                return value.strip().lower() in {"1", "true", "yes", "y"}
+            return False
+
+        def _normalize_choice_item(item: Any, fallback_label: str = "") -> dict[str, Any]:
+            if isinstance(item, dict):
+                return {
+                    "label": str(item.get("label", fallback_label)).strip().upper(),
+                    "content_md": str(
+                        item.get("content_md")
+                        or item.get("content")
+                        or item.get("text")
+                        or item.get("answer")
+                        or ""
+                    ),
+                    "is_correct": _to_bool(item.get("is_correct", item.get("correct", False))),
+                    "rationale": (
+                        str(item.get("rationale"))
+                        if item.get("rationale") is not None
+                        else None
+                    ),
+                }
+            return {
+                "label": fallback_label.strip().upper(),
+                "content_md": str(item),
+                "is_correct": False,
+            }
+
         raw_loaded = yaml.safe_load(choices_yaml)
         if raw_loaded is None:
             raw_choices: list[Any] = []
@@ -122,33 +155,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 if labels.issubset({"A", "B", "C", "D", "E"}) and labels:
                     raw_choices = []
                     for label, value in raw_loaded.items():
-                        norm_label = str(label).strip().upper()
-                        if isinstance(value, dict):
-                            raw_choices.append(
-                                {
-                                    "label": norm_label,
-                                    "content_md": str(
-                                        value.get("content_md")
-                                        or value.get("content")
-                                        or value.get("answer")
-                                        or ""
-                                    ),
-                                    "is_correct": bool(value.get("is_correct", False)),
-                                    "rationale": (
-                                        str(value.get("rationale"))
-                                        if value.get("rationale") is not None
-                                        else None
-                                    ),
-                                }
-                            )
-                        else:
-                            raw_choices.append(
-                                {
-                                    "label": norm_label,
-                                    "content_md": str(value),
-                                    "is_correct": False,
-                                }
-                            )
+                        raw_choices.append(_normalize_choice_item(value, str(label)))
                 else:
                     raise ValueError(
                         "choices_yaml must be a YAML list of choices or an A-E keyed mapping."
@@ -156,7 +163,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         else:
             raise ValueError("choices_yaml YAML must parse to a list or mapping.")
 
-        choices = [MCChoice.model_validate(c) for c in raw_choices]
+        choices = [MCChoice.model_validate(_normalize_choice_item(c)) for c in raw_choices]
         if len(choices) != 5:
             raise ValueError("choices_yaml must define exactly five options (A-E).")
         if sum(1 for c in choices if c.is_correct) != 1:
