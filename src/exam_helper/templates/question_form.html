@@ -233,6 +233,8 @@
 
       let autosaveTimer = null;
       let solutionRunTimer = null;
+      let syncParamsTimer = null;
+      let pendingParamSync = false;
       const undoStacks = { title: [], prompt: [], solution: [], choices: [], figures: [] };
 
       function pushUndo(section, value) {
@@ -497,9 +499,12 @@
         renderMCPreviews();
         setRuntimeStatus("Solution code ran successfully.", "good");
         if (data.warning) {
-          setStatus(`Run warning: ${data.warning} Use 'Sync to Parameters' to update prompt/solution text.`, "warn");
+          setStatus(`Run warning: ${data.warning} Prompt/solution sync will run automatically.`, "warn");
         } else {
-          setStatus("Solution code ran successfully. Use 'Sync to Parameters' to update prompt/solution text.", "good");
+          setStatus("Solution code ran successfully. Prompt/solution sync will run automatically.", "good");
+        }
+        if (pendingParamSync) {
+          await syncParametersFromValues(true);
         }
         scheduleAutosave();
       }
@@ -512,6 +517,48 @@
             setStatus(`Run error: ${err.message}`, "warn");
           });
         }, 1200);
+      }
+
+      async function syncParametersFromValues(auto = false) {
+        const qid = questionIdEl.value.trim();
+        if (!qid) return;
+        pendingParamSync = false;
+        try {
+          if (!auto) {
+            setStatus("Syncing prompt/solution to parameters...", "warn");
+          }
+          await autosaveNow();
+          const res = await fetch(`/questions/${qid}/ai/sync-parameters`, { method: "POST" });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || res.statusText);
+          }
+          pushUndo("prompt", promptEl.value);
+          pushUndo("solution", solutionEl.value);
+          promptEl.value = data.prompt_md || promptEl.value;
+          solutionEl.value = data.solution_md || solutionEl.value;
+          if (data.choices_yaml && isMC()) choicesEl.value = data.choices_yaml;
+          if (data.run_error) {
+            setRuntimeStatus(`Run error: ${data.run_error}`, "warn");
+          }
+          renderMarkdown();
+          renderMCPreviews();
+          setStatus("Prompt and worked solution synced to parameters.", "good");
+          scheduleAutosave();
+        } catch (err) {
+          setStatus(`Parameter sync error: ${err.message}`, "warn");
+        }
+      }
+
+      function scheduleSyncParameters() {
+        pendingParamSync = true;
+        if (syncParamsTimer) clearTimeout(syncParamsTimer);
+        syncParamsTimer = setTimeout(() => {
+          if (!pendingParamSync) return;
+          syncParametersFromValues(true).catch((err) => {
+            setStatus(`Parameter sync error: ${err.message}`, "warn");
+          });
+        }, 2200);
       }
 
       async function previewAiPrompt(action, label) {
@@ -595,16 +642,12 @@
         });
       });
       document.getElementById("btn_sync_parameters").addEventListener("click", async (e) => {
-        pushUndo("prompt", promptEl.value);
-        pushUndo("solution", solutionEl.value);
-        await aiApply(e.target, "/ai/sync-parameters", (data) => {
-          promptEl.value = data.prompt_md || promptEl.value;
-          solutionEl.value = data.solution_md || solutionEl.value;
-          if (data.choices_yaml && isMC()) choicesEl.value = data.choices_yaml;
-          if (data.run_error) setRuntimeStatus(`Run error: ${data.run_error}`, "warn");
-          renderMarkdown();
-          renderMCPreviews();
-        });
+        e.target.disabled = true;
+        try {
+          await syncParametersFromValues(false);
+        } finally {
+          e.target.disabled = false;
+        }
       });
       document.getElementById("btn_preview_solution").addEventListener("click", () => previewAiPrompt("draft-solution", "Improve Solution"));
       document.getElementById("btn_preview_solution_code").addEventListener("click", () => previewAiPrompt("draft-solution-with-code", "Draft Solution + Code"));
@@ -645,7 +688,8 @@
           renderMCPreviews();
           if (el === solutionCodeEl || el === solutionParamsEl) {
             if (el === solutionParamsEl) {
-              setStatus("Parameters changed. Re-running code; click 'Sync to Parameters' to refresh prompt/solution text.", "warn");
+              setStatus("Parameters changed. Re-running code and syncing prompt/solution...", "warn");
+              scheduleSyncParameters();
             }
             scheduleRunSolutionCode();
           }
@@ -658,7 +702,8 @@
           renderMCPreviews();
           if (el === solutionCodeEl || el === solutionParamsEl) {
             if (el === solutionParamsEl) {
-              setStatus("Parameters changed. Re-running code; click 'Sync to Parameters' to refresh prompt/solution text.", "warn");
+              setStatus("Parameters changed. Re-running code and syncing prompt/solution...", "warn");
+              scheduleSyncParameters();
             }
             scheduleRunSolutionCode();
           }
