@@ -78,6 +78,21 @@ Core requirements:
 - tests:
   - `uv run --extra dev pytest -q`
 
+## GitHub Issue Workflow
+
+- Use `gh` for issue and PR status in this repo when available.
+- List open issues with:
+  - `gh issue list --state open --limit 200`
+- If `gh` is not installed or not available on PATH, ask the user to install/authenticate `gh`, then retry the same command.
+
+### Standard Issue Development Flow
+
+1. Check out `main` and update it before starting issue work.
+2. Create a dedicated branch for the issue (for example, `issue-123-short-name`).
+3. Implement and test changes on that branch.
+4. Open a PR from the branch into `main`.
+5. In the PR description, include an issue-closing reference such as `fix #123` so GitHub automatically closes the issue when the PR is merged.
+
 ## Packaging and Distribution
 
 - Local development uses `uv run`.
