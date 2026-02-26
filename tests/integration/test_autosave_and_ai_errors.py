@@ -85,7 +85,7 @@ def test_ai_mc_endpoint_returns_422_on_parse_error(tmp_path) -> None:
             "solution_md": "",
             "solution_python_code": (
                 "def solve(params, context):\n"
-                "    return {'computed_output_md': 'x', 'choices_yaml': 'not: [valid'}\n"
+                "    return {'final_answer_text': 'x', 'choices_yaml': 'not: [valid'}\n"
             ),
             "solution_parameters_yaml": "{}",
             "checker_code": "",
@@ -115,7 +115,7 @@ def test_ai_mc_endpoint_returns_choices_and_solution(tmp_path) -> None:
             "solution_python_code": (
                 "def solve(params, context):\n"
                 "    return {\n"
-                "        'computed_output_md': 'Final answer: 1',\n"
+                "        'final_answer_text': 'Final answer: 1',\n"
                 "        'choices_yaml': \"\"\"- label: A\n"
                 "  content_md: a\n"
                 "  is_correct: false\n"
@@ -167,7 +167,7 @@ def test_ai_mc_endpoint_keeps_existing_solution(tmp_path) -> None:
             "solution_python_code": (
                 "def solve(params, context):\n"
                 "    return {\n"
-                "        'computed_output_md': 'Final answer: 42',\n"
+                "        'final_answer_text': 'Final answer: 42',\n"
                 "        'choices_yaml': \"\"\"- label: A\n"
                 "  content_md: a\n"
                 "  is_correct: false\n"

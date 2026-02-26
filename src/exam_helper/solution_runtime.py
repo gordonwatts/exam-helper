@@ -17,7 +17,7 @@ class SolutionRuntimeError(RuntimeError):
 
 @dataclass
 class SolutionRunResult:
-    computed_output_md: str
+    final_answer_text: str
     choices_yaml: str | None = None
     raw: dict[str, Any] | None = None
 
@@ -87,14 +87,14 @@ def run_solution_code(
     if not isinstance(raw, dict):
         raise SolutionRuntimeError("solve(params, context) must return a dict.")
 
-    computed_output_md = raw.get("computed_output_md")
-    if not isinstance(computed_output_md, str) or not computed_output_md.strip():
-        raise SolutionRuntimeError("solve return must include non-empty string computed_output_md.")
+    final_answer_text = raw.get("final_answer_text")
+    if not isinstance(final_answer_text, str) or not final_answer_text.strip():
+        raise SolutionRuntimeError("solve return must include non-empty string final_answer_text.")
     choices_yaml = raw.get("choices_yaml")
     if choices_yaml is not None and not isinstance(choices_yaml, str):
         raise SolutionRuntimeError("choices_yaml must be a string when provided.")
     return SolutionRunResult(
-        computed_output_md=computed_output_md.strip(),
+        final_answer_text=final_answer_text.strip(),
         choices_yaml=choices_yaml.strip() if isinstance(choices_yaml, str) else None,
         raw=raw,
     )

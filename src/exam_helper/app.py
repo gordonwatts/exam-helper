@@ -85,11 +85,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def dump_parameters_yaml(params: dict[str, Any]) -> str:
         return yaml.safe_dump(params or {}, sort_keys=False).strip()
 
-    def apply_computed_output(solution_md: str, computed_output_md: str) -> str:
+    def apply_computed_output(solution_md: str, final_answer_text: str) -> str:
         block = (
             f"{computed_output_start}\n"
-            "### Computed output\n\n"
-            f"{computed_output_md.strip()}\n"
+            "### Computed final result\n\n"
+            f"{final_answer_text.strip()}\n"
             f"{computed_output_end}"
         )
         text = (solution_md or "").strip()
@@ -382,14 +382,14 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         continue
                     solution_md = apply_computed_output(
                         candidate.solution.worked_solution_md,
-                        run_result.computed_output_md,
+                        run_result.final_answer_text,
                     )
                     payload: dict[str, Any] = {
                         "ok": True,
                         "solution_md": solution_md,
                         "solution_python_code": candidate.solution.python_code,
                         "solution_parameters_yaml": dump_parameters_yaml(candidate.solution.parameters),
-                        "computed_output_md": run_result.computed_output_md,
+                        "final_answer_text": run_result.final_answer_text,
                     }
                     if run_result.choices_yaml:
                         payload["choices_yaml"] = run_result.choices_yaml
@@ -435,7 +435,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             if not run_result.choices_yaml:
                 raise ValueError("Solution code did not return choices_yaml for MC generation.")
             choices = parse_choices_yaml(run_result.choices_yaml)
-            solution_md = apply_computed_output(q.solution.worked_solution_md, run_result.computed_output_md)
+            solution_md = apply_computed_output(q.solution.worked_solution_md, run_result.final_answer_text)
             payload = {
                 "ok": True,
                 "choices_yaml": yaml.safe_dump(
@@ -443,7 +443,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 ),
                 "solution_was_generated": False,
                 "solution_md": solution_md,
-                "computed_output_md": run_result.computed_output_md,
+                "final_answer_text": run_result.final_answer_text,
             }
             return payload
         except Exception as ex:
@@ -460,8 +460,8 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             )
             payload: dict[str, Any] = {
                 "ok": True,
-                "computed_output_md": result.computed_output_md,
-                "solution_md": apply_computed_output(q.solution.worked_solution_md, result.computed_output_md),
+                "final_answer_text": result.final_answer_text,
+                "solution_md": apply_computed_output(q.solution.worked_solution_md, result.final_answer_text),
             }
             if result.choices_yaml:
                 payload["choices_yaml"] = result.choices_yaml
@@ -488,9 +488,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     q.solution.parameters,
                     {"question_type": q.question_type.value, "prompt_md": draft["prompt_md"]},
                 )
-                payload["computed_output_md"] = run_result.computed_output_md
+                payload["final_answer_text"] = run_result.final_answer_text
                 payload["solution_md"] = apply_computed_output(
-                    draft["worked_solution_md"], run_result.computed_output_md
+                    draft["worked_solution_md"], run_result.final_answer_text
                 )
                 if run_result.choices_yaml:
                     payload["choices_yaml"] = run_result.choices_yaml
