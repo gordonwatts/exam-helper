@@ -117,6 +117,36 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             raise ValueError("choices_yaml options must be labeled A-E.")
         return sorted(choices, key=lambda c: c.label)
 
+    class _RationaleQuoted(str):
+        pass
+
+    class _RationaleQuotedDumper(yaml.SafeDumper):
+        pass
+
+    def _quoted_string_representer(
+        dumper: yaml.SafeDumper, data: _RationaleQuoted
+    ) -> yaml.ScalarNode:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style='"')
+
+    _RationaleQuotedDumper.add_representer(_RationaleQuoted, _quoted_string_representer)
+
+    def dump_choices_yaml(choices: list[MCChoice]) -> str:
+        payload: list[dict[str, Any]] = []
+        for c in sorted(choices, key=lambda x: x.label):
+            item: dict[str, Any] = {
+                "label": c.label,
+                "content_md": c.content_md,
+                "is_correct": c.is_correct,
+            }
+            if c.rationale is not None:
+                # Always quote rationale to avoid YAML parsing edge cases with special chars.
+                item["rationale"] = _RationaleQuoted(c.rationale)
+            payload.append(item)
+        return yaml.dump(payload, Dumper=_RationaleQuotedDumper, sort_keys=False)
+
+    def normalize_choices_yaml(choices_yaml: str) -> str:
+        return dump_choices_yaml(parse_choices_yaml(choices_yaml))
+
     def default_mc_choices_yaml() -> str:
         defaults = [
             {"label": "A", "content_md": "", "is_correct": True},
@@ -392,7 +422,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         "final_answer_text": run_result.final_answer_text,
                     }
                     if run_result.choices_yaml:
-                        payload["choices_yaml"] = run_result.choices_yaml
+                        payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
                     return payload
                 raise ValueError(
                     f"AI-generated solution code failed validation after 3 attempts. Last error: {error_feedback}"
@@ -438,9 +468,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             solution_md = apply_computed_output(q.solution.worked_solution_md, run_result.final_answer_text)
             payload = {
                 "ok": True,
-                "choices_yaml": yaml.safe_dump(
-                    [c.model_dump(mode="json") for c in choices], sort_keys=False
-                ),
+                "choices_yaml": dump_choices_yaml(choices),
                 "solution_was_generated": False,
                 "solution_md": solution_md,
                 "final_answer_text": run_result.final_answer_text,
@@ -464,7 +492,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "solution_md": apply_computed_output(q.solution.worked_solution_md, result.final_answer_text),
             }
             if result.choices_yaml:
-                payload["choices_yaml"] = result.choices_yaml
+                payload["choices_yaml"] = normalize_choices_yaml(result.choices_yaml)
             return payload
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
@@ -493,7 +521,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     draft["worked_solution_md"], run_result.final_answer_text
                 )
                 if run_result.choices_yaml:
-                    payload["choices_yaml"] = run_result.choices_yaml
+                    payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
             except Exception as ex:
                 payload["run_error"] = str(ex)
             return payload

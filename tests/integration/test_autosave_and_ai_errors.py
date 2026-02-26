@@ -198,3 +198,58 @@ def test_ai_mc_endpoint_keeps_existing_solution(tmp_path) -> None:
     assert data["ok"] is True
     assert data["solution_was_generated"] is False
     assert "solution_md" in data
+
+
+def test_solution_run_normalizes_and_quotes_rationale_yaml(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q4",
+            "title": "T",
+            "question_type": "free_response",
+            "prompt_md": "P",
+            "choices_yaml": "[]",
+            "solution_md": "S",
+            "solution_python_code": (
+                "def solve(params, context):\n"
+                "    return {\n"
+                "        'final_answer_text': 'Final answer: 42',\n"
+                "        'choices_yaml': \"\"\"- label: A\n"
+                "  content_md: a\n"
+                "  is_correct: false\n"
+                "  rationale: forgot factor 1000\n"
+                "- label: B\n"
+                "  content_md: b\n"
+                "  is_correct: true\n"
+                "  rationale: correct\n"
+                "- label: C\n"
+                "  content_md: c\n"
+                "  is_correct: false\n"
+                "  rationale: sign error\n"
+                "- label: D\n"
+                "  content_md: d\n"
+                "  is_correct: false\n"
+                "  rationale: dropped term\n"
+                "- label: E\n"
+                "  content_md: e\n"
+                "  is_correct: false\n"
+                "  rationale: wrong unit\n"
+                "\"\"\",\n"
+                "    }\n"
+            ),
+            "solution_parameters_yaml": "{}",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    resp = client.post("/questions/q4/solution-code/run")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert 'rationale: "forgot factor 1000"' in data["choices_yaml"]
