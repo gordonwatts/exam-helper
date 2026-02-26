@@ -38,6 +38,8 @@ class MCChoice(BaseModel):
 
 class Solution(BaseModel):
     worked_solution_md: str = ""
+    python_code: str = ""
+    parameters: dict[str, float | int | str] = Field(default_factory=dict)
     rubric: list[str] = Field(default_factory=list)
 
 

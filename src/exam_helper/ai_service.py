@@ -23,6 +23,13 @@ class AIService:
         text: str
         usage: AIUsageTotals
 
+    @dataclass
+    class SolutionDraft:
+        worked_solution_md: str
+        python_code: str
+        parameters: dict[str, Any]
+        usage: AIUsageTotals
+
     def _client(self) -> OpenAI:
         if not self.api_key:
             raise ValueError("OpenAI API key is not configured.")
@@ -257,6 +264,55 @@ class AIService:
     def generate_mc_options(self, question: Question) -> list[MCChoice]:
         choices, _ = self.generate_mc_options_from_solution(question, question.solution.worked_solution_md)
         return choices
+
+    def draft_solution_with_code(
+        self,
+        question: Question,
+        error_feedback: str = "",
+    ) -> SolutionDraft:
+        bundle = self.compose_prompt(
+            action="draft_solution_with_code",
+            question=question,
+            solution_md=question.solution.worked_solution_md,
+        )
+        if error_feedback.strip():
+            bundle = PromptBundle(
+                system_prompt=bundle.system_prompt,
+                user_prompt=f"{bundle.user_prompt}\n\nPrevious execution error:\n{error_feedback.strip()}",
+            )
+        result = self._text_with_question_context(bundle, question)
+        payload = self._parse_json_object(result.text)
+        worked_solution_md = str(payload.get("worked_solution_md", "")).strip()
+        python_code = str(payload.get("python_code", "")).strip()
+        parameters_raw = payload.get("parameters") or {}
+        if not isinstance(parameters_raw, dict):
+            raise ValueError("AI response field 'parameters' must be an object.")
+        if not worked_solution_md:
+            raise ValueError("AI response field 'worked_solution_md' is required.")
+        if not python_code:
+            raise ValueError("AI response field 'python_code' is required.")
+        return AIService.SolutionDraft(
+            worked_solution_md=worked_solution_md,
+            python_code=python_code,
+            parameters=parameters_raw,
+            usage=result.usage,
+        )
+
+    def sync_parameters_draft(self, question: Question) -> tuple[dict[str, Any], AIUsageTotals]:
+        bundle = self.compose_prompt(
+            action="sync_parameters",
+            question=question,
+            solution_md=question.solution.worked_solution_md,
+        )
+        result = self._text_with_question_context(bundle, question)
+        payload = self._parse_json_object(result.text)
+        prompt_md = str(payload.get("prompt_md", "")).strip()
+        worked_solution_md = str(payload.get("worked_solution_md", "")).strip()
+        if not prompt_md:
+            raise ValueError("AI response field 'prompt_md' is required.")
+        if not worked_solution_md:
+            raise ValueError("AI response field 'worked_solution_md' is required.")
+        return {"prompt_md": prompt_md, "worked_solution_md": worked_solution_md}, result.usage
 
     def generate_mc_options_from_solution(
         self, question: Question, solution_md: str

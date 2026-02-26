@@ -77,26 +77,22 @@ def test_ai_mc_endpoint_returns_422_on_parse_error(tmp_path) -> None:
     client.post(
         "/questions/save",
         data={
-            "question_id": "q1",
-            "title": "T",
-            "question_type": "free_response",
+                "question_id": "q1",
+                "title": "T",
+                "question_type": "free_response",
             "prompt_md": "P",
             "choices_yaml": "[]",
             "solution_md": "",
+            "solution_python_code": (
+                "def solve(params, context):\n"
+                "    return {'computed_output_md': 'x', 'choices_yaml': 'not: [valid'}\n"
+            ),
+            "solution_parameters_yaml": "{}",
             "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
     )
-
-    class _BadAI:
-        def draft_solution(self, question):
-            return "Problem (verbatim): P\nFinal answer: 1"
-
-        def generate_mc_options_from_solution(self, question, solution_md):
-            raise ValueError("bad json")
-
-    app.state.ai = _BadAI()
     resp = client.post("/questions/q1/ai/distractors")
     assert resp.status_code == 422
     assert resp.json()["ok"] is False
@@ -110,44 +106,47 @@ def test_ai_mc_endpoint_returns_choices_and_solution(tmp_path) -> None:
     client.post(
         "/questions/save",
         data={
-            "question_id": "q2",
-            "title": "T",
-            "question_type": "free_response",
+                "question_id": "q2",
+                "title": "T",
+                "question_type": "free_response",
             "prompt_md": "P",
             "choices_yaml": "[]",
             "solution_md": "",
+            "solution_python_code": (
+                "def solve(params, context):\n"
+                "    return {\n"
+                "        'computed_output_md': 'Final answer: 1',\n"
+                "        'choices_yaml': \"\"\"- label: A\n"
+                "  content_md: a\n"
+                "  is_correct: false\n"
+                "- label: B\n"
+                "  content_md: b\n"
+                "  is_correct: true\n"
+                "- label: C\n"
+                "  content_md: c\n"
+                "  is_correct: false\n"
+                "- label: D\n"
+                "  content_md: d\n"
+                "  is_correct: false\n"
+                "- label: E\n"
+                "  content_md: e\n"
+                "  is_correct: false\n"
+                "\"\"\",\n"
+                "    }\n"
+            ),
+            "solution_parameters_yaml": "{}",
             "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
     )
-
-    class _GoodAI:
-        def draft_solution(self, question):
-            return "Problem (verbatim): P\nFinal answer: 1"
-
-        def generate_mc_options_from_solution(self, question, solution_md):
-            from exam_helper.models import MCChoice
-
-            assert "Problem (verbatim): P" in solution_md
-            assert "Final answer: 1" in solution_md
-            return [
-                MCChoice(label="A", content_md="a", is_correct=False),
-                MCChoice(label="B", content_md="b", is_correct=True),
-                MCChoice(label="C", content_md="c", is_correct=False),
-                MCChoice(label="D", content_md="d", is_correct=False),
-                MCChoice(label="E", content_md="e", is_correct=False),
-            ]
-
-    app.state.ai = _GoodAI()
     resp = client.post("/questions/q2/ai/distractors")
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] is True
     assert "choices_yaml" in data
-    assert data["solution_was_generated"] is True
+    assert data["solution_was_generated"] is False
     assert "solution_md" in data
-    assert "Problem (verbatim): P" in data["solution_md"]
     assert "Final answer: 1" in data["solution_md"]
 
 
@@ -159,38 +158,43 @@ def test_ai_mc_endpoint_keeps_existing_solution(tmp_path) -> None:
     client.post(
         "/questions/save",
         data={
-            "question_id": "q3",
-            "title": "T",
-            "question_type": "free_response",
+                "question_id": "q3",
+                "title": "T",
+                "question_type": "free_response",
             "prompt_md": "P",
             "choices_yaml": "[]",
-            "solution_md": "Problem (verbatim): P\nFinal answer: 42",
+            "solution_md": "Final answer: 42",
+            "solution_python_code": (
+                "def solve(params, context):\n"
+                "    return {\n"
+                "        'computed_output_md': 'Final answer: 42',\n"
+                "        'choices_yaml': \"\"\"- label: A\n"
+                "  content_md: a\n"
+                "  is_correct: false\n"
+                "- label: B\n"
+                "  content_md: b\n"
+                "  is_correct: true\n"
+                "- label: C\n"
+                "  content_md: c\n"
+                "  is_correct: false\n"
+                "- label: D\n"
+                "  content_md: d\n"
+                "  is_correct: false\n"
+                "- label: E\n"
+                "  content_md: e\n"
+                "  is_correct: false\n"
+                "\"\"\",\n"
+                "    }\n"
+            ),
+            "solution_parameters_yaml": "{}",
             "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
     )
-
-    class _GoodAI2:
-        def draft_solution(self, question):
-            raise AssertionError("draft_solution should not be called when solution exists")
-
-        def generate_mc_options_from_solution(self, question, solution_md):
-            from exam_helper.models import MCChoice
-
-            assert "Final answer: 42" in solution_md
-            return [
-                MCChoice(label="A", content_md="a", is_correct=False),
-                MCChoice(label="B", content_md="b", is_correct=True),
-                MCChoice(label="C", content_md="c", is_correct=False),
-                MCChoice(label="D", content_md="d", is_correct=False),
-                MCChoice(label="E", content_md="e", is_correct=False),
-            ]
-
-    app.state.ai = _GoodAI2()
     resp = client.post("/questions/q3/ai/distractors")
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] is True
     assert data["solution_was_generated"] is False
-    assert "solution_md" not in data
+    assert "solution_md" in data
