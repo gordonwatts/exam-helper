@@ -439,7 +439,22 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                             "final_answer_text": run_result.final_answer_text,
                         }
                         if run_result.choices_yaml:
-                            payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
+                            if candidate.question_type == QuestionType.multiple_choice:
+                                payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
+                            else:
+                                try:
+                                    payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
+                                except Exception as ex:
+                                    warning = (
+                                        "Structured solution returned invalid choices_yaml for a non-MC question; "
+                                        f"ignoring it. Details: {ex}"
+                                    )
+                                    payload["warning"] = warning
+                                    logger.warning(
+                                        "ai_draft_solution ignoring non-mc choices_yaml question_id=%s error=%s",
+                                        question_id,
+                                        ex,
+                                    )
                         logger.info(
                             "ai_draft_solution structured success question_id=%s code_len=%s has_choices=%s",
                             question_id,

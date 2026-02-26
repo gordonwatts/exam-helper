@@ -78,6 +78,57 @@ def test_ai_draft_solution_falls_back_when_structured_generation_fails(tmp_path)
     assert "Structured solution generation failed" in data["warning"]
 
 
+def test_ai_draft_solution_keeps_structured_code_when_non_mc_choices_yaml_invalid(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_struct_partial",
+            "title": "T",
+            "question_type": "free_response",
+            "prompt_md": "P",
+            "choices_yaml": "[]",
+            "solution_md": "",
+            "checker_code": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    class _AI:
+        class _Draft:
+            worked_solution_md = "Use lens equation."
+            python_code = (
+                "def solve(params, context):\n"
+                "    return {'final_answer_text': 'Jacob is farsighted and has an eye with a power of +2 D',"
+                " 'choices_yaml': 'A'}\n"
+            )
+            parameters = {"p": 1}
+            from exam_helper.models import AIUsageTotals
+
+            usage = AIUsageTotals()
+
+        def draft_solution_with_code(self, question, error_feedback=""):
+            return self._Draft()
+
+        def draft_solution(self, question):
+            raise AssertionError("Should not fall back when structured result is otherwise valid.")
+
+    app.state.ai = _AI()
+    resp = client.post("/questions/q_struct_partial/ai/draft-solution")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "solution_python_code" in data
+    assert "def solve" in data["solution_python_code"]
+    assert data["final_answer_text"].startswith("Jacob is farsighted")
+    assert "warning" in data
+    assert "invalid choices_yaml" in data["warning"]
+
+
 def test_autosave_persists_question(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
