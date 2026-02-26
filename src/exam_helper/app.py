@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import json
 import re
 from hashlib import sha256
@@ -40,6 +41,7 @@ def _sanitize_docx_filename_stem(project_name: str) -> str:
 
 
 def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
+    logger = logging.getLogger(__name__)
     app = FastAPI(title="Exam Helper")
     repo = ProjectRepository(project_root)
     project = repo.load_project() if repo.project_file.exists() else ProjectConfig(name="(uninitialized)", course="")
@@ -391,11 +393,17 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def ai_draft_solution(question_id: str) -> dict:
         try:
             q = repo.get_question(question_id)
+            logger.info("ai_draft_solution start question_id=%s", question_id)
             if hasattr(app.state.ai, "draft_solution_with_code"):
                 structured_failure: str | None = None
                 try:
                     error_feedback = ""
-                    for _ in range(3):
+                    for attempt in range(1, 4):
+                        logger.info(
+                            "ai_draft_solution structured attempt=%s question_id=%s",
+                            attempt,
+                            question_id,
+                        )
                         result = app.state.ai.draft_solution_with_code(q, error_feedback=error_feedback)
                         repo.add_ai_usage(AIUsageTotals.model_validate(result.usage))
                         candidate = q.model_copy(deep=True)
@@ -410,6 +418,12 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                             )
                         except SolutionRuntimeError as ex:
                             error_feedback = str(ex)
+                            logger.warning(
+                                "ai_draft_solution structured run failed question_id=%s attempt=%s error=%s",
+                                question_id,
+                                attempt,
+                                error_feedback,
+                            )
                             q = candidate
                             continue
                         solution_md = apply_computed_output(
@@ -425,18 +439,38 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         }
                         if run_result.choices_yaml:
                             payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
+                        logger.info(
+                            "ai_draft_solution structured success question_id=%s code_len=%s has_choices=%s",
+                            question_id,
+                            len(candidate.solution.python_code or ""),
+                            bool(run_result.choices_yaml),
+                        )
                         return payload
                     structured_failure = (
                         "AI-generated solution code failed validation after 3 attempts. "
                         f"Last error: {error_feedback}"
                     )
+                    logger.warning(
+                        "ai_draft_solution structured exhausted question_id=%s reason=%s",
+                        question_id,
+                        structured_failure,
+                    )
                 except Exception as ex:
                     structured_failure = f"Structured solution generation failed: {ex}"
+                    logger.exception(
+                        "ai_draft_solution structured exception question_id=%s",
+                        question_id,
+                    )
 
                 # Fallback keeps editing flow alive even when strict structured generation fails.
                 result = app.state.ai.draft_solution(q)
                 text, usage = unpack_ai_text_and_usage(result)
                 repo.add_ai_usage(usage)
+                logger.warning(
+                    "ai_draft_solution fallback question_id=%s warning=%s",
+                    question_id,
+                    structured_failure,
+                )
                 return {
                     "ok": True,
                     "solution_md": text,
@@ -447,6 +481,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             result = app.state.ai.draft_solution(q)
             text, usage = unpack_ai_text_and_usage(result)
             repo.add_ai_usage(usage)
+            logger.info("ai_draft_solution basic success question_id=%s", question_id)
             return {
                 "ok": True,
                 "solution_md": text,
@@ -454,6 +489,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "solution_parameters_yaml": dump_parameters_yaml(q.solution.parameters),
             }
         except Exception as ex:
+            logger.exception("ai_draft_solution endpoint failed question_id=%s", question_id)
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/questions/{question_id}/ai/suggest-title")

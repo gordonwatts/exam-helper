@@ -464,7 +464,11 @@
             throw new Error(data.error || res.statusText);
           }
           applyFn(data);
-          setStatus("AI update applied", "good");
+          if (data.warning) {
+            setStatus(`AI update applied with warning: ${data.warning}`, "warn");
+          } else {
+            setStatus("AI update applied", "good");
+          }
           scheduleAutosave();
         } catch (err) {
           setStatus(`AI error: ${err.message}`, "warn");
