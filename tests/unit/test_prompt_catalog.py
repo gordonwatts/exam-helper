@@ -28,6 +28,7 @@ def test_prompt_catalog_applies_overall_and_scoped_overrides() -> None:
     )
     assert "Always keep SI units." in bundle.system_prompt
     assert "Make wording beginner-friendly." in bundle.system_prompt
+    assert "Question type: free_response" in bundle.user_prompt
 
 
 def test_figure_placeholders_show_ids_and_captions() -> None:
@@ -57,10 +58,16 @@ def test_draft_solution_prompt_includes_existing_solution_text() -> None:
             "id": "q_sol",
             "title": "Kinematics",
             "prompt_md": "Find velocity.",
+            "question_type": "multiple_choice",
+            "choices": [
+                {"label": "A", "content_md": "10 m/s", "is_correct": False},
+                {"label": "B", "content_md": "12 m/s", "is_correct": True},
+            ],
             "solution": {"worked_solution_md": "Use v = v0 + at; Final answer: 12 m/s"},
         }
     )
     bundle = catalog.compose(action="draft_solution", question=q)
+    assert "Question type: multiple_choice" in bundle.user_prompt
     assert "Current worked solution draft" in bundle.user_prompt
     assert "Final answer: 12 m/s" in bundle.user_prompt
 
@@ -80,6 +87,7 @@ def test_distractors_prompt_includes_existing_choices_yaml() -> None:
         }
     )
     bundle = catalog.compose(action="distractors", question=q, solution_md="Final answer: 2 m/s^2")
+    assert "Question type: multiple_choice" in bundle.user_prompt
     assert "Author guidance for distractors:" in bundle.user_prompt
     assert "Current MC options draft (may be blank; revise or replace as needed):" in bundle.user_prompt
     assert "Avoid using the previous correct answer as a distractor." in bundle.user_prompt
