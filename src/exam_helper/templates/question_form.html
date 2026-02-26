@@ -483,9 +483,8 @@
           setRuntimeStatus("Set question ID before running solution code.", "warn");
           return;
         }
-        if (showSaving) {
-          await autosaveNow();
-        }
+        // Always autosave first so server-side run uses latest code/parameters.
+        await autosaveNow();
         setRuntimeStatus("Running solution code...", "warn");
         const res = await fetch(`/questions/${qid}/solution-code/run`, { method: "POST" });
         const data = await res.json();
@@ -497,7 +496,11 @@
         renderMarkdown();
         renderMCPreviews();
         setRuntimeStatus("Solution code ran successfully.", "good");
-        setStatus("Solution code ran successfully.", "good");
+        if (data.warning) {
+          setStatus(`Run warning: ${data.warning} Use 'Sync to Parameters' to update prompt/solution text.`, "warn");
+        } else {
+          setStatus("Solution code ran successfully. Use 'Sync to Parameters' to update prompt/solution text.", "good");
+        }
         scheduleAutosave();
       }
 
@@ -641,6 +644,9 @@
           updateMCVisibility();
           renderMCPreviews();
           if (el === solutionCodeEl || el === solutionParamsEl) {
+            if (el === solutionParamsEl) {
+              setStatus("Parameters changed. Re-running code; click 'Sync to Parameters' to refresh prompt/solution text.", "warn");
+            }
             scheduleRunSolutionCode();
           }
           scheduleAutosave();
@@ -651,6 +657,9 @@
           updateMCVisibility();
           renderMCPreviews();
           if (el === solutionCodeEl || el === solutionParamsEl) {
+            if (el === solutionParamsEl) {
+              setStatus("Parameters changed. Re-running code; click 'Sync to Parameters' to refresh prompt/solution text.", "warn");
+            }
             scheduleRunSolutionCode();
           }
           scheduleAutosave();
