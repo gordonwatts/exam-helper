@@ -42,6 +42,7 @@ def _sanitize_docx_filename_stem(project_name: str) -> str:
 
 def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
     app = FastAPI(title="Exam Helper")
     repo = ProjectRepository(project_root)
     project = repo.load_project() if repo.project_file.exists() else ProjectConfig(name="(uninitialized)", course="")
