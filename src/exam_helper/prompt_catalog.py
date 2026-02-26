@@ -65,6 +65,7 @@ class PromptCatalog:
             "solution_md": resolved_solution_md,
             "choices_yaml": self._choices_yaml(question),
             "mc_options_guidance": question.mc_options_guidance or "",
+            "question_type": question.question_type.value,
         }
         user_template = payload["user_prompt_template"]
         user_prompt = self._safe_format(user_template, values)
@@ -92,7 +93,7 @@ class PromptCatalog:
     @staticmethod
     def _safe_format(template: str, values: dict[str, str]) -> str:
         formatter = Formatter()
-        allowed = {"title", "prompt_md", "solution_md", "choices_yaml", "mc_options_guidance"}
+        allowed = {"title", "prompt_md", "solution_md", "choices_yaml", "mc_options_guidance", "question_type"}
         for _, field_name, _, _ in formatter.parse(template):
             if field_name and field_name not in allowed:
                 raise ValueError(f"Unsupported template key: {field_name}")

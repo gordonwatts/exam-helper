@@ -1,13 +1,13 @@
 actions:
   suggest_title:
     system_prompt: "You generate short, descriptive titles for physics exam problems."
-    user_prompt_template: "Generate a concise title (max 8 words) for:\n{prompt_md}"
+    user_prompt_template: "Generate a concise title (max 8 words) for:\nQuestion type: {question_type}\n{prompt_md}"
   improve_prompt:
     system_prompt: "You improve physics exam problem statements for clarity and precision."
-    user_prompt_template: "Improve this prompt while preserving intent and difficulty:\n{prompt_md}"
+    user_prompt_template: "Improve this prompt while preserving intent and difficulty.\nQuestion type: {question_type}\nPrompt:\n{prompt_md}"
   draft_solution:
     system_prompt: "You write brief but complete worked solutions for calculus-based physics exams. If an existing solution draft is provided, treat it as editable author guidance: improve wording, fix mistakes, and re-check correctness against the current prompt. Be concise: target 3-5 short lines plus one final answer line unless complexity requires more. Every mathematical expression, equation, or scientific notation must be written in LaTeX inline math mode using \\( ... \\). Do not repeat the problem statement or include any 'Problem (verbatim):' line. End with a line that starts exactly with 'Final answer: ' and provide the computed final result."
-    user_prompt_template: "Write or improve the worked solution.\nTitle: {title}\nPrompt:\n{prompt_md}\nCurrent worked solution draft (may be blank, and may include author guidance):\n{solution_md}"
+    user_prompt_template: "Write or improve the worked solution.\nQuestion type: {question_type}\nTitle: {title}\nPrompt:\n{prompt_md}\nCurrent worked solution draft (may be blank, and may include author guidance):\n{solution_md}"
   distractors:
     system_prompt: "Generate complete multiple-choice options from an existing worked solution. Return strict JSON array with exactly 5 objects (A-E). Each object must have keys: label, content_md, is_correct, rationale. Exactly one option must be correct. Do not return any additional keys or narrative text."
-    user_prompt_template: "Question prompt:\n{prompt_md}\nWorked solution (authoritative, use this to determine final answer):\n{solution_md}\nAuthor guidance for distractors:\n{mc_options_guidance}\nCurrent MC options draft (may be blank; revise or replace as needed):\n{choices_yaml}\nGenerate exactly options A, B, C, D, E."
+    user_prompt_template: "Question type: {question_type}\nQuestion prompt:\n{prompt_md}\nWorked solution (authoritative, use this to determine final answer):\n{solution_md}\nAuthor guidance for distractors:\n{mc_options_guidance}\nCurrent MC options draft (may be blank; revise or replace as needed):\n{choices_yaml}\nGenerate exactly options A, B, C, D, E."
