@@ -26,7 +26,14 @@ class PromptCatalog:
         actions = raw.get("actions")
         if not isinstance(actions, dict):
             raise ValueError("prompt_templates.yaml must define 'actions' mapping")
-        required = {"suggest_title", "improve_prompt", "draft_solution", "distractors"}
+        required = {
+            "suggest_title",
+            "improve_prompt",
+            "draft_solution",
+            "distractors",
+            "draft_solution_with_code",
+            "sync_parameters",
+        }
         missing = required.difference(actions.keys())
         if missing:
             raise ValueError(f"prompt_templates.yaml missing actions: {sorted(missing)}")
@@ -66,6 +73,10 @@ class PromptCatalog:
             "choices_yaml": self._choices_yaml(question),
             "mc_options_guidance": question.mc_options_guidance or "",
             "question_type": question.question_type.value,
+            "solution_python_code": question.solution.python_code or "",
+            "solution_parameters_yaml": yaml.safe_dump(
+                question.solution.parameters or {}, sort_keys=False
+            ).strip(),
         }
         user_template = payload["user_prompt_template"]
         user_prompt = self._safe_format(user_template, values)
@@ -93,7 +104,16 @@ class PromptCatalog:
     @staticmethod
     def _safe_format(template: str, values: dict[str, str]) -> str:
         formatter = Formatter()
-        allowed = {"title", "prompt_md", "solution_md", "choices_yaml", "mc_options_guidance", "question_type"}
+        allowed = {
+            "title",
+            "prompt_md",
+            "solution_md",
+            "choices_yaml",
+            "mc_options_guidance",
+            "question_type",
+            "solution_python_code",
+            "solution_parameters_yaml",
+        }
         for _, field_name, _, _ in formatter.parse(template):
             if field_name and field_name not in allowed:
                 raise ValueError(f"Unsupported template key: {field_name}")

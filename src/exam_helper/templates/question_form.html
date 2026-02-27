@@ -103,12 +103,27 @@
           <label>Worked Solution (Markdown)</label>
           <textarea name="solution_md" id="solution_md">{{ question.solution.worked_solution_md if question else '' }}</textarea>
           <button type="button" class="btn" id="btn_ai_solution">Improve Solution</button>
+          <button type="button" class="btn" id="btn_sync_parameters">Sync to Parameters</button>
           <button type="button" class="btn" id="btn_preview_solution">Preview Prompt</button>
           <button type="button" class="btn" id="btn_undo_solution">Undo</button>
         </div>
         <div class="card preview">
           <strong>Solution Preview</strong>
           <div id="solution_preview"></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="card">
+          <label>Solution Python Code</label>
+          <textarea name="solution_python_code" id="solution_python_code">{{ question.solution.python_code if question else '' }}</textarea>
+          <button type="button" class="btn" id="btn_run_solution_code">Run Solution Code</button>
+          <button type="button" class="btn" id="btn_preview_solution_code">Preview Prompt</button>
+        </div>
+        <div class="card">
+          <label>Solution Parameters (YAML mapping)</label>
+          <textarea name="solution_parameters_yaml" id="solution_parameters_yaml">{{ solution_parameters_yaml }}</textarea>
+          <div class="status" id="solution_runtime_status"></div>
         </div>
       </div>
 
@@ -180,6 +195,8 @@
       const choicesEl = document.getElementById("choices_yaml");
       const mcGuidanceEl = document.getElementById("mc_options_guidance");
       const solutionEl = document.getElementById("solution_md");
+      const solutionCodeEl = document.getElementById("solution_python_code");
+      const solutionParamsEl = document.getElementById("solution_parameters_yaml");
       const checkerEl = document.getElementById("checker_code");
       const figuresInput = document.getElementById("figures_json");
       const figuresPreview = document.getElementById("figures_preview");
@@ -196,6 +213,7 @@
       const promptPreviewSystem = document.getElementById("prompt_preview_system");
       const promptPreviewUser = document.getElementById("prompt_preview_user");
       const promptPreviewFigures = document.getElementById("prompt_preview_figures");
+      const solutionRuntimeStatus = document.getElementById("solution_runtime_status");
       const defaultChoicesYaml = `- label: A
   content_md: ''
   is_correct: true
@@ -214,6 +232,9 @@
 `;
 
       let autosaveTimer = null;
+      let solutionRunTimer = null;
+      let syncParamsTimer = null;
+      let pendingParamSync = false;
       const undoStacks = { title: [], prompt: [], solution: [], choices: [], figures: [] };
 
       function pushUndo(section, value) {
@@ -232,6 +253,11 @@
       function setStatus(text, cls) {
         saveStatus.textContent = text;
         saveStatus.className = `status ${cls || ""}`;
+      }
+
+      function setRuntimeStatus(text, cls) {
+        solutionRuntimeStatus.textContent = text;
+        solutionRuntimeStatus.className = `status ${cls || ""}`;
       }
 
       function scientificNotationNormalize(text) {
@@ -327,6 +353,8 @@
           mc_options_guidance: mcGuidanceEl.value,
           choices_yaml: choicesEl.value,
           solution_md: solutionEl.value,
+          solution_python_code: solutionCodeEl.value,
+          solution_parameters_yaml: solutionParamsEl.value,
           checker_code: checkerEl.value,
           figures_json: figuresInput.value || "[]",
           points: Number(pointsEl.value || 5),
@@ -438,13 +466,99 @@
             throw new Error(data.error || res.statusText);
           }
           applyFn(data);
-          setStatus("AI update applied", "good");
+          if (data.warning) {
+            setStatus(`AI update applied with warning: ${data.warning}`, "warn");
+          } else {
+            setStatus("AI update applied", "good");
+          }
           scheduleAutosave();
         } catch (err) {
           setStatus(`AI error: ${err.message}`, "warn");
         } finally {
           btn.disabled = false;
         }
+      }
+
+      async function runSolutionCode(showSaving = true) {
+        const qid = questionIdEl.value.trim();
+        if (!qid) {
+          setRuntimeStatus("Set question ID before running solution code.", "warn");
+          return;
+        }
+        // Always autosave first so server-side run uses latest code/parameters.
+        await autosaveNow();
+        setRuntimeStatus("Running solution code...", "warn");
+        const res = await fetch(`/questions/${qid}/solution-code/run`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || res.statusText);
+        }
+        if (data.solution_md) solutionEl.value = data.solution_md;
+        if (data.choices_yaml && isMC()) choicesEl.value = data.choices_yaml;
+        renderMarkdown();
+        renderMCPreviews();
+        setRuntimeStatus("Solution code ran successfully.", "good");
+        if (data.warning) {
+          setStatus(`Run warning: ${data.warning} Prompt/solution sync will run automatically.`, "warn");
+        } else {
+          setStatus("Solution code ran successfully. Prompt/solution sync will run automatically.", "good");
+        }
+        if (pendingParamSync) {
+          await syncParametersFromValues(true);
+        }
+        scheduleAutosave();
+      }
+
+      function scheduleRunSolutionCode() {
+        if (solutionRunTimer) clearTimeout(solutionRunTimer);
+        solutionRunTimer = setTimeout(() => {
+          runSolutionCode(false).catch((err) => {
+            setRuntimeStatus(`Run error: ${err.message}`, "warn");
+            setStatus(`Run error: ${err.message}`, "warn");
+          });
+        }, 1200);
+      }
+
+      async function syncParametersFromValues(auto = false) {
+        const qid = questionIdEl.value.trim();
+        if (!qid) return;
+        pendingParamSync = false;
+        try {
+          if (!auto) {
+            setStatus("Syncing prompt/solution to parameters...", "warn");
+          }
+          await autosaveNow();
+          const res = await fetch(`/questions/${qid}/ai/sync-parameters`, { method: "POST" });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || res.statusText);
+          }
+          pushUndo("prompt", promptEl.value);
+          pushUndo("solution", solutionEl.value);
+          promptEl.value = data.prompt_md || promptEl.value;
+          solutionEl.value = data.solution_md || solutionEl.value;
+          if (data.choices_yaml && isMC()) choicesEl.value = data.choices_yaml;
+          if (data.run_error) {
+            setRuntimeStatus(`Run error: ${data.run_error}`, "warn");
+          }
+          renderMarkdown();
+          renderMCPreviews();
+          setStatus("Prompt and worked solution synced to parameters.", "good");
+          scheduleAutosave();
+        } catch (err) {
+          setStatus(`Parameter sync error: ${err.message}`, "warn");
+        }
+      }
+
+      function scheduleSyncParameters() {
+        pendingParamSync = true;
+        if (syncParamsTimer) clearTimeout(syncParamsTimer);
+        syncParamsTimer = setTimeout(() => {
+          if (!pendingParamSync) return;
+          syncParametersFromValues(true).catch((err) => {
+            setStatus(`Parameter sync error: ${err.message}`, "warn");
+          });
+        }, 2200);
       }
 
       async function previewAiPrompt(action, label) {
@@ -518,9 +632,33 @@
       document.getElementById("btn_preview_prompt").addEventListener("click", () => previewAiPrompt("improve-prompt", "Improve Text"));
       document.getElementById("btn_ai_solution").addEventListener("click", async (e) => {
         pushUndo("solution", solutionEl.value);
-        await aiApply(e.target, "/ai/draft-solution", (data) => { solutionEl.value = data.solution_md || ""; renderMarkdown(); });
+        await aiApply(e.target, "/ai/draft-solution", (data) => {
+          solutionEl.value = data.solution_md || "";
+          solutionCodeEl.value = data.solution_python_code || solutionCodeEl.value;
+          solutionParamsEl.value = data.solution_parameters_yaml || solutionParamsEl.value;
+          if (data.choices_yaml && isMC()) choicesEl.value = data.choices_yaml;
+          renderMarkdown();
+          renderMCPreviews();
+        });
+      });
+      document.getElementById("btn_sync_parameters").addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        try {
+          await syncParametersFromValues(false);
+        } finally {
+          e.target.disabled = false;
+        }
       });
       document.getElementById("btn_preview_solution").addEventListener("click", () => previewAiPrompt("draft-solution", "Improve Solution"));
+      document.getElementById("btn_preview_solution_code").addEventListener("click", () => previewAiPrompt("draft-solution-with-code", "Draft Solution + Code"));
+      document.getElementById("btn_run_solution_code").addEventListener("click", async () => {
+        try {
+          await runSolutionCode(true);
+        } catch (err) {
+          setRuntimeStatus(`Run error: ${err.message}`, "warn");
+          setStatus(`Run error: ${err.message}`, "warn");
+        }
+      });
       document.getElementById("btn_ai_mc").addEventListener("click", async (e) => {
         pushUndo("choices", choicesEl.value);
         pushUndo("solution", solutionEl.value);
@@ -542,12 +680,19 @@
       document.getElementById("btn_undo_choices").addEventListener("click", () => undo("choices", (v) => { choicesEl.value = v; }));
       document.getElementById("btn_undo_figures").addEventListener("click", () => undo("figures", (v) => { figuresInput.value = v; renderFigures(); }));
 
-      [questionTypeEl, titleEl, promptEl, mcGuidanceEl, choicesEl, solutionEl, checkerEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, promptEl, mcGuidanceEl, choicesEl, solutionEl, solutionCodeEl, solutionParamsEl, checkerEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
           renderTitlePreview();
           renderMarkdown();
           updateMCVisibility();
           renderMCPreviews();
+          if (el === solutionCodeEl || el === solutionParamsEl) {
+            if (el === solutionParamsEl) {
+              setStatus("Parameters changed. Re-running code and syncing prompt/solution...", "warn");
+              scheduleSyncParameters();
+            }
+            scheduleRunSolutionCode();
+          }
           scheduleAutosave();
         });
         el.addEventListener("change", () => {
@@ -555,6 +700,13 @@
           renderMarkdown();
           updateMCVisibility();
           renderMCPreviews();
+          if (el === solutionCodeEl || el === solutionParamsEl) {
+            if (el === solutionParamsEl) {
+              setStatus("Parameters changed. Re-running code and syncing prompt/solution...", "warn");
+              scheduleSyncParameters();
+            }
+            scheduleRunSolutionCode();
+          }
           scheduleAutosave();
         });
       });
@@ -585,6 +737,7 @@
       renderMCPreviews();
       renderFigures();
       setStatus("Ready", "good");
+      setRuntimeStatus("Ready", "good");
     </script>
   </body>
 </html>

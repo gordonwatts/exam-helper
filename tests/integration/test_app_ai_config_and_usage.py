@@ -154,13 +154,13 @@ def test_usage_totals_accumulate_and_reset(tmp_path) -> None:
 
     app.state.ai = _AI()
     assert client.post("/questions/q1/ai/improve-prompt").status_code == 200
-    assert client.post("/questions/q1/ai/distractors").status_code == 200
+    assert client.post("/questions/q1/ai/draft-solution").status_code == 200
 
     project = repo.load_project()
-    assert project.ai.usage.input_tokens == 60
-    assert project.ai.usage.output_tokens == 22
-    assert project.ai.usage.total_tokens == 82
-    assert abs(project.ai.usage.total_cost_usd - 0.06) < 1e-9
+    assert project.ai.usage.input_tokens == 30
+    assert project.ai.usage.output_tokens == 12
+    assert project.ai.usage.total_tokens == 42
+    assert abs(project.ai.usage.total_cost_usd - 0.03) < 1e-9
 
     reset = client.post("/project/usage/reset", follow_redirects=False)
     assert reset.status_code == 303
