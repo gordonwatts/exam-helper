@@ -88,8 +88,8 @@ Core requirements:
 ### Standard Issue Development Flow
 
 1. Check out `main` and update it before starting issue work.
-2. Create a dedicated branch for the issue (for example, `issue-123-short-name`).
-3. Implement and test changes on that branch.
+2. Create a dedicated branch for the issue (for example, `issue-123-short-name`) **before making any code or docs edits**.
+3. Implement and test changes on that branch (never do issue implementation work directly on `main`).
 4. Open a PR from the branch into `main`.
 5. In the PR description, include an issue-closing reference such as `fix #123` so GitHub automatically closes the issue when the PR is merged.
 
