@@ -177,14 +177,10 @@ def _build_project_markdown(
         if include_solutions:
             lines.append("")
             lines.append("   *Solution:*")
-            cleaned_solution = _strip_problem_verbatim_lines(q.solution.worked_solution_md)
+            cleaned_solution = _strip_problem_verbatim_lines(q.solution.typed_solution_md)
             for line in _compact_lines(_normalize_math_delimiters(cleaned_solution)):
                 if line:
                     lines.append(f"   {line}")
-            if q.solution.rubric:
-                lines.append("   *Rubric:*")
-                for item in q.solution.rubric:
-                    lines.append(f"   - {_normalize_math_delimiters(item)}")
         lines.append("")
     return "\n".join(lines).strip() + "\n", warnings
 
@@ -277,18 +273,12 @@ def _add_question(
         p.runs[0].italic = True
         p.runs[0].font.size = Pt(10)
         p.paragraph_format.left_indent = Inches(0.25)
-        cleaned_solution = _strip_problem_verbatim_lines(q.solution.worked_solution_md)
+        cleaned_solution = _strip_problem_verbatim_lines(q.solution.typed_solution_md)
         for line in _compact_lines(_normalize_for_docx(cleaned_solution)):
             if not line:
                 continue
             sol = doc.add_paragraph(line)
             _apply_solution_paragraph_style(sol)
-        if q.solution.rubric:
-            rubric_head = doc.add_paragraph("Rubric")
-            _apply_solution_paragraph_style(rubric_head)
-            for item in q.solution.rubric:
-                rub = doc.add_paragraph(f"- {_normalize_for_docx(item)}")
-                _apply_solution_paragraph_style(rub)
 
 
 def _render_docx_with_python_docx(

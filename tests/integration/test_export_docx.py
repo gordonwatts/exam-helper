@@ -75,7 +75,7 @@ def test_export_docx_includes_solution_when_enabled(tmp_path: Path) -> None:
         id="q1",
         prompt_md="p",
         points=5,
-        solution={"worked_solution_md": "Problem (verbatim): p\nLine 1\n\n\nLine 2"},
+        solution={"typed_solution_md": "Problem (verbatim): p\nLine 1\n\n\nLine 2"},
     )
     repo.save_question(q)
     out = tmp_path / "exam_with_solution.docx"
@@ -106,8 +106,11 @@ def test_export_docx_falls_back_when_pandoc_missing(tmp_path: Path, monkeypatch)
         choices=[
             MCChoice(label="A", content_md="$1$", is_correct=True),
             MCChoice(label="B", content_md="$2$", is_correct=False),
+            MCChoice(label="C", content_md="$3$", is_correct=False),
+            MCChoice(label="D", content_md="$4$", is_correct=False),
+            MCChoice(label="E", content_md="$5$", is_correct=False),
         ],
-        solution={"worked_solution_md": "Problem (verbatim): Prompt\nline2"},
+        solution={"typed_solution_md": "Problem (verbatim): Prompt\nline2"},
     )
     repo.save_question(q)
 
@@ -139,8 +142,11 @@ def test_export_docx_uses_a_paren_markers_for_pandoc_mc_lists(tmp_path: Path, mo
         choices=[
             MCChoice(label="A", content_md="opt A", is_correct=True),
             MCChoice(label="B", content_md="opt B", is_correct=False),
+            MCChoice(label="C", content_md="opt C", is_correct=False),
+            MCChoice(label="D", content_md="opt D", is_correct=False),
+            MCChoice(label="E", content_md="opt E", is_correct=False),
         ],
-        solution={"worked_solution_md": "Line 1"},
+        solution={"typed_solution_md": "Line 1"},
     )
     repo.save_question(q)
 

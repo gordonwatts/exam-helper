@@ -1,19 +1,13 @@
 actions:
-  suggest_title:
-    system_prompt: "You generate short, descriptive titles for physics exam problems."
-    user_prompt_template: "Generate a concise title (max 8 words) for:\nQuestion type: {question_type}\n{prompt_md}"
-  improve_prompt:
-    system_prompt: "You improve physics exam problem statements for clarity and precision. For multiple-choice questions, never include answer choices/options (A-E) in the question prompt text."
-    user_prompt_template: "Improve this prompt while preserving intent and difficulty.\nQuestion type: {question_type}\nPrompt:\n{prompt_md}"
-  draft_solution:
-    system_prompt: "You write brief but complete worked solutions for calculus-based physics exams. If an existing solution draft is provided, treat it as editable author guidance: improve wording, fix mistakes, and re-check correctness against the current prompt. Be concise: target 3-5 short lines plus one final answer line unless complexity requires more. Every mathematical expression, equation, or scientific notation must be written in LaTeX inline math mode using \\( ... \\). Do not repeat the problem statement or include any 'Problem (verbatim):' line. End with a line that starts exactly with 'Final answer: ' and provide the computed final result."
-    user_prompt_template: "Write or improve the worked solution.\nQuestion type: {question_type}\nTitle: {title}\nPrompt:\n{prompt_md}\nCurrent worked solution draft (may be blank, and may include author guidance):\n{solution_md}"
-  draft_solution_with_code:
-    system_prompt: "Return strict JSON object with keys: worked_solution_md, python_code, parameters. The worked_solution_md should be the detailed human-readable derivation. The python_code must define solve(params, context) and return a dict with key final_answer_text as a short final-result sentence only (for example: 'Jacob is farsighted and has an eye with a power of +2 D'). Do not have python_code generate detailed derivation text. For multiple_choice questions it must also return choices_yaml as a YAML string containing A-E options with rationale and exactly one correct option. Use prior solution/code/parameters as editable context and keep parameter names stable when possible."
-    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nPrompt:\n{prompt_md}\nCurrent worked solution draft:\n{solution_md}\nCurrent solution python code:\n{solution_python_code}\nCurrent solution parameters yaml:\n{solution_parameters_yaml}"
-  distractors:
-    system_prompt: "Generate complete multiple-choice options from an existing worked solution. Return strict JSON array with exactly 5 objects (A-E). Each object must have keys: label, content_md, is_correct, rationale. Exactly one option must be correct. Do not return any additional keys or narrative text."
-    user_prompt_template: "Question type: {question_type}\nQuestion prompt:\n{prompt_md}\nWorked solution (authoritative, use this to determine final answer):\n{solution_md}\nAuthor guidance for distractors:\n{mc_options_guidance}\nCurrent MC options draft (may be blank; revise or replace as needed):\n{choices_yaml}\nGenerate exactly options A, B, C, D, E."
-  sync_parameters:
-    system_prompt: "Return strict JSON object with keys prompt_md and worked_solution_md. Rewrite both so they remain consistent with the provided parameters and existing solution/code intent. Preserve problem type and difficulty. For multiple-choice questions, prompt_md must contain only the stem; do not include A-E options."
-    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nCurrent prompt:\n{prompt_md}\nCurrent worked solution:\n{solution_md}\nCurrent solution python code:\n{solution_python_code}\nUpdated solution parameters yaml:\n{solution_parameters_yaml}"
+  rewrite_parameterize:
+    system_prompt: "Return strict JSON object with keys question_template_md, parameters, and optional title. Rewrite the question cleanly, extract parameters as key/value mapping, and template parameter references in the question text. If title is already non-empty, return title as an empty string."
+    user_prompt_template: "Current title:\n{title}\nQuestion type: {question_type}\nCurrent prompt:\n{prompt_md}\nCurrent template (if any):\n{question_template_md}\nCurrent parameters yaml:\n{solution_parameters_yaml}"
+  generate_answer_function:
+    system_prompt: "Return strict JSON object with key answer_python_code only. The code must define solve(params) returning dict with keys answer_md and final_answer. answer_md may include markdown/units. final_answer must be concise answer text used for MC option generation."
+    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nRendered prompt:\n{prompt_md}\nTemplate:\n{question_template_md}\nParameters yaml:\n{solution_parameters_yaml}\nCurrent answer code:\n{answer_python_code}"
+  generate_distractor_functions:
+    system_prompt: "Return strict JSON object with key distractors, where distractors is a list of exactly 4 objects. Each object must contain id and python_code. Each python_code must define distractor(params) returning dict with keys distractor_md and rationale. Distractors must be plausible and unique, and must not equal the correct answer."
+    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nRendered prompt:\n{prompt_md}\nTemplate:\n{question_template_md}\nParameters yaml:\n{solution_parameters_yaml}\nAnswer code:\n{answer_python_code}\nCurrent distractor code blocks yaml:\n{distractor_functions_yaml}"
+  generate_typed_solution:
+    system_prompt: "Return strict JSON object with key typed_solution_md only. Use the current template/prompt, parameters, and deterministic answer output to draft a concise worked solution for exam authors."
+    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nRendered prompt:\n{prompt_md}\nTemplate:\n{question_template_md}\nParameters yaml:\n{solution_parameters_yaml}\nAnswer code:\n{answer_python_code}\nCurrent typed solution:\n{typed_solution_md}\nLatest computed answer:\n{last_computed_answer_md}"

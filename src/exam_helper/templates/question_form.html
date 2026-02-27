@@ -6,13 +6,9 @@
     <title>Question Editor</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
-    <script>
-      window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
       body { font-family: "Segoe UI", Arial, sans-serif; margin: 1.2rem; }
-      form { max-width: 1200px; }
+      form { max-width: 1300px; }
       label { display: block; margin-top: 0.8rem; font-weight: 600; }
       input, textarea, select { width: 100%; box-sizing: border-box; padding: 0.5rem; }
       textarea { min-height: 120px; }
@@ -20,32 +16,11 @@
       .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8rem; }
       .card { border: 1px solid #ddd; border-radius: 6px; padding: 0.8rem; margin-top: 0.8rem; }
       .preview { background: #fafafa; max-height: 360px; overflow: auto; }
-      .thumb { max-width: 180px; max-height: 140px; border: 1px solid #ccc; margin-right: 0.6rem; margin-top: 0.5rem; }
-      .figure-card { display: inline-block; margin-right: 0.5rem; }
-      .help { color: #444; font-size: 0.95rem; }
       .status { margin-top: 0.5rem; min-height: 1.2rem; font-size: 0.95rem; }
       .good { color: #0a6; }
       .warn { color: #c50; }
       .btn { padding: 0.45rem 0.8rem; margin-top: 0.45rem; margin-right: 0.45rem; }
       .actions { margin-top: 1rem; }
-      .modal {
-        display: none;
-        position: fixed;
-        z-index: 999;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.72);
-        align-items: center;
-        justify-content: center;
-      }
-      .modal img { max-width: 92vw; max-height: 92vh; border: 2px solid #fff; background: #fff; }
-      .preview-item { margin: 0.3rem 0; }
-      .preview-rationale { color: #555; font-size: 0.9rem; margin-left: 1.2rem; }
-      .prompt-preview-body { background: #fff; max-width: 860px; width: 92vw; max-height: 88vh; overflow: auto; border-radius: 6px; padding: 1rem; }
-      .prompt-preview-body pre { white-space: pre-wrap; word-break: break-word; background: #f7f7f7; padding: 0.6rem; border-radius: 4px; border: 1px solid #ddd; }
-      .mc-guidance { min-height: 60px; }
       @media (max-width: 900px) {
         .row, .row3 { grid-template-columns: 1fr; }
       }
@@ -56,6 +31,7 @@
     <p><a href="/">Back to list</a></p>
 
     <form method="post" action="/questions/save" id="question-form">
+      <input type="hidden" name="typed_solution_status" id="typed_solution_status" value="{{ question.solution.typed_solution_status if question else 'missing' }}" />
       <div class="row3">
         <div>
           <label>Question ID</label>
@@ -76,88 +52,77 @@
 
       <label>Title (optional)</label>
       <input name="title" id="title" value="{{ question.title if question else '' }}" />
-      <button type="button" class="btn" id="btn_ai_title">Generate Title</button>
-      <button type="button" class="btn" id="btn_preview_title">Preview Prompt</button>
-      <button type="button" class="btn" id="btn_undo_title">Undo</button>
-      <div class="card preview">
-        <strong>Title Preview</strong>
-        <div id="title_preview"></div>
-      </div>
 
       <div class="row">
         <div class="card">
-          <label>Question Text (Markdown + math)</label>
-          <textarea name="prompt_md" id="prompt_md">{{ question.prompt_md if question else '' }}</textarea>
-          <button type="button" class="btn" id="btn_ai_prompt">Improve Text</button>
-          <button type="button" class="btn" id="btn_preview_prompt">Preview Prompt</button>
-          <button type="button" class="btn" id="btn_undo_prompt">Undo</button>
+          <label>Question Template (Markdown)</label>
+          <textarea name="question_template_md" id="question_template_md">{{ question.solution.question_template_md if question else '' }}</textarea>
+          <button type="button" class="btn" id="btn_rewrite">Rewrite + Extract Parameters</button>
+          <button type="button" class="btn" id="btn_preview_rewrite">Preview Prompt</button>
         </div>
         <div class="card preview">
-          <strong>Question Preview</strong>
+          <strong>Rendered Question (from template + params)</strong>
           <div id="prompt_preview"></div>
         </div>
       </div>
 
       <div class="row">
         <div class="card">
-          <label>Worked Solution (Markdown)</label>
-          <textarea name="solution_md" id="solution_md">{{ question.solution.worked_solution_md if question else '' }}</textarea>
-          <button type="button" class="btn" id="btn_ai_solution">Improve Solution</button>
-          <button type="button" class="btn" id="btn_sync_parameters">Sync to Parameters</button>
-          <button type="button" class="btn" id="btn_preview_solution">Preview Prompt</button>
-          <button type="button" class="btn" id="btn_undo_solution">Undo</button>
+          <label>Rendered Prompt (saved)</label>
+          <textarea name="prompt_md" id="prompt_md">{{ question.prompt_md if question else '' }}</textarea>
+          <div class="status">This updates automatically from template + parameters and is what gets exported.</div>
         </div>
-        <div class="card preview">
-          <strong>Solution Preview</strong>
-          <div id="solution_preview"></div>
+        <div class="card">
+          <label>Parameters (YAML mapping)</label>
+          <textarea name="solution_parameters_yaml" id="solution_parameters_yaml">{{ solution_parameters_yaml }}</textarea>
         </div>
       </div>
 
       <div class="row">
         <div class="card">
-          <label>Solution Python Code</label>
-          <textarea name="solution_python_code" id="solution_python_code">{{ question.solution.python_code if question else '' }}</textarea>
-          <button type="button" class="btn" id="btn_run_solution_code">Run Solution Code</button>
-          <button type="button" class="btn" id="btn_preview_solution_code">Preview Prompt</button>
+          <label>Answer Function Python (`solve(params)`)</label>
+          <textarea name="answer_python_code" id="answer_python_code">{{ question.solution.answer_python_code if question else '' }}</textarea>
+          <button type="button" class="btn" id="btn_generate_answer">Generate Answer Function</button>
+          <button type="button" class="btn" id="btn_run_harness">Run Deterministic Harness</button>
+          <button type="button" class="btn" id="btn_preview_answer">Preview Prompt</button>
         </div>
-        <div class="card">
-          <label>Solution Parameters (YAML mapping)</label>
-          <textarea name="solution_parameters_yaml" id="solution_parameters_yaml">{{ solution_parameters_yaml }}</textarea>
-          <div class="status" id="solution_runtime_status"></div>
+        <div class="card preview">
+          <strong>Computed Answer</strong>
+          <div id="computed_answer_preview">{{ question.solution.last_computed_answer_md if question else '' }}</div>
         </div>
       </div>
 
       <div id="mc_block" class="card">
-        <label>MC Options YAML (A-E)</label>
-        <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
-        <label>MC Generation Guidance (optional)</label>
-        <textarea
-          name="mc_options_guidance"
-          id="mc_options_guidance"
-          class="mc-guidance"
-          placeholder="Please enter text to provide model further instructions for generating or improving the MC options and distractions"
-        >{{ question.mc_options_guidance if question else '' }}</textarea>
-        <button type="button" class="btn" id="btn_ai_mc">Generate MC A-E</button>
+        <label>Distractor Functions YAML (4 entries)</label>
+        <textarea name="distractor_functions_yaml" id="distractor_functions_yaml">{{ distractor_functions_yaml }}</textarea>
+        <button type="button" class="btn" id="btn_generate_mc">Generate MC Choices</button>
         <button type="button" class="btn" id="btn_preview_mc">Preview Prompt</button>
-        <button type="button" class="btn" id="btn_undo_choices">Undo</button>
-        <div class="row">
-          <div class="card preview">
-            <strong>MC Preview (Answers)</strong>
-            <div id="mc_preview_answers"></div>
-          </div>
-          <div class="card preview">
-            <strong>MC Preview (Answers + Rationale)</strong>
-            <div id="mc_preview_rationale"></div>
-          </div>
+        <label>MC Choices YAML (A-E)</label>
+        <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
+        <div class="card preview">
+          <strong>MC Preview</strong>
+          <div id="mc_preview_answers"></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="card">
+          <label>Typed Solution (LLM-generated on demand)</label>
+          <textarea name="typed_solution_md" id="typed_solution_md">{{ question.solution.typed_solution_md if question else '' }}</textarea>
+          <button type="button" class="btn" id="btn_generate_typed_solution">Generate/Regenerate Typed Solution</button>
+          <button type="button" class="btn" id="btn_preview_typed_solution">Preview Prompt</button>
+          <div class="status" id="typed_solution_state">Status: {{ question.solution.typed_solution_status if question else "missing" }}</div>
+        </div>
+        <div class="card preview">
+          <strong>Typed Solution Preview</strong>
+          <div id="typed_solution_preview"></div>
         </div>
       </div>
 
       <div class="card" id="figures_section">
-        <label>Figures</label>
+        <label>Figures (embedded)</label>
         <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
-        <p class="help">Paste copied image (`Ctrl+V` / `Cmd+V`) anywhere on this page. Each image is embedded directly in YAML.</p>
         <div id="figures_preview"></div>
-        <button type="button" class="btn" id="btn_undo_figures">Undo Figure Change</button>
       </div>
 
       <div class="actions">
@@ -165,21 +130,6 @@
         <span id="save_status" class="status"></span>
       </div>
     </form>
-    <div id="image_modal" class="modal">
-      <img id="image_modal_img" alt="Expanded figure" />
-    </div>
-    <div id="prompt_preview_modal" class="modal">
-      <div class="prompt-preview-body">
-        <h3 id="prompt_preview_title"></h3>
-        <h4>System Prompt</h4>
-        <pre id="prompt_preview_system"></pre>
-        <h4>User Prompt</h4>
-        <pre id="prompt_preview_user"></pre>
-        <h4>Figures Sent</h4>
-        <pre id="prompt_preview_figures"></pre>
-        <button type="button" class="btn" id="btn_close_prompt_preview">Close</button>
-      </div>
-    </div>
 
     <script>
       const form = document.getElementById("question-form");
@@ -188,157 +138,80 @@
       const questionTypeEl = document.getElementById("question_type");
       const titleEl = document.getElementById("title");
       const pointsEl = document.getElementById("points");
+      const templateEl = document.getElementById("question_template_md");
       const promptEl = document.getElementById("prompt_md");
+      const paramsEl = document.getElementById("solution_parameters_yaml");
+      const answerCodeEl = document.getElementById("answer_python_code");
+      const distractorFnsEl = document.getElementById("distractor_functions_yaml");
       const choicesEl = document.getElementById("choices_yaml");
-      const mcGuidanceEl = document.getElementById("mc_options_guidance");
-      const solutionEl = document.getElementById("solution_md");
-      const solutionCodeEl = document.getElementById("solution_python_code");
-      const solutionParamsEl = document.getElementById("solution_parameters_yaml");
+      const typedSolutionEl = document.getElementById("typed_solution_md");
+      const typedStatusEl = document.getElementById("typed_solution_status");
+      const typedStateLabelEl = document.getElementById("typed_solution_state");
       const figuresInput = document.getElementById("figures_json");
-      const figuresPreview = document.getElementById("figures_preview");
       const promptPreview = document.getElementById("prompt_preview");
-      const solutionPreview = document.getElementById("solution_preview");
-      const titlePreviewEl = document.getElementById("title_preview");
+      const computedAnswerPreview = document.getElementById("computed_answer_preview");
       const mcBlock = document.getElementById("mc_block");
       const mcPreviewAnswers = document.getElementById("mc_preview_answers");
-      const mcPreviewRationale = document.getElementById("mc_preview_rationale");
-      const imageModal = document.getElementById("image_modal");
-      const imageModalImg = document.getElementById("image_modal_img");
-      const promptPreviewModal = document.getElementById("prompt_preview_modal");
-      const promptPreviewTitle = document.getElementById("prompt_preview_title");
-      const promptPreviewSystem = document.getElementById("prompt_preview_system");
-      const promptPreviewUser = document.getElementById("prompt_preview_user");
-      const promptPreviewFigures = document.getElementById("prompt_preview_figures");
-      const solutionRuntimeStatus = document.getElementById("solution_runtime_status");
-      const defaultChoicesYaml = `- label: A
-  content_md: ''
-  is_correct: true
-- label: B
-  content_md: ''
-  is_correct: false
-- label: C
-  content_md: ''
-  is_correct: false
-- label: D
-  content_md: ''
-  is_correct: false
-- label: E
-  content_md: ''
-  is_correct: false
-`;
+      const typedPreview = document.getElementById("typed_solution_preview");
 
       let autosaveTimer = null;
-      let solutionRunTimer = null;
-      let syncParamsTimer = null;
-      let pendingParamSync = false;
-      const undoStacks = { title: [], prompt: [], solution: [], choices: [], figures: [] };
-
-      function pushUndo(section, value) {
-        undoStacks[section].push(value);
-        if (undoStacks[section].length > 20) undoStacks[section].shift();
-      }
-
-      function undo(section, setter) {
-        const prev = undoStacks[section].pop();
-        if (prev !== undefined) {
-          setter(prev);
-          scheduleAutosave();
-        }
-      }
 
       function setStatus(text, cls) {
         saveStatus.textContent = text;
         saveStatus.className = `status ${cls || ""}`;
       }
 
-      function setRuntimeStatus(text, cls) {
-        solutionRuntimeStatus.textContent = text;
-        solutionRuntimeStatus.className = `status ${cls || ""}`;
-      }
-
-      function scientificNotationNormalize(text) {
-        return text.replace(/(\d+(?:\.\d+)?)\s*[xX]\s*10\s*-\s*(\d+)/g, "$1 \\\\times 10^{-$2}");
-      }
-
-      function normalizeMathDelimitersForPreview(text) {
-        return (text || "")
-          .replace(/\\\[(.*?)\\\]/gs, (_, inner) => `$$${inner}$$`)
-          .replace(/\\\((.*?)\\\)/gs, (_, inner) => `$${inner}$`);
-      }
-
-      function escapeHtml(text) {
-        return String(text || "")
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-      }
-
-      function renderTitlePreview() {
-        const normalized = normalizeMathDelimitersForPreview(titleEl.value || "");
-        titlePreviewEl.innerHTML = normalized
-          ? marked.parseInline(escapeHtml(normalized))
-          : "<em>(untitled)</em>";
-        if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([titlePreviewEl]);
-        }
-      }
-
-      function renderMarkdown() {
-        promptPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(promptEl.value));
-        solutionPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(solutionEl.value));
-        if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([promptPreview, solutionPreview]);
-        }
-      }
-
-      function renderMCPreviews() {
-        if (!isMC()) {
-          mcPreviewAnswers.innerHTML = "";
-          mcPreviewRationale.innerHTML = "";
-          return;
-        }
-        let choices = [];
-        try {
-          choices = jsyaml.load(choicesEl.value) || [];
-        } catch {
-          mcPreviewAnswers.innerHTML = "<em>Invalid YAML</em>";
-          mcPreviewRationale.innerHTML = "<em>Invalid YAML</em>";
-          return;
-        }
-        choices = choices.slice().sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
-        mcPreviewAnswers.innerHTML = choices.map((c) => {
-          const content = marked.parseInline(normalizeMathDelimitersForPreview(String(c.content_md || "")));
-          return `<div class="preview-item"><strong>${c.label || "?"}.</strong> ${content}</div>`;
-        }).join("");
-        mcPreviewRationale.innerHTML = choices.map((c) => {
-          const content = marked.parseInline(normalizeMathDelimitersForPreview(String(c.content_md || "")));
-          const rationaleText = c.rationale
-            ? marked.parseInline(normalizeMathDelimitersForPreview(String(c.rationale)))
-            : "";
-          const isCorrect = Boolean(c.is_correct);
-          const answerLine = isCorrect
-            ? `<strong>${c.label || "?"}. ${content}</strong>`
-            : `<span>${c.label || "?"}. ${content}</span>`;
-          const rationale = c.rationale ? `<div class="preview-rationale">Rationale: ${rationaleText}</div>` : "";
-          return `<div class="preview-item">${answerLine}${rationale}</div>`;
-        }).join("");
-        if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([mcPreviewAnswers, mcPreviewRationale]);
-        }
-      }
-
       function isMC() {
         return questionTypeEl.value === "multiple_choice";
       }
 
-      function updateMCVisibility() {
-        if (isMC() && !(choicesEl.value || "").trim()) {
-          choicesEl.value = defaultChoicesYaml;
+      function setTypedStatus(status) {
+        typedStatusEl.value = status;
+        typedStateLabelEl.textContent = `Status: ${status}`;
+      }
+
+      function renderTemplate() {
+        let params = {};
+        try {
+          params = jsyaml.load(paramsEl.value || "{}") || {};
+        } catch {
+          params = {};
         }
+        let out = templateEl.value || "";
+        for (const [k, v] of Object.entries(params)) {
+          out = out.split("{{" + k + "}}").join(String(v));
+        }
+        promptEl.value = out;
+        promptPreview.innerHTML = marked.parse(out || "");
+      }
+
+      function renderMCPreview() {
+        if (!isMC()) {
+          mcPreviewAnswers.innerHTML = "";
+          return;
+        }
+        let choices = [];
+        try {
+          choices = jsyaml.load(choicesEl.value || "[]") || [];
+        } catch {
+          mcPreviewAnswers.innerHTML = "<em>Invalid YAML</em>";
+          return;
+        }
+        choices = choices.slice().sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
+        mcPreviewAnswers.innerHTML = choices.map((c) => {
+          const text = marked.parseInline(String(c.content_md || ""));
+          const marker = c.is_correct ? " <strong>(correct)</strong>" : "";
+          const rationale = c.rationale ? `<div><em>${String(c.rationale)}</em></div>` : "";
+          return `<div><strong>${String(c.label || "?")}.</strong> ${text}${marker}${rationale}</div>`;
+        }).join("");
+      }
+
+      function renderTypedPreview() {
+        typedPreview.innerHTML = marked.parse(typedSolutionEl.value || "");
+      }
+
+      function updateMCVisibility() {
         mcBlock.style.display = isMC() ? "block" : "none";
-        renderMCPreviews();
       }
 
       function serializePayload() {
@@ -346,11 +219,13 @@
           title: titleEl.value,
           question_type: questionTypeEl.value,
           prompt_md: promptEl.value,
-          mc_options_guidance: mcGuidanceEl.value,
+          question_template_md: templateEl.value,
+          solution_parameters_yaml: paramsEl.value,
+          answer_python_code: answerCodeEl.value,
+          distractor_functions_yaml: distractorFnsEl.value,
           choices_yaml: choicesEl.value,
-          solution_md: solutionEl.value,
-          solution_python_code: solutionCodeEl.value,
-          solution_parameters_yaml: solutionParamsEl.value,
+          typed_solution_md: typedSolutionEl.value,
+          typed_solution_status: typedStatusEl.value,
           figures_json: figuresInput.value || "[]",
           points: Number(pointsEl.value || 5),
         };
@@ -370,6 +245,7 @@
           setStatus(`Save error: ${data.error || res.statusText}`, "warn");
           return;
         }
+        if (data.typed_solution_status) setTypedStatus(data.typed_solution_status);
         setStatus("Saved", "good");
       }
 
@@ -378,361 +254,147 @@
         if (autosaveTimer) clearTimeout(autosaveTimer);
         autosaveTimer = setTimeout(() => {
           autosaveNow().catch((err) => setStatus(`Save error: ${err.message}`, "warn"));
-        }, 1500);
-      }
-
-      function renderFigures(scrollToEnd = false) {
-        const figures = JSON.parse(figuresInput.value || "[]");
-        figuresPreview.innerHTML = "";
-        for (let i = 0; i < figures.length; i++) {
-          const f = figures[i];
-          const card = document.createElement("div");
-          card.className = "figure-card";
-          const img = document.createElement("img");
-          img.className = "thumb";
-          img.alt = f.caption || f.id;
-          img.src = `data:${f.mime_type};base64,${f.data_base64}`;
-          img.style.cursor = "zoom-in";
-          img.addEventListener("click", () => {
-            imageModalImg.src = img.src;
-            imageModal.style.display = "flex";
-          });
-          const del = document.createElement("button");
-          del.type = "button";
-          del.textContent = `Delete ${f.id}`;
-          del.className = "btn";
-          del.addEventListener("click", () => {
-            pushUndo("figures", figuresInput.value);
-            const next = JSON.parse(figuresInput.value || "[]");
-            next.splice(i, 1);
-            figuresInput.value = JSON.stringify(next);
-            renderFigures();
-            scheduleAutosave();
-          });
-          card.appendChild(img);
-          card.appendChild(del);
-          figuresPreview.appendChild(card);
-        }
-        if (scrollToEnd) {
-          document.getElementById("figures_section").scrollIntoView({ behavior: "smooth", block: "end" });
-        }
-      }
-
-      async function sha256FromBytes(bytes) {
-        const hash = await crypto.subtle.digest("SHA-256", bytes);
-        return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
-      }
-
-      async function pasteImageToFigures(file) {
-        const arrayBuffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = "";
-        for (const b of bytes) binary += String.fromCharCode(b);
-        const dataBase64 = btoa(binary);
-        const hash = await sha256FromBytes(bytes);
-        pushUndo("figures", figuresInput.value);
-        const figures = JSON.parse(figuresInput.value || "[]");
-        figures.push({
-          id: `fig_${figures.length + 1}`,
-          mime_type: file.type || "image/png",
-          data_base64: dataBase64,
-          sha256: hash,
-          caption: ""
-        });
-        figuresInput.value = JSON.stringify(figures);
-        renderFigures(true);
-        setStatus("Image pasted", "good");
-        scheduleAutosave();
-      }
-
-      async function aiApply(btn, endpoint, applyFn) {
-        const qid = questionIdEl.value.trim();
-        if (!qid) {
-          setStatus("Set question ID before AI actions.", "warn");
-          return;
-        }
-        btn.disabled = true;
-        setStatus("Calling AI...", "warn");
-        try {
-          await autosaveNow();
-          const res = await fetch(`/questions/${qid}${endpoint}`, { method: "POST" });
-          const data = await res.json();
-          if (!res.ok || !data.ok) {
-            throw new Error(data.error || res.statusText);
-          }
-          applyFn(data);
-          if (data.warning) {
-            setStatus(`AI update applied with warning: ${data.warning}`, "warn");
-          } else {
-            setStatus("AI update applied", "good");
-          }
-          scheduleAutosave();
-        } catch (err) {
-          setStatus(`AI error: ${err.message}`, "warn");
-        } finally {
-          btn.disabled = false;
-        }
-      }
-
-      async function runSolutionCode(showSaving = true) {
-        const qid = questionIdEl.value.trim();
-        if (!qid) {
-          setRuntimeStatus("Set question ID before running solution code.", "warn");
-          return;
-        }
-        // Always autosave first so server-side run uses latest code/parameters.
-        await autosaveNow();
-        setRuntimeStatus("Running solution code...", "warn");
-        const res = await fetch(`/questions/${qid}/solution-code/run`, { method: "POST" });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || res.statusText);
-        }
-        if (data.solution_md) solutionEl.value = data.solution_md;
-        if (data.choices_yaml && isMC()) choicesEl.value = data.choices_yaml;
-        renderMarkdown();
-        renderMCPreviews();
-        setRuntimeStatus("Solution code ran successfully.", "good");
-        if (data.warning) {
-          setStatus(`Run warning: ${data.warning} Prompt/solution sync will run automatically.`, "warn");
-        } else {
-          setStatus("Solution code ran successfully. Prompt/solution sync will run automatically.", "good");
-        }
-        if (pendingParamSync) {
-          await syncParametersFromValues(true);
-        }
-        scheduleAutosave();
-      }
-
-      function scheduleRunSolutionCode() {
-        if (solutionRunTimer) clearTimeout(solutionRunTimer);
-        solutionRunTimer = setTimeout(() => {
-          runSolutionCode(false).catch((err) => {
-            setRuntimeStatus(`Run error: ${err.message}`, "warn");
-            setStatus(`Run error: ${err.message}`, "warn");
-          });
         }, 1200);
       }
 
-      async function syncParametersFromValues(auto = false) {
-        const qid = questionIdEl.value.trim();
-        if (!qid) return;
-        pendingParamSync = false;
-        try {
-          if (!auto) {
-            setStatus("Syncing prompt/solution to parameters...", "warn");
-          }
-          await autosaveNow();
-          const res = await fetch(`/questions/${qid}/ai/sync-parameters`, { method: "POST" });
-          const data = await res.json();
-          if (!res.ok || !data.ok) {
-            throw new Error(data.error || res.statusText);
-          }
-          pushUndo("prompt", promptEl.value);
-          pushUndo("solution", solutionEl.value);
-          promptEl.value = data.prompt_md || promptEl.value;
-          solutionEl.value = data.solution_md || solutionEl.value;
-          if (data.choices_yaml && isMC()) choicesEl.value = data.choices_yaml;
-          if (data.run_error) {
-            setRuntimeStatus(`Run error: ${data.run_error}`, "warn");
-          }
-          renderMarkdown();
-          renderMCPreviews();
-          setStatus("Prompt and worked solution synced to parameters.", "good");
-          scheduleAutosave();
-        } catch (err) {
-          setStatus(`Parameter sync error: ${err.message}`, "warn");
-        }
-      }
-
-      function scheduleSyncParameters() {
-        pendingParamSync = true;
-        if (syncParamsTimer) clearTimeout(syncParamsTimer);
-        syncParamsTimer = setTimeout(() => {
-          if (!pendingParamSync) return;
-          syncParametersFromValues(true).catch((err) => {
-            setStatus(`Parameter sync error: ${err.message}`, "warn");
-          });
-        }, 2200);
-      }
-
-      async function previewAiPrompt(action, label) {
+      async function callEndpoint(endpoint, applyFn) {
         const qid = questionIdEl.value.trim();
         if (!qid) {
-          setStatus("Set question ID before AI actions.", "warn");
+          setStatus("Set question ID first.", "warn");
           return;
         }
-        setStatus("Loading prompt preview...", "warn");
+        await autosaveNow();
+        const res = await fetch(`/questions/${qid}${endpoint}`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          const collisions = data.collisions ? ` ${data.collisions.join(" | ")}` : "";
+          throw new Error((data.error || res.statusText) + collisions);
+        }
+        applyFn(data);
+        scheduleAutosave();
+      }
+
+      document.getElementById("btn_rewrite").addEventListener("click", async () => {
         try {
-          await autosaveNow();
-          const res = await fetch(`/questions/${qid}/ai/preview/${action}`, { method: "POST" });
-          const data = await res.json();
-          if (!res.ok || !data.ok) {
-            throw new Error(data.error || res.statusText);
-          }
-          promptPreviewTitle.textContent = `${label} Prompt Preview`;
-          promptPreviewSystem.textContent = data.system_prompt || "";
-          promptPreviewUser.textContent = data.user_prompt || "";
-          const figs = data.figure_placeholders || [];
-          promptPreviewFigures.textContent = figs.length ? figs.join("\n") : "(none)";
-          promptPreviewModal.style.display = "flex";
-          setStatus("Prompt preview ready", "good");
+          await callEndpoint("/ai/rewrite-and-parameterize", (data) => {
+            if (data.title && !titleEl.value.trim()) titleEl.value = data.title;
+            templateEl.value = data.question_template_md || templateEl.value;
+            paramsEl.value = data.solution_parameters_yaml || paramsEl.value;
+            promptEl.value = data.prompt_md || promptEl.value;
+            renderTemplate();
+            setTypedStatus("stale");
+          });
+          setStatus("Rewrite + parameter extraction complete.", "good");
+        } catch (err) {
+          setStatus(`AI error: ${err.message}`, "warn");
+        }
+      });
+
+      document.getElementById("btn_generate_answer").addEventListener("click", async () => {
+        try {
+          await callEndpoint("/ai/generate-answer-function", (data) => {
+            answerCodeEl.value = data.answer_python_code || "";
+            setTypedStatus("stale");
+          });
+          setStatus("Answer function generated.", "good");
+        } catch (err) {
+          setStatus(`AI error: ${err.message}`, "warn");
+        }
+      });
+
+      document.getElementById("btn_run_harness").addEventListener("click", async () => {
+        try {
+          await callEndpoint("/harness/run", (data) => {
+            computedAnswerPreview.innerHTML = marked.parse(data.computed_answer_md || "");
+            if (data.choices_yaml) choicesEl.value = data.choices_yaml;
+            renderMCPreview();
+          });
+          setStatus("Harness run complete.", "good");
+        } catch (err) {
+          setStatus(`Harness error: ${err.message}`, "warn");
+        }
+      });
+
+      document.getElementById("btn_generate_mc").addEventListener("click", async () => {
+        try {
+          await callEndpoint("/ai/generate-mc-distractors", (data) => {
+            distractorFnsEl.value = data.distractor_functions_yaml || distractorFnsEl.value;
+            choicesEl.value = data.choices_yaml || choicesEl.value;
+            renderMCPreview();
+            setTypedStatus("stale");
+          });
+          setStatus("MC distractors generated with unique options.", "good");
+        } catch (err) {
+          setStatus(`MC generation error: ${err.message}`, "warn");
+        }
+      });
+
+      document.getElementById("btn_generate_typed_solution").addEventListener("click", async () => {
+        try {
+          await callEndpoint("/ai/generate-typed-solution", (data) => {
+            typedSolutionEl.value = data.typed_solution_md || "";
+            renderTypedPreview();
+            setTypedStatus(data.typed_solution_status || "fresh");
+          });
+          setStatus("Typed solution generated.", "good");
+        } catch (err) {
+          setStatus(`AI error: ${err.message}`, "warn");
+        }
+      });
+
+      document.getElementById("btn_preview_rewrite").addEventListener("click", async () => {
+        try {
+          await callEndpoint("/ai/preview/rewrite-and-parameterize", (data) => {
+            alert(`System prompt:\n\n${data.system_prompt}\n\nUser prompt:\n\n${data.user_prompt}`);
+          });
         } catch (err) {
           setStatus(`Preview error: ${err.message}`, "warn");
         }
-      }
-
-      document.addEventListener("paste", async (event) => {
-        const items = event.clipboardData?.items || [];
-        for (const item of items) {
-          if (item.type.startsWith("image/")) {
-            const file = item.getAsFile();
-            if (file) {
-              event.preventDefault();
-              await pasteImageToFigures(file);
-              return;
-            }
-          }
-        }
-        const pasted = event.clipboardData?.getData("text/plain");
-        if (pasted) {
-          const normalized = scientificNotationNormalize(pasted);
-          if (normalized !== pasted) {
-            const active = document.activeElement;
-            if (active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT")) {
-              event.preventDefault();
-              const start = active.selectionStart || 0;
-              const end = active.selectionEnd || 0;
-              active.value = active.value.slice(0, start) + normalized + active.value.slice(end);
-              if (active === promptEl) renderMarkdown();
-              if (active === solutionEl) renderMarkdown();
-              scheduleAutosave();
-            }
-          }
-        }
       });
-
-      document.getElementById("btn_ai_title").addEventListener("click", async (e) => {
-        pushUndo("title", titleEl.value);
-        await aiApply(e.target, "/ai/suggest-title", (data) => {
-          titleEl.value = data.title || "";
-          renderTitlePreview();
-        });
-      });
-      document.getElementById("btn_preview_title").addEventListener("click", () => previewAiPrompt("suggest-title", "Generate Title"));
-      document.getElementById("btn_ai_prompt").addEventListener("click", async (e) => {
-        pushUndo("prompt", promptEl.value);
-        await aiApply(e.target, "/ai/improve-prompt", (data) => { promptEl.value = data.prompt_md || ""; renderMarkdown(); });
-      });
-      document.getElementById("btn_preview_prompt").addEventListener("click", () => previewAiPrompt("improve-prompt", "Improve Text"));
-      document.getElementById("btn_ai_solution").addEventListener("click", async (e) => {
-        pushUndo("solution", solutionEl.value);
-        await aiApply(e.target, "/ai/draft-solution", (data) => {
-          solutionEl.value = data.solution_md || "";
-          solutionCodeEl.value = data.solution_python_code || solutionCodeEl.value;
-          solutionParamsEl.value = data.solution_parameters_yaml || solutionParamsEl.value;
-          if (data.choices_yaml && isMC()) choicesEl.value = data.choices_yaml;
-          renderMarkdown();
-          renderMCPreviews();
-        });
-      });
-      document.getElementById("btn_sync_parameters").addEventListener("click", async (e) => {
-        e.target.disabled = true;
+      document.getElementById("btn_preview_answer").addEventListener("click", async () => {
         try {
-          await syncParametersFromValues(false);
-        } finally {
-          e.target.disabled = false;
-        }
-      });
-      document.getElementById("btn_preview_solution").addEventListener("click", () => previewAiPrompt("draft-solution", "Improve Solution"));
-      document.getElementById("btn_preview_solution_code").addEventListener("click", () => previewAiPrompt("draft-solution-with-code", "Draft Solution + Code"));
-      document.getElementById("btn_run_solution_code").addEventListener("click", async () => {
-        try {
-          await runSolutionCode(true);
+          await callEndpoint("/ai/preview/generate-answer-function", (data) => {
+            alert(`System prompt:\n\n${data.system_prompt}\n\nUser prompt:\n\n${data.user_prompt}`);
+          });
         } catch (err) {
-          setRuntimeStatus(`Run error: ${err.message}`, "warn");
-          setStatus(`Run error: ${err.message}`, "warn");
+          setStatus(`Preview error: ${err.message}`, "warn");
         }
       });
-      document.getElementById("btn_ai_mc").addEventListener("click", async (e) => {
-        pushUndo("choices", choicesEl.value);
-        pushUndo("solution", solutionEl.value);
-        await aiApply(e.target, "/ai/distractors", (data) => {
-          choicesEl.value = data.choices_yaml || "";
-          solutionEl.value = data.solution_md || solutionEl.value;
-          renderMarkdown();
-          renderMCPreviews();
-        });
+      document.getElementById("btn_preview_mc").addEventListener("click", async () => {
+        try {
+          await callEndpoint("/ai/preview/generate-mc-distractors", (data) => {
+            alert(`System prompt:\n\n${data.system_prompt}\n\nUser prompt:\n\n${data.user_prompt}`);
+          });
+        } catch (err) {
+          setStatus(`Preview error: ${err.message}`, "warn");
+        }
       });
-      document.getElementById("btn_preview_mc").addEventListener("click", () => previewAiPrompt("distractors", "Generate MC"));
+      document.getElementById("btn_preview_typed_solution").addEventListener("click", async () => {
+        try {
+          await callEndpoint("/ai/preview/generate-typed-solution", (data) => {
+            alert(`System prompt:\n\n${data.system_prompt}\n\nUser prompt:\n\n${data.user_prompt}`);
+          });
+        } catch (err) {
+          setStatus(`Preview error: ${err.message}`, "warn");
+        }
+      });
 
-      document.getElementById("btn_undo_title").addEventListener("click", () => undo("title", (v) => {
-        titleEl.value = v;
-        renderTitlePreview();
-      }));
-      document.getElementById("btn_undo_prompt").addEventListener("click", () => undo("prompt", (v) => { promptEl.value = v; renderMarkdown(); }));
-      document.getElementById("btn_undo_solution").addEventListener("click", () => undo("solution", (v) => { solutionEl.value = v; renderMarkdown(); }));
-      document.getElementById("btn_undo_choices").addEventListener("click", () => undo("choices", (v) => { choicesEl.value = v; }));
-      document.getElementById("btn_undo_figures").addEventListener("click", () => undo("figures", (v) => { figuresInput.value = v; renderFigures(); }));
-
-      [questionTypeEl, titleEl, promptEl, mcGuidanceEl, choicesEl, solutionEl, solutionCodeEl, solutionParamsEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, templateEl, promptEl, paramsEl, answerCodeEl, distractorFnsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
-          renderTitlePreview();
-          renderMarkdown();
+          renderTemplate();
+          renderMCPreview();
+          renderTypedPreview();
+          if (el === paramsEl || el === answerCodeEl || el === distractorFnsEl) setTypedStatus("stale");
           updateMCVisibility();
-          renderMCPreviews();
-          if (el === solutionCodeEl || el === solutionParamsEl) {
-            if (el === solutionParamsEl) {
-              setStatus("Parameters changed. Re-running code and syncing prompt/solution...", "warn");
-              scheduleSyncParameters();
-            }
-            scheduleRunSolutionCode();
-          }
-          scheduleAutosave();
-        });
-        el.addEventListener("change", () => {
-          renderTitlePreview();
-          renderMarkdown();
-          updateMCVisibility();
-          renderMCPreviews();
-          if (el === solutionCodeEl || el === solutionParamsEl) {
-            if (el === solutionParamsEl) {
-              setStatus("Parameters changed. Re-running code and syncing prompt/solution...", "warn");
-              scheduleSyncParameters();
-            }
-            scheduleRunSolutionCode();
-          }
           scheduleAutosave();
         });
       });
 
-      imageModal.addEventListener("click", () => {
-        imageModal.style.display = "none";
-        imageModalImg.src = "";
-      });
-      document.getElementById("btn_close_prompt_preview").addEventListener("click", () => {
-        promptPreviewModal.style.display = "none";
-      });
-      promptPreviewModal.addEventListener("click", (event) => {
-        if (event.target === promptPreviewModal) {
-          promptPreviewModal.style.display = "none";
-        }
-      });
-
-      window.addEventListener("beforeunload", (event) => {
-        if (saveStatus.textContent.includes("Unsaved")) {
-          event.preventDefault();
-          event.returnValue = "";
-        }
-      });
-
-      renderTitlePreview();
-      renderMarkdown();
+      renderTemplate();
+      renderMCPreview();
+      renderTypedPreview();
       updateMCVisibility();
-      renderMCPreviews();
-      renderFigures();
       setStatus("Ready", "good");
-      setRuntimeStatus("Ready", "good");
     </script>
   </body>
 </html>

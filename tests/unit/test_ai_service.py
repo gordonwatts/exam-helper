@@ -22,36 +22,39 @@ class _FakeClient:
         self.responses = _FakeResponses(output_text)
 
 
-def test_ai_service_improve_prompt(monkeypatch) -> None:
+def test_ai_service_rewrite_parameterize(monkeypatch) -> None:
     from exam_helper import ai_service as mod
 
-    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient("better prompt"))
+    payload = """{"question_template_md":"A car moves at {{v}} m/s","parameters":{"v":12},"title":"Car Motion"}"""
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
     svc = AIService(api_key="k")
-    q = Question(id="q1", title="t", prompt_md="old")
-    result = svc.improve_prompt(q)
-    assert result.text == "better prompt"
-    assert result.usage.total_tokens == 0
+    q = Question(id="q1", title="", prompt_md="old")
+    out = svc.rewrite_parameterize(q)
+    assert out.question_template_md == "A car moves at {{v}} m/s"
+    assert out.parameters["v"] == 12
+    assert out.title == "Car Motion"
 
 
-def test_ai_service_generate_mc_options(monkeypatch) -> None:
+def test_ai_service_generate_answer_function(monkeypatch) -> None:
     from exam_helper import ai_service as mod
 
-    payload = """```json
-[
-  {"label":"A","content_md":"1","is_correct":false,"rationale":"r1"},
-  {"label":"B","content_md":"2","is_correct":true,"rationale":"r2"},
-  {"label":"C","content_md":"3","is_correct":false,"rationale":"r3"},
-  {"label":"D","content_md":"4","is_correct":false,"rationale":"r4"},
-  {"label":"E","content_md":"5","is_correct":false,"rationale":"r5"}
-]
-```"""
+    payload = """{"answer_python_code":"def solve(params):\\n    return {'answer_md':'x','final_answer':'x'}"}"""
     monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
     svc = AIService(api_key="k")
     q = Question(id="q1", title="t", prompt_md="old")
-    out, usage = svc.generate_mc_options_from_solution(q, "Problem (verbatim): old")
-    assert len(out) == 5
-    assert sum(1 for c in out if c.is_correct) == 1
-    assert usage.total_tokens == 0
+    out = svc.generate_answer_function(q)
+    assert "def solve(params)" in out.answer_python_code
+
+
+def test_ai_service_generate_distractor_functions(monkeypatch) -> None:
+    from exam_helper import ai_service as mod
+
+    payload = """{"distractors":[{"id":"d1","python_code":"def distractor(params):\\n    return {'distractor_md':'1','rationale':'r'}"},{"id":"d2","python_code":"def distractor(params):\\n    return {'distractor_md':'2','rationale':'r'}"},{"id":"d3","python_code":"def distractor(params):\\n    return {'distractor_md':'3','rationale':'r'}"},{"id":"d4","python_code":"def distractor(params):\\n    return {'distractor_md':'4','rationale':'r'}"}]}"""
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="t", prompt_md="old")
+    out = svc.generate_distractor_functions(q)
+    assert len(out.distractors) == 4
 
 
 def test_usage_parses_total_cost_from_formatted_string() -> None:
@@ -72,23 +75,3 @@ def test_usage_parses_total_cost_from_formatted_string() -> None:
     usage = svc._usage_from_response(_Response())
     assert usage.total_tokens == 18
     assert abs(usage.total_cost_usd - 0.0123) < 1e-9
-
-
-def test_usage_parses_split_input_and_output_costs() -> None:
-    svc = AIService(api_key="k")
-
-    class _Usage:
-        def model_dump(self):
-            return {
-                "input_tokens": 20,
-                "output_tokens": 5,
-                "input_cost": "0.004",
-                "output_cost": "0.0015",
-            }
-
-    class _Response:
-        usage = _Usage()
-
-    usage = svc._usage_from_response(_Response())
-    assert usage.total_tokens == 25
-    assert abs(usage.total_cost_usd - 0.0055) < 1e-9
