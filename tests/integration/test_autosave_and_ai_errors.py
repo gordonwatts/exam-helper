@@ -19,7 +19,7 @@ def _seed_question(client: TestClient, qid: str, qtype: str = "free_response") -
             "question_template_md": "old template",
             "solution_parameters_yaml": "{}",
             "answer_python_code": "",
-            "distractor_functions_yaml": "[]",
+            "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
             "typed_solution_status": "missing",
@@ -45,7 +45,7 @@ def test_autosave_marks_typed_solution_stale_on_parameter_change(tmp_path) -> No
             "question_template_md": "v={{v}}",
             "solution_parameters_yaml": "{v: 10}",
             "answer_python_code": "def solve(params):\n    return {'answer_md':'10','final_answer':'10'}\n",
-            "distractor_functions_yaml": "[]",
+            "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "Draft",
             "typed_solution_status": "fresh",
@@ -62,7 +62,7 @@ def test_autosave_marks_typed_solution_stale_on_parameter_change(tmp_path) -> No
             "question_template_md": "v={{v}}",
             "solution_parameters_yaml": "{v: 11}",
             "answer_python_code": "def solve(params):\n    return {'answer_md':'11','final_answer':'11'}\n",
-            "distractor_functions_yaml": "[]",
+            "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "Draft",
             "typed_solution_status": "fresh",
@@ -113,11 +113,22 @@ def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
             "question_template_md": "P",
             "solution_parameters_yaml": "{}",
             "answer_python_code": "def solve(params):\n    return {'answer_md':'2','final_answer':'2'}\n",
-            "distractor_functions_yaml": (
-                "- id: d1\n  python_code: |\n    def distractor(params):\n      return {'distractor_md':'2','rationale':'dup'}\n"
-                "- id: d2\n  python_code: |\n    def distractor(params):\n      return {'distractor_md':'3','rationale':'r'}\n"
-                "- id: d3\n  python_code: |\n    def distractor(params):\n      return {'distractor_md':'4','rationale':'r'}\n"
-                "- id: d4\n  python_code: |\n    def distractor(params):\n      return {'distractor_md':'5','rationale':'r'}\n"
+            "distractor_functions_text": (
+                "# distractor: d1\n"
+                "def distractor(params):\n"
+                "    return {'distractor_md':'2','rationale':'dup'}\n"
+                "---\n"
+                "# distractor: d2\n"
+                "def distractor(params):\n"
+                "    return {'distractor_md':'3','rationale':'r'}\n"
+                "---\n"
+                "# distractor: d3\n"
+                "def distractor(params):\n"
+                "    return {'distractor_md':'4','rationale':'r'}\n"
+                "---\n"
+                "# distractor: d4\n"
+                "def distractor(params):\n"
+                "    return {'distractor_md':'5','rationale':'r'}\n"
             ),
             "choices_yaml": "[]",
             "typed_solution_md": "",
@@ -147,7 +158,7 @@ def test_generate_mc_distractors_retries_and_fails_with_actionable_error(tmp_pat
             "question_template_md": "P",
             "solution_parameters_yaml": "{}",
             "answer_python_code": "def solve(params):\n    return {'answer_md':'2','final_answer':'2'}\n",
-            "distractor_functions_yaml": "[]",
+            "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
             "typed_solution_status": "missing",

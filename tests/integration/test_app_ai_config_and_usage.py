@@ -34,7 +34,7 @@ def test_question_editor_has_new_workflow_hooks(tmp_path) -> None:
             "question_template_md": "P",
             "choices_yaml": "[]",
             "typed_solution_md": "",
-            "distractor_functions_yaml": "[]",
+            "distractor_functions_text": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -60,7 +60,7 @@ def test_usage_totals_accumulate_and_reset(tmp_path) -> None:
             "prompt_md": "P",
             "question_template_md": "P",
             "choices_yaml": "[]",
-            "distractor_functions_yaml": "[]",
+            "distractor_functions_text": "",
             "typed_solution_md": "",
             "figures_json": "[]",
             "points": 5,
@@ -103,7 +103,7 @@ def test_prompt_preview_endpoint_returns_composed_payload(tmp_path) -> None:
             "prompt_md": "P",
             "question_template_md": "P",
             "choices_yaml": "[]",
-            "distractor_functions_yaml": "[]",
+            "distractor_functions_text": "",
             "typed_solution_md": "",
             "figures_json": "[]",
             "points": 5,
@@ -125,4 +125,3 @@ def test_prompt_preview_endpoint_returns_composed_payload(tmp_path) -> None:
     payload = resp.json()
     assert payload["ok"] is True
     assert payload["system_prompt"] == "System"
-

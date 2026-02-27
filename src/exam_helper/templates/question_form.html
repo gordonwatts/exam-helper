@@ -16,6 +16,20 @@
       .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8rem; }
       .card { border: 1px solid #ddd; border-radius: 6px; padding: 0.8rem; margin-top: 0.8rem; }
       .preview { background: #fafafa; max-height: 360px; overflow: auto; }
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 999;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.72);
+        align-items: center;
+        justify-content: center;
+      }
+      .prompt-preview-body { background: #fff; max-width: 860px; width: 92vw; max-height: 88vh; overflow: auto; border-radius: 6px; padding: 1rem; }
+      .prompt-preview-body pre { white-space: pre-wrap; word-break: break-word; background: #f7f7f7; padding: 0.6rem; border-radius: 4px; border: 1px solid #ddd; }
       .status { margin-top: 0.5rem; min-height: 1.2rem; font-size: 0.95rem; }
       .good { color: #0a6; }
       .warn { color: #c50; }
@@ -40,7 +54,7 @@
       <div class="row3">
         <div>
           <label>Question ID</label>
-          <input name="question_id" id="question_id" value="{{ question.id if question else '' }}" required />
+          <input name="question_id" id="question_id" value="{{ question.id if question else question_id_default }}" required />
         </div>
         <div>
           <label>Type</label>
@@ -98,15 +112,21 @@
       </div>
 
       <div id="mc_block" class="card">
-        <label>Distractor Functions YAML (4 entries)</label>
-        <textarea name="distractor_functions_yaml" id="distractor_functions_yaml">{{ distractor_functions_yaml }}</textarea>
+        <label>Distractor Functions (text blocks, one per distractor)</label>
+        <textarea name="distractor_functions_text" id="distractor_functions_text">{{ distractor_functions_text }}</textarea>
         <button type="button" class="btn ai-action" id="btn_generate_mc" {% if not ai_enabled %}disabled{% endif %}>Generate MC Choices</button>
         <button type="button" class="btn ai-action" id="btn_preview_mc" {% if not ai_enabled %}disabled{% endif %}>Preview Prompt</button>
         <label>MC Choices YAML (A-E)</label>
         <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
-        <div class="card preview">
-          <strong>MC Preview</strong>
-          <div id="mc_preview_answers"></div>
+        <div class="row">
+          <div class="card preview">
+            <strong>MC Preview (Answers)</strong>
+            <div id="mc_preview_answers"></div>
+          </div>
+          <div class="card preview">
+            <strong>MC Preview (Answers + Explanations)</strong>
+            <div id="mc_preview_rationale"></div>
+          </div>
         </div>
       </div>
 
@@ -135,11 +155,15 @@
         <span id="save_status" class="status"></span>
       </div>
     </form>
-    <div class="card preview">
-      <strong>AI Prompt Preview</strong>
-      <div class="status" id="prompt_preview_title">Ready</div>
-      <pre id="prompt_preview_system"></pre>
-      <pre id="prompt_preview_user"></pre>
+    <div id="prompt_preview_modal" class="modal">
+      <div class="prompt-preview-body">
+        <h3 id="prompt_preview_title"></h3>
+        <h4>System Prompt</h4>
+        <pre id="prompt_preview_system"></pre>
+        <h4>User Prompt</h4>
+        <pre id="prompt_preview_user"></pre>
+        <button type="button" class="btn" id="btn_close_prompt_preview">Close</button>
+      </div>
     </div>
 
     <script>
@@ -153,7 +177,7 @@
       const promptEl = document.getElementById("prompt_md");
       const paramsEl = document.getElementById("solution_parameters_yaml");
       const answerCodeEl = document.getElementById("answer_python_code");
-      const distractorFnsEl = document.getElementById("distractor_functions_yaml");
+      const distractorFnsEl = document.getElementById("distractor_functions_text");
       const choicesEl = document.getElementById("choices_yaml");
       const typedSolutionEl = document.getElementById("typed_solution_md");
       const typedStatusEl = document.getElementById("typed_solution_status");
@@ -163,10 +187,12 @@
       const computedAnswerPreview = document.getElementById("computed_answer_preview");
       const mcBlock = document.getElementById("mc_block");
       const mcPreviewAnswers = document.getElementById("mc_preview_answers");
+      const mcPreviewRationale = document.getElementById("mc_preview_rationale");
       const typedPreview = document.getElementById("typed_solution_preview");
       const promptPreviewTitleEl = document.getElementById("prompt_preview_title");
       const promptPreviewSystemEl = document.getElementById("prompt_preview_system");
       const promptPreviewUserEl = document.getElementById("prompt_preview_user");
+      const promptPreviewModal = document.getElementById("prompt_preview_modal");
 
       let autosaveTimer = null;
 
@@ -193,7 +219,8 @@
         }
         let out = templateEl.value || "";
         for (const [k, v] of Object.entries(params)) {
-          out = out.split("{{" + k + "}}").join(String(v));
+          const re = new RegExp("\\{\\{\\s*" + String(k).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\}\\}", "g");
+          out = out.replace(re, String(v));
         }
         promptEl.value = out;
         promptPreview.innerHTML = marked.parse(out || "");
@@ -202,6 +229,7 @@
       function renderMCPreview() {
         if (!isMC()) {
           mcPreviewAnswers.innerHTML = "";
+          mcPreviewRationale.innerHTML = "";
           return;
         }
         let choices = [];
@@ -209,14 +237,24 @@
           choices = jsyaml.load(choicesEl.value || "[]") || [];
         } catch {
           mcPreviewAnswers.innerHTML = "<em>Invalid YAML</em>";
+          mcPreviewRationale.innerHTML = "<em>Invalid YAML</em>";
           return;
         }
         choices = choices.slice().sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
         mcPreviewAnswers.innerHTML = choices.map((c) => {
           const text = marked.parseInline(String(c.content_md || ""));
-          const marker = c.is_correct ? " <strong>(correct)</strong>" : "";
+          const line = c.is_correct
+            ? `<strong>${String(c.label || "?")}. ${text}</strong>`
+            : `<span>${String(c.label || "?")}. ${text}</span>`;
+          return `<div>${line}</div>`;
+        }).join("");
+        mcPreviewRationale.innerHTML = choices.map((c) => {
+          const text = marked.parseInline(String(c.content_md || ""));
+          const line = c.is_correct
+            ? `<strong>${String(c.label || "?")}. ${text}</strong>`
+            : `<span>${String(c.label || "?")}. ${text}</span>`;
           const rationale = c.rationale ? `<div><em>${String(c.rationale)}</em></div>` : "";
-          return `<div><strong>${String(c.label || "?")}.</strong> ${text}${marker}${rationale}</div>`;
+          return `<div>${line}${rationale}</div>`;
         }).join("");
       }
 
@@ -236,7 +274,7 @@
           question_template_md: templateEl.value,
           solution_parameters_yaml: paramsEl.value,
           answer_python_code: answerCodeEl.value,
-          distractor_functions_yaml: distractorFnsEl.value,
+          distractor_functions_text: distractorFnsEl.value,
           choices_yaml: choicesEl.value,
           typed_solution_md: typedSolutionEl.value,
           typed_solution_status: typedStatusEl.value,
@@ -271,25 +309,39 @@
         }, 1200);
       }
 
-      async function callEndpoint(endpoint, applyFn) {
+      async function callEndpoint(endpoint, applyFn, btn = null) {
         const qid = questionIdEl.value.trim();
         if (!qid) {
           throw new Error("Set question ID first.");
         }
+        if (btn) btn.disabled = true;
         setStatus("Calling endpoint...", "warn");
-        await autosaveNow();
-        const res = await fetch(`/questions/${qid}${endpoint}`, { method: "POST" });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          const collisions = data.collisions ? ` ${data.collisions.join(" | ")}` : "";
-          throw new Error((data.error || res.statusText) + collisions);
+        try {
+          await autosaveNow();
+          const res = await fetch(`/questions/${qid}${endpoint}`, { method: "POST" });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            const collisions = data.collisions ? ` ${data.collisions.join(" | ")}` : "";
+            throw new Error((data.error || res.statusText) + collisions);
+          }
+          applyFn(data);
+          scheduleAutosave();
+        } finally {
+          if (btn) btn.disabled = false;
         }
-        applyFn(data);
-        scheduleAutosave();
+      }
+
+      async function runHarnessNow() {
+        await callEndpoint("/harness/run", (data) => {
+          computedAnswerPreview.innerHTML = marked.parse(data.computed_answer_md || "");
+          if (data.choices_yaml) choicesEl.value = data.choices_yaml;
+          renderMCPreview();
+        });
       }
 
       document.getElementById("btn_rewrite").addEventListener("click", async () => {
         try {
+          const btn = document.getElementById("btn_rewrite");
           await callEndpoint("/ai/rewrite-and-parameterize", (data) => {
             if (data.title && !titleEl.value.trim()) titleEl.value = data.title;
             templateEl.value = data.question_template_md || templateEl.value;
@@ -297,7 +349,7 @@
             promptEl.value = data.prompt_md || promptEl.value;
             renderTemplate();
             setTypedStatus("stale");
-          });
+          }, btn);
           setStatus("Rewrite + parameter extraction complete.", "good");
         } catch (err) {
           setStatus(`AI error: ${err.message}`, "warn");
@@ -306,10 +358,12 @@
 
       document.getElementById("btn_generate_answer").addEventListener("click", async () => {
         try {
+          const btn = document.getElementById("btn_generate_answer");
           await callEndpoint("/ai/generate-answer-function", (data) => {
             answerCodeEl.value = data.answer_python_code || "";
             setTypedStatus("stale");
-          });
+          }, btn);
+          await runHarnessNow();
           setStatus("Answer function generated.", "good");
         } catch (err) {
           setStatus(`AI error: ${err.message}`, "warn");
@@ -318,11 +372,7 @@
 
       document.getElementById("btn_run_harness").addEventListener("click", async () => {
         try {
-          await callEndpoint("/harness/run", (data) => {
-            computedAnswerPreview.innerHTML = marked.parse(data.computed_answer_md || "");
-            if (data.choices_yaml) choicesEl.value = data.choices_yaml;
-            renderMCPreview();
-          });
+          await runHarnessNow();
           setStatus("Harness run complete.", "good");
         } catch (err) {
           setStatus(`Harness error: ${err.message}`, "warn");
@@ -331,12 +381,13 @@
 
       document.getElementById("btn_generate_mc").addEventListener("click", async () => {
         try {
+          const btn = document.getElementById("btn_generate_mc");
           await callEndpoint("/ai/generate-mc-distractors", (data) => {
-            distractorFnsEl.value = data.distractor_functions_yaml || distractorFnsEl.value;
+            distractorFnsEl.value = data.distractor_functions_text || distractorFnsEl.value;
             choicesEl.value = data.choices_yaml || choicesEl.value;
             renderMCPreview();
             setTypedStatus("stale");
-          });
+          }, btn);
           setStatus("MC distractors generated with unique options.", "good");
         } catch (err) {
           setStatus(`MC generation error: ${err.message}`, "warn");
@@ -345,11 +396,12 @@
 
       document.getElementById("btn_generate_typed_solution").addEventListener("click", async () => {
         try {
+          const btn = document.getElementById("btn_generate_typed_solution");
           await callEndpoint("/ai/generate-typed-solution", (data) => {
             typedSolutionEl.value = data.typed_solution_md || "";
             renderTypedPreview();
             setTypedStatus(data.typed_solution_status || "fresh");
-          });
+          }, btn);
           setStatus("Typed solution generated.", "good");
         } catch (err) {
           setStatus(`AI error: ${err.message}`, "warn");
@@ -358,11 +410,13 @@
 
       document.getElementById("btn_preview_rewrite").addEventListener("click", async () => {
         try {
+          const btn = document.getElementById("btn_preview_rewrite");
           await callEndpoint("/ai/preview/rewrite-and-parameterize", (data) => {
             promptPreviewTitleEl.textContent = "Rewrite + Extract Parameters";
             promptPreviewSystemEl.textContent = data.system_prompt || "";
             promptPreviewUserEl.textContent = data.user_prompt || "";
-          });
+            promptPreviewModal.style.display = "flex";
+          }, btn);
           setStatus("Preview loaded.", "good");
         } catch (err) {
           setStatus(`Preview error: ${err.message}`, "warn");
@@ -370,11 +424,13 @@
       });
       document.getElementById("btn_preview_answer").addEventListener("click", async () => {
         try {
+          const btn = document.getElementById("btn_preview_answer");
           await callEndpoint("/ai/preview/generate-answer-function", (data) => {
             promptPreviewTitleEl.textContent = "Generate Answer Function";
             promptPreviewSystemEl.textContent = data.system_prompt || "";
             promptPreviewUserEl.textContent = data.user_prompt || "";
-          });
+            promptPreviewModal.style.display = "flex";
+          }, btn);
           setStatus("Preview loaded.", "good");
         } catch (err) {
           setStatus(`Preview error: ${err.message}`, "warn");
@@ -382,11 +438,13 @@
       });
       document.getElementById("btn_preview_mc").addEventListener("click", async () => {
         try {
+          const btn = document.getElementById("btn_preview_mc");
           await callEndpoint("/ai/preview/generate-mc-distractors", (data) => {
             promptPreviewTitleEl.textContent = "Generate MC Distractors";
             promptPreviewSystemEl.textContent = data.system_prompt || "";
             promptPreviewUserEl.textContent = data.user_prompt || "";
-          });
+            promptPreviewModal.style.display = "flex";
+          }, btn);
           setStatus("Preview loaded.", "good");
         } catch (err) {
           setStatus(`Preview error: ${err.message}`, "warn");
@@ -394,14 +452,25 @@
       });
       document.getElementById("btn_preview_typed_solution").addEventListener("click", async () => {
         try {
+          const btn = document.getElementById("btn_preview_typed_solution");
           await callEndpoint("/ai/preview/generate-typed-solution", (data) => {
             promptPreviewTitleEl.textContent = "Generate Typed Solution";
             promptPreviewSystemEl.textContent = data.system_prompt || "";
             promptPreviewUserEl.textContent = data.user_prompt || "";
-          });
+            promptPreviewModal.style.display = "flex";
+          }, btn);
           setStatus("Preview loaded.", "good");
         } catch (err) {
           setStatus(`Preview error: ${err.message}`, "warn");
+        }
+      });
+
+      document.getElementById("btn_close_prompt_preview").addEventListener("click", () => {
+        promptPreviewModal.style.display = "none";
+      });
+      promptPreviewModal.addEventListener("click", (event) => {
+        if (event.target === promptPreviewModal) {
+          promptPreviewModal.style.display = "none";
         }
       });
 
