@@ -152,9 +152,6 @@
         </div>
       </div>
 
-      <label>Checker Python Code</label>
-      <textarea name="checker_code" id="checker_code">{{ question.checker.python_code if question else '' }}</textarea>
-
       <div class="card" id="figures_section">
         <label>Figures</label>
         <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
@@ -197,7 +194,6 @@
       const solutionEl = document.getElementById("solution_md");
       const solutionCodeEl = document.getElementById("solution_python_code");
       const solutionParamsEl = document.getElementById("solution_parameters_yaml");
-      const checkerEl = document.getElementById("checker_code");
       const figuresInput = document.getElementById("figures_json");
       const figuresPreview = document.getElementById("figures_preview");
       const promptPreview = document.getElementById("prompt_preview");
@@ -355,7 +351,6 @@
           solution_md: solutionEl.value,
           solution_python_code: solutionCodeEl.value,
           solution_parameters_yaml: solutionParamsEl.value,
-          checker_code: checkerEl.value,
           figures_json: figuresInput.value || "[]",
           points: Number(pointsEl.value || 5),
         };
@@ -680,7 +675,7 @@
       document.getElementById("btn_undo_choices").addEventListener("click", () => undo("choices", (v) => { choicesEl.value = v; }));
       document.getElementById("btn_undo_figures").addEventListener("click", () => undo("figures", (v) => { figuresInput.value = v; renderFigures(); }));
 
-      [questionTypeEl, titleEl, promptEl, mcGuidanceEl, choicesEl, solutionEl, solutionCodeEl, solutionParamsEl, checkerEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, promptEl, mcGuidanceEl, choicesEl, solutionEl, solutionCodeEl, solutionParamsEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
           renderTitlePreview();
           renderMarkdown();

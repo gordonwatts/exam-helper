@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from exam_helper.checker_runtime import CheckerError, run_checker
 from exam_helper.models import Question
 from exam_helper.repository import ProjectRepository
 from exam_helper.solution_runtime import SolutionRuntimeError, run_solution_code
@@ -12,11 +11,6 @@ def validate_question(question: Question) -> list[str]:
         try:
             run_solution_code(question.solution.python_code, question.solution.parameters, {})
         except SolutionRuntimeError as ex:
-            errors.append(f"{question.id}: {ex}")
-    if question.checker.python_code.strip():
-        try:
-            run_checker(question.checker.python_code, question.checker.sample_answer, {})
-        except CheckerError as ex:
             errors.append(f"{question.id}: {ex}")
     return errors
 

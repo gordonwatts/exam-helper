@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
@@ -34,7 +34,6 @@ def test_home_has_title_markdown_render_hooks(tmp_path) -> None:
             "prompt_md": "P",
             "choices_yaml": "[]",
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -61,7 +60,6 @@ def test_question_editor_has_title_preview_hooks(tmp_path) -> None:
             "prompt_md": "P",
             "choices_yaml": "[]",
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -110,7 +108,6 @@ def test_usage_totals_accumulate_and_reset(tmp_path) -> None:
             "prompt_md": "P",
             "choices_yaml": "[]",
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -183,7 +180,6 @@ def test_prompt_preview_endpoint_returns_composed_payload(tmp_path) -> None:
             "prompt_md": "P",
             "choices_yaml": "[]",
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },

@@ -33,8 +33,8 @@ Core requirements:
   - Pydantic data schema for project/question/figures
 - `src/exam_helper/repository.py`
   - project/question YAML persistence
-- `src/exam_helper/checker_runtime.py`
-  - deterministic checker execution and helper functions
+- `src/exam_helper/solution_runtime.py`
+  - deterministic solution code execution and helper functions
 - `src/exam_helper/validation.py`
   - project/question validation orchestration
 - `src/exam_helper/ai_service.py`
@@ -55,7 +55,7 @@ Core requirements:
    - Do not move to required external asset files in v1.
 
 2. Deterministic checking is mandatory.
-   - LLMs may draft code/text, but correctness checks run via Python checker code.
+   - LLMs may draft code/text, but correctness checks run via deterministic Python solution code/runtime.
 
 3. AI is human-in-the-loop.
    - Never auto-apply AI output silently.
@@ -120,7 +120,7 @@ If a command fails due to environment/sandbox restrictions, rerun with the same 
 Priority test areas:
 - schema and YAML validation
 - figure integrity/hash behavior
-- checker runtime contract and symbolic/unit helpers
+- solution runtime contract and symbolic/unit helpers
 - AI service behavior (mock client in tests)
 - docx export stability
 

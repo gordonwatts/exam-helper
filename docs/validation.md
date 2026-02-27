@@ -5,17 +5,8 @@ Validation is deterministic and code-based (not LLM arithmetic).
 ## What is checked
 
 - schema correctness
-- deterministic checker execution
-- symbolic equivalence and units
-
-## Checker contract
-
-In each question YAML, checker code must define:
-
-```python
-def grade(student_answer, context):
-    return {"verdict": "correct" | "partial" | "incorrect", "score": 0.0, "feedback": "..."}
-```
+- deterministic solution code execution
+- symbolic and unit helper compatibility via solution runtime
 
 ## Run validation
 
