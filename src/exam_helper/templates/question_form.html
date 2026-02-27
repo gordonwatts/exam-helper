@@ -29,6 +29,11 @@
   <body>
     <h1>{{ "Edit Question" if question else "New Question" }}</h1>
     <p><a href="/">Back to list</a></p>
+    {% if not ai_enabled %}
+    <div class="card" style="border-color:#c50; color:#7a2f00;">
+      AI actions are disabled because no OpenAI key is configured for this server session.
+    </div>
+    {% endif %}
 
     <form method="post" action="/questions/save" id="question-form">
       <input type="hidden" name="typed_solution_status" id="typed_solution_status" value="{{ question.solution.typed_solution_status if question else 'missing' }}" />
@@ -57,8 +62,8 @@
         <div class="card">
           <label>Question Template (Markdown)</label>
           <textarea name="question_template_md" id="question_template_md">{{ question.solution.question_template_md if question else '' }}</textarea>
-          <button type="button" class="btn" id="btn_rewrite">Rewrite + Extract Parameters</button>
-          <button type="button" class="btn" id="btn_preview_rewrite">Preview Prompt</button>
+          <button type="button" class="btn ai-action" id="btn_rewrite" {% if not ai_enabled %}disabled{% endif %}>Rewrite + Extract Parameters</button>
+          <button type="button" class="btn ai-action" id="btn_preview_rewrite" {% if not ai_enabled %}disabled{% endif %}>Preview Prompt</button>
         </div>
         <div class="card preview">
           <strong>Rendered Question (from template + params)</strong>
@@ -82,9 +87,9 @@
         <div class="card">
           <label>Answer Function Python (`solve(params)`)</label>
           <textarea name="answer_python_code" id="answer_python_code">{{ question.solution.answer_python_code if question else '' }}</textarea>
-          <button type="button" class="btn" id="btn_generate_answer">Generate Answer Function</button>
+          <button type="button" class="btn ai-action" id="btn_generate_answer" {% if not ai_enabled %}disabled{% endif %}>Generate Answer Function</button>
           <button type="button" class="btn" id="btn_run_harness">Run Deterministic Harness</button>
-          <button type="button" class="btn" id="btn_preview_answer">Preview Prompt</button>
+          <button type="button" class="btn ai-action" id="btn_preview_answer" {% if not ai_enabled %}disabled{% endif %}>Preview Prompt</button>
         </div>
         <div class="card preview">
           <strong>Computed Answer</strong>
@@ -95,8 +100,8 @@
       <div id="mc_block" class="card">
         <label>Distractor Functions YAML (4 entries)</label>
         <textarea name="distractor_functions_yaml" id="distractor_functions_yaml">{{ distractor_functions_yaml }}</textarea>
-        <button type="button" class="btn" id="btn_generate_mc">Generate MC Choices</button>
-        <button type="button" class="btn" id="btn_preview_mc">Preview Prompt</button>
+        <button type="button" class="btn ai-action" id="btn_generate_mc" {% if not ai_enabled %}disabled{% endif %}>Generate MC Choices</button>
+        <button type="button" class="btn ai-action" id="btn_preview_mc" {% if not ai_enabled %}disabled{% endif %}>Preview Prompt</button>
         <label>MC Choices YAML (A-E)</label>
         <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
         <div class="card preview">
@@ -109,8 +114,8 @@
         <div class="card">
           <label>Typed Solution (LLM-generated on demand)</label>
           <textarea name="typed_solution_md" id="typed_solution_md">{{ question.solution.typed_solution_md if question else '' }}</textarea>
-          <button type="button" class="btn" id="btn_generate_typed_solution">Generate/Regenerate Typed Solution</button>
-          <button type="button" class="btn" id="btn_preview_typed_solution">Preview Prompt</button>
+          <button type="button" class="btn ai-action" id="btn_generate_typed_solution" {% if not ai_enabled %}disabled{% endif %}>Generate/Regenerate Typed Solution</button>
+          <button type="button" class="btn ai-action" id="btn_preview_typed_solution" {% if not ai_enabled %}disabled{% endif %}>Preview Prompt</button>
           <div class="status" id="typed_solution_state">Status: {{ question.solution.typed_solution_status if question else "missing" }}</div>
         </div>
         <div class="card preview">
@@ -130,6 +135,12 @@
         <span id="save_status" class="status"></span>
       </div>
     </form>
+    <div class="card preview">
+      <strong>AI Prompt Preview</strong>
+      <div class="status" id="prompt_preview_title">Ready</div>
+      <pre id="prompt_preview_system"></pre>
+      <pre id="prompt_preview_user"></pre>
+    </div>
 
     <script>
       const form = document.getElementById("question-form");
@@ -153,6 +164,9 @@
       const mcBlock = document.getElementById("mc_block");
       const mcPreviewAnswers = document.getElementById("mc_preview_answers");
       const typedPreview = document.getElementById("typed_solution_preview");
+      const promptPreviewTitleEl = document.getElementById("prompt_preview_title");
+      const promptPreviewSystemEl = document.getElementById("prompt_preview_system");
+      const promptPreviewUserEl = document.getElementById("prompt_preview_user");
 
       let autosaveTimer = null;
 
@@ -260,9 +274,9 @@
       async function callEndpoint(endpoint, applyFn) {
         const qid = questionIdEl.value.trim();
         if (!qid) {
-          setStatus("Set question ID first.", "warn");
-          return;
+          throw new Error("Set question ID first.");
         }
+        setStatus("Calling endpoint...", "warn");
         await autosaveNow();
         const res = await fetch(`/questions/${qid}${endpoint}`, { method: "POST" });
         const data = await res.json();
@@ -345,8 +359,11 @@
       document.getElementById("btn_preview_rewrite").addEventListener("click", async () => {
         try {
           await callEndpoint("/ai/preview/rewrite-and-parameterize", (data) => {
-            alert(`System prompt:\n\n${data.system_prompt}\n\nUser prompt:\n\n${data.user_prompt}`);
+            promptPreviewTitleEl.textContent = "Rewrite + Extract Parameters";
+            promptPreviewSystemEl.textContent = data.system_prompt || "";
+            promptPreviewUserEl.textContent = data.user_prompt || "";
           });
+          setStatus("Preview loaded.", "good");
         } catch (err) {
           setStatus(`Preview error: ${err.message}`, "warn");
         }
@@ -354,8 +371,11 @@
       document.getElementById("btn_preview_answer").addEventListener("click", async () => {
         try {
           await callEndpoint("/ai/preview/generate-answer-function", (data) => {
-            alert(`System prompt:\n\n${data.system_prompt}\n\nUser prompt:\n\n${data.user_prompt}`);
+            promptPreviewTitleEl.textContent = "Generate Answer Function";
+            promptPreviewSystemEl.textContent = data.system_prompt || "";
+            promptPreviewUserEl.textContent = data.user_prompt || "";
           });
+          setStatus("Preview loaded.", "good");
         } catch (err) {
           setStatus(`Preview error: ${err.message}`, "warn");
         }
@@ -363,8 +383,11 @@
       document.getElementById("btn_preview_mc").addEventListener("click", async () => {
         try {
           await callEndpoint("/ai/preview/generate-mc-distractors", (data) => {
-            alert(`System prompt:\n\n${data.system_prompt}\n\nUser prompt:\n\n${data.user_prompt}`);
+            promptPreviewTitleEl.textContent = "Generate MC Distractors";
+            promptPreviewSystemEl.textContent = data.system_prompt || "";
+            promptPreviewUserEl.textContent = data.user_prompt || "";
           });
+          setStatus("Preview loaded.", "good");
         } catch (err) {
           setStatus(`Preview error: ${err.message}`, "warn");
         }
@@ -372,8 +395,11 @@
       document.getElementById("btn_preview_typed_solution").addEventListener("click", async () => {
         try {
           await callEndpoint("/ai/preview/generate-typed-solution", (data) => {
-            alert(`System prompt:\n\n${data.system_prompt}\n\nUser prompt:\n\n${data.user_prompt}`);
+            promptPreviewTitleEl.textContent = "Generate Typed Solution";
+            promptPreviewSystemEl.textContent = data.system_prompt || "";
+            promptPreviewUserEl.textContent = data.user_prompt || "";
           });
+          setStatus("Preview loaded.", "good");
         } catch (err) {
           setStatus(`Preview error: ${err.message}`, "warn");
         }

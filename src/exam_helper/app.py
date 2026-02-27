@@ -162,6 +162,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "figures_json": "[]",
                 "solution_parameters_yaml": dump_parameters_yaml({}),
                 "distractor_functions_yaml": "[]",
+                "ai_enabled": bool(openai_key),
             },
         )
 
@@ -181,6 +182,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "figures_json": figures_json,
                 "solution_parameters_yaml": solution_parameters_yaml,
                 "distractor_functions_yaml": distractor_functions_yaml,
+                "ai_enabled": bool(openai_key),
             },
         )
 
