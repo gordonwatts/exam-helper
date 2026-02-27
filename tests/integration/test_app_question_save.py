@@ -1,7 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import hashlib
+import yaml
 
 from fastapi.testclient import TestClient
 
@@ -38,7 +39,6 @@ def test_create_question_with_embedded_figure(tmp_path) -> None:
             "prompt_md": "Prompt",
             "choices_yaml": "[]",
             "solution_md": "Solve",
-            "checker_code": "def grade(student_answer, context): return {'verdict': 'correct'}",
             "figures_json": fig,
         },
         follow_redirects=False,
@@ -46,3 +46,42 @@ def test_create_question_with_embedded_figure(tmp_path) -> None:
     assert resp.status_code == 303
     saved = repo.get_question("q1")
     assert len(saved.figures) == 1
+
+
+def test_save_clears_legacy_checker_data(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    question_path = tmp_path / "questions" / "legacy.yaml"
+    question_path.write_text(
+        yaml.safe_dump(
+            {
+                "id": "legacy",
+                "title": "Old",
+                "question_type": "free_response",
+                "prompt_md": "Prompt",
+                "choices": [],
+                "checker": {"python_code": "def grade(student_answer, context): return {}"},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    resp = client.post(
+        "/questions/save",
+        data={
+            "question_id": "legacy",
+            "title": "Updated",
+            "question_type": "free_response",
+            "prompt_md": "Prompt",
+            "choices_yaml": "[]",
+            "solution_md": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    raw = yaml.safe_load(question_path.read_text(encoding="utf-8"))
+    assert "checker" not in raw

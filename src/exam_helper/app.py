@@ -29,7 +29,6 @@ class AutosavePayload(BaseModel):
     solution_md: str = ""
     solution_python_code: str = ""
     solution_parameters_yaml: str = "{}"
-    checker_code: str = ""
     figures_json: str = "[]"
     points: int = 5
 
@@ -328,7 +327,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         solution_md: str = Form(""),
         solution_python_code: str = Form(""),
         solution_parameters_yaml: str = Form("{}"),
-        checker_code: str = Form(""),
         figures_json: str = Form("[]"),
     ) -> RedirectResponse:
         raw_choices = yaml.safe_load(choices_yaml) or []
@@ -353,7 +351,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "python_code": solution_python_code,
                     "parameters": solution_parameters,
                 },
-                "checker": {"python_code": checker_code},
                 "figures": figures,
             }
         )
@@ -455,7 +452,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         "python_code": payload.solution_python_code,
                         "parameters": solution_parameters,
                     },
-                    "checker": {"python_code": payload.checker_code},
                     "figures": figures,
                     "points": payload.points,
                 }

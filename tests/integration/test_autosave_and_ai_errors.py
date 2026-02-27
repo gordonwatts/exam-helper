@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 
@@ -22,7 +22,6 @@ def test_ai_draft_solution_returns_ai_text_verbatim(tmp_path) -> None:
             "prompt_md": "P",
             "choices_yaml": "[]",
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -55,7 +54,6 @@ def test_ai_draft_solution_falls_back_when_structured_generation_fails(tmp_path)
             "prompt_md": "P",
             "choices_yaml": "[]",
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -92,7 +90,6 @@ def test_ai_draft_solution_keeps_structured_code_when_non_mc_choices_yaml_invali
             "prompt_md": "P",
             "choices_yaml": "[]",
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -146,7 +143,6 @@ def test_ai_draft_solution_mc_accepts_ae_mapping_choices_yaml(tmp_path) -> None:
                 "- label: B\n  content_md: b\n  is_correct: true\n"
             ),
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -221,7 +217,6 @@ def test_ai_draft_solution_mc_accepts_text_and_correct_keys(tmp_path) -> None:
                 "- label: B\n  content_md: b\n  is_correct: true\n"
             ),
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -295,7 +290,6 @@ def test_ai_draft_solution_mc_retries_when_choices_not_parameterized(tmp_path) -
                 "- label: B\n  content_md: b\n  is_correct: true\n"
             ),
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -419,7 +413,6 @@ def test_solution_run_warns_when_mc_choices_not_parameterized(tmp_path) -> None:
                 "    }\n"
             ),
             "solution_parameters_yaml": "{P_D: 2.0}",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -445,7 +438,6 @@ def test_autosave_persists_question(tmp_path) -> None:
         "mc_options_guidance": "Avoid reusing prior answer.",
         "choices_yaml": "[]",
         "solution_md": "Use kinematics",
-        "checker_code": "",
         "figures_json": "[]",
         "points": 5,
     }
@@ -477,7 +469,6 @@ def test_ai_improve_prompt_strips_inline_mc_options(tmp_path) -> None:
                 "- label: B\n  content_md: b\n  is_correct: true\n"
             ),
             "solution_md": "",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -522,7 +513,6 @@ def test_ai_sync_parameters_strips_inline_mc_options(tmp_path) -> None:
                 "- label: B\n  content_md: b\n  is_correct: true\n"
             ),
             "solution_md": "S",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -577,7 +567,6 @@ def test_ai_mc_endpoint_returns_422_on_parse_error(tmp_path) -> None:
                 "    return {'final_answer_text': 'x', 'choices_yaml': 'not: [valid'}\n"
             ),
             "solution_parameters_yaml": "{}",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -624,7 +613,6 @@ def test_ai_mc_endpoint_returns_choices_and_solution(tmp_path) -> None:
                 "    }\n"
             ),
             "solution_parameters_yaml": "{}",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -676,7 +664,6 @@ def test_ai_mc_endpoint_keeps_existing_solution(tmp_path) -> None:
                 "    }\n"
             ),
             "solution_parameters_yaml": "{}",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },
@@ -731,7 +718,6 @@ def test_solution_run_normalizes_and_quotes_rationale_yaml(tmp_path) -> None:
                 "    }\n"
             ),
             "solution_parameters_yaml": "{}",
-            "checker_code": "",
             "figures_json": "[]",
             "points": 5,
         },

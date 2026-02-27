@@ -27,7 +27,7 @@ Open `http://127.0.0.1:8000`.
 ## 4. Create and edit questions
 
 - Click **New Question**
-- Fill prompt, solution, checker code
+- Fill prompt and solution fields
 - Paste images from clipboard directly into the editor page
 - Use AI buttons when needed (`Improve Text`, `Improve Solution`, `Generate MC A-E`)
 - Use `Preview Prompt` buttons to inspect what will be sent before an AI call

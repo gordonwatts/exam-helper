@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from hashlib import sha256
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class QuestionType(str, Enum):
@@ -43,12 +43,9 @@ class Solution(BaseModel):
     rubric: list[str] = Field(default_factory=list)
 
 
-class CheckerSpec(BaseModel):
-    python_code: str = ""
-    sample_answer: dict = Field(default_factory=dict)
-
-
 class Question(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     id: str
     title: str = ""
     topic: str = ""
@@ -62,7 +59,6 @@ class Question(BaseModel):
     figures: list[FigureData] = Field(default_factory=list)
     choices: list[MCChoice] = Field(default_factory=list)
     solution: Solution = Field(default_factory=Solution)
-    checker: CheckerSpec = Field(default_factory=CheckerSpec)
 
     @field_validator("id")
     @classmethod
