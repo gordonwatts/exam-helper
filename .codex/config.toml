@@ -1,5 +1,5 @@
-[sandbox_workspace_write]
-network_access = true
+# [sandbox_workspace_write]
+# network_access = true
 
 # .codex/config.toml
 # sandbox_mode = "workspace-write"
