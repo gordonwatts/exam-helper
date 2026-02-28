@@ -34,11 +34,14 @@ class ProjectRepository:
             yaml.safe_dump(project.model_dump(mode="json"), sort_keys=False), encoding="utf-8"
         )
 
-    def list_questions(self) -> list[Question]:
+    def list_questions(self, include_deleted: bool = False) -> list[Question]:
         items: list[Question] = []
         for q_file in sorted(self.questions_dir.glob("*.yaml")):
             raw = yaml.safe_load(q_file.read_text(encoding="utf-8"))
-            items.append(Question.model_validate(raw))
+            question = Question.model_validate(raw)
+            if question.is_deleted and not include_deleted:
+                continue
+            items.append(question)
         return items
 
     def get_question(self, question_id: str) -> Question:
@@ -66,7 +69,9 @@ class ProjectRepository:
         for q_file in sorted(self.questions_dir.glob("*.yaml")):
             try:
                 raw = yaml.safe_load(q_file.read_text(encoding="utf-8"))
-                Question.model_validate(raw)
+                question = Question.model_validate(raw)
+                if question.is_deleted:
+                    continue
             except Exception as ex:
                 errors.append(f"{q_file.name}: {ex}")
         return errors

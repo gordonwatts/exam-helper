@@ -78,3 +78,16 @@ def test_init_project_accepts_custom_model(tmp_path: Path) -> None:
     repo.init_project("Exam", "Physics", openai_model="gpt-5.2-custom")
     data = yaml.safe_load((tmp_path / "project.yaml").read_text(encoding="utf-8"))
     assert data["ai"]["model"] == "gpt-5.2-custom"
+
+
+def test_list_questions_excludes_soft_deleted_by_default(tmp_path: Path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    repo.save_question(Question(id="q_active", title="Active"))
+    repo.save_question(Question(id="q_deleted", title="Deleted", is_deleted=True))
+
+    active_only = repo.list_questions()
+    assert [q.id for q in active_only] == ["q_active"]
+
+    all_questions = repo.list_questions(include_deleted=True)
+    assert [q.id for q in all_questions] == ["q_active", "q_deleted"]

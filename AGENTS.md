@@ -88,6 +88,8 @@ Core requirements:
 ### Standard Issue Development Flow
 
 1. Check out `main` and update it before starting issue work.
+   - Always perform this update on `main` before any issue-branch pull/sync work.
+   - If sandbox/network restrictions block the update command, request an elevated command and retry.
 2. Create a dedicated branch for the issue (for example, `issue-123-short-name`) **before making any code or docs edits**.
 3. Implement and test changes on that branch (never do issue implementation work directly on `main`).
 4. Open a **draft PR** from the branch into `main` as soon as implementation starts.

@@ -298,6 +298,13 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             },
         )
 
+    @app.post("/questions/{question_id}/delete")
+    def delete_question(question_id: str) -> RedirectResponse:
+        question = repo.get_question(question_id)
+        question.is_deleted = True
+        repo.save_question(question)
+        return RedirectResponse("/", status_code=303)
+
     @app.post("/questions/save")
     def save_question(
         question_id: str = Form(...),
@@ -328,6 +335,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "id": question_id,
                 "title": title,
                 "points": points,
+                "is_deleted": (existing.is_deleted if existing else False),
                 "question_type": QuestionType(question_type),
                 "choices": choices,
                 "solution": {
@@ -381,6 +389,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     },
                     "figures": figures,
                     "points": payload.points,
+                    "is_deleted": (existing.is_deleted if existing else False),
                 }
             )
             _mark_typed_solution_stale_if_needed(existing, question)
