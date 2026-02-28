@@ -1,0 +1,19 @@
+[sandbox_workspace_write]
+network_access = true
+
+# .codex/config.toml
+# sandbox_mode = "workspace-write"
+# sandbox_workspace_write.network_access = true
+
+# If you want Codex to stop asking to run commands at all:
+# approval_policy = "never"
+
+[command_policy]
+allow = ["^gh .*"]
+
+# command_policy.allow = ["^gh .*"]
+# tool_permissions.network = "allow"
+
+# On Windows, strongly recommended:
+[windows]
+sandbox = "elevated"
