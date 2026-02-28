@@ -206,8 +206,17 @@ class AIService:
             usage=result.usage,
         )
 
-    def generate_answer_function(self, question: Question) -> AnswerFunctionResult:
+    def generate_answer_function(
+        self,
+        question: Question,
+        error_feedback: str = "",
+    ) -> AnswerFunctionResult:
         bundle = self.compose_prompt(action="generate_answer_function", question=question)
+        if error_feedback.strip():
+            bundle = PromptBundle(
+                system_prompt=bundle.system_prompt,
+                user_prompt=f"{bundle.user_prompt}\n\nPrevious execution error:\n{error_feedback.strip()}",
+            )
         result = self._text_with_question_context(bundle, question)
         payload = self._parse_json_object(result.text)
         answer_python_code = str(payload.get("answer_python_code", "")).strip()

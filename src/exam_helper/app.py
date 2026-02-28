@@ -369,12 +369,23 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def ai_generate_answer_function(question_id: str) -> dict:
         try:
             q = repo.get_question(question_id)
-            result = app.state.ai.generate_answer_function(q)
-            repo.add_ai_usage(result.usage)
-            return {
-                "ok": True,
-                "answer_python_code": result.answer_python_code,
-            }
+            error_feedback = ""
+            for _ in range(3):
+                result = app.state.ai.generate_answer_function(q, error_feedback=error_feedback)
+                repo.add_ai_usage(result.usage)
+                try:
+                    run_answer_function(result.answer_python_code, q.solution.parameters)
+                    return {
+                        "ok": True,
+                        "answer_python_code": result.answer_python_code,
+                    }
+                except Exception as ex:
+                    error_feedback = str(ex)
+                    q.solution.answer_python_code = result.answer_python_code
+            raise ValueError(
+                "AI-generated answer function failed validation after 3 attempts. "
+                f"Last error: {error_feedback}"
+            )
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 

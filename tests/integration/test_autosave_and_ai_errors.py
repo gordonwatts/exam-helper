@@ -204,3 +204,53 @@ def test_generate_typed_solution_sets_status_fresh(tmp_path) -> None:
     body = resp.json()
     assert body["typed_solution_md"] == "Typed explanation"
     assert body["typed_solution_status"] == "fresh"
+
+
+def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_answer_retry")
+    client.post(
+        "/questions/q_answer_retry/autosave",
+        json={
+            "title": "T",
+            "question_type": "free_response",
+            "question_template_md": "P",
+            "solution_parameters_yaml": "{v: 5}",
+            "answer_guidance": "",
+            "answer_python_code": "",
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    class _AI:
+        def __init__(self):
+            self.calls = 0
+
+        def generate_answer_function(self, question, error_feedback=""):
+            self.calls += 1
+            if self.calls == 1:
+                return AIService.AnswerFunctionResult(
+                    answer_python_code="def solve(params):\n    return {'answer_md':'x'}\n",
+                    usage=AIUsageTotals(),
+                )
+            return AIService.AnswerFunctionResult(
+                answer_python_code="def solve(params):\n    return {'answer_md':'x','final_answer':'x'}\n",
+                usage=AIUsageTotals(),
+            )
+
+    fake = _AI()
+    app.state.ai = fake
+    resp = client.post("/questions/q_answer_retry/ai/generate-answer-function")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "final_answer" in data["answer_python_code"]
+    assert fake.calls == 2
