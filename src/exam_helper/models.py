@@ -71,6 +71,7 @@ class Question(BaseModel):
     tags: list[str] = Field(default_factory=list)
     difficulty: int = 3
     points: int = 5
+    is_deleted: bool = False
     question_type: QuestionType = QuestionType.free_response
     mc_options_guidance: str = ""
     figures: list[FigureData] = Field(default_factory=list)

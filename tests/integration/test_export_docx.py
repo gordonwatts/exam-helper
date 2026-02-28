@@ -174,3 +174,34 @@ def test_export_docx_uses_a_paren_markers_for_pandoc_mc_lists(tmp_path: Path, mo
 
     doc = Document(io.BytesIO(content))
     assert any(p.text == "opt A" for p in doc.paragraphs)
+
+
+def test_export_docx_excludes_soft_deleted_questions(tmp_path: Path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    repo.save_question(
+        Question(
+            id="q_active",
+            title="Active",
+            points=5,
+            prompt_md="Active prompt",
+        )
+    )
+    repo.save_question(
+        Question(
+            id="q_deleted",
+            title="Deleted",
+            is_deleted=True,
+            points=5,
+            prompt_md="Deleted prompt",
+        )
+    )
+
+    out = tmp_path / "exam_soft_delete.docx"
+    warnings = export_project_to_docx(tmp_path, out)
+    assert warnings == []
+
+    doc = Document(out)
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Active" in text
+    assert "Deleted" not in text

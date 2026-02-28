@@ -49,3 +49,23 @@ def test_validate_project_ignores_legacy_checker_data(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert validate_project(repo) == []
+
+
+def test_validate_project_skips_soft_deleted_questions(tmp_path: Path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    repo.save_question(
+        Question(
+            id="q_deleted",
+            title="t",
+            is_deleted=True,
+            solution={
+                "answer_python_code": (
+                    "def solve(params, context):\n"
+                    "    raise RuntimeError('boom')\n"
+                ),
+                "parameters": {},
+            },
+        )
+    )
+    assert validate_project(repo) == []

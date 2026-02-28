@@ -30,6 +30,16 @@
       details { margin: 0.6rem 0; }
       .settings-wrap { margin-top: 1.8rem; }
       .settings-status { font-size: 0.85rem; color: #666; margin-left: 0.6rem; }
+      .actions { display: flex; gap: 0.75rem; align-items: center; }
+      .btn-link-danger {
+        border: 0;
+        background: none;
+        color: #b00020;
+        text-decoration: underline;
+        cursor: pointer;
+        padding: 0;
+        font: inherit;
+      }
     </style>
   </head>
   <body>
@@ -78,7 +88,14 @@
             {% endif %}
           </td>
           <td>{{ q.question_type.value }}</td>
-          <td><a href="/questions/{{ q.id }}/edit">Edit</a></td>
+          <td>
+            <div class="actions">
+              <a href="/questions/{{ q.id }}/edit">Edit</a>
+              <form method="post" action="/questions/{{ q.id }}/delete" onsubmit="return confirm('Delete question {{ q.id }} from listings? The YAML file will remain on disk.');">
+                <button class="btn-link-danger" type="submit">Delete</button>
+              </form>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>

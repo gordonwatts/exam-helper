@@ -85,3 +85,39 @@ def test_save_clears_legacy_checker_data(tmp_path) -> None:
     assert resp.status_code == 303
     raw = yaml.safe_load(question_path.read_text(encoding="utf-8"))
     assert "checker" not in raw
+
+
+def test_soft_delete_hides_question_but_keeps_yaml_on_disk(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    save = client.post(
+        "/questions/save",
+        data={
+            "question_id": "q1",
+            "title": "Delete Me",
+            "question_type": "free_response",
+            "question_template_md": "Prompt",
+            "choices_yaml": "[]",
+            "distractor_functions_text": "",
+            "typed_solution_md": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+    assert save.status_code == 303
+
+    delete = client.post("/questions/q1/delete", follow_redirects=False)
+    assert delete.status_code == 303
+    assert delete.headers["location"] == "/"
+
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "/questions/q1/edit" not in home.text
+
+    question_file = tmp_path / "questions" / "q1.yaml"
+    assert question_file.exists()
+    assert repo.get_question("q1").is_deleted is True
