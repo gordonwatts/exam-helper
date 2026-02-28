@@ -71,7 +71,6 @@ class Question(BaseModel):
     difficulty: int = 3
     points: int = 5
     question_type: QuestionType = QuestionType.free_response
-    prompt_md: str = ""
     mc_options_guidance: str = ""
     figures: list[FigureData] = Field(default_factory=list)
     choices: list[MCChoice] = Field(default_factory=list)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib.resources import files
 from string import Formatter
+import re
 
 import yaml
 
@@ -60,23 +61,24 @@ class PromptCatalog:
         system_prompt = "\n\n".join(p for p in system_parts if p)
         values = {
             "title": question.title or "",
-            "prompt_md": question.prompt_md or "",
+            "prompt_md": self._render_template_from_parameters(
+                question.solution.question_template_md or "",
+                question.solution.parameters or {},
+            ),
             "question_type": question.question_type.value,
             "question_template_md": question.solution.question_template_md or "",
             "solution_parameters_yaml": yaml.safe_dump(
                 question.solution.parameters or {}, sort_keys=False
             ).strip(),
             "answer_python_code": question.solution.answer_python_code or "",
-            "distractor_functions_yaml": yaml.safe_dump(
-                [
-                    {
-                        "id": d.id,
-                        "python_code": d.python_code,
-                    }
-                    for d in question.solution.distractor_python_code
-                ],
-                sort_keys=False,
-            ).strip(),
+            "distractor_functions_text": (
+                "\n---\n".join(
+                    [
+                        f"# distractor: {d.id}\n{(d.python_code or '').strip()}"
+                        for d in question.solution.distractor_python_code
+                    ]
+                ).strip()
+            ),
             "typed_solution_md": question.solution.typed_solution_md or "",
             "last_computed_answer_md": question.solution.last_computed_answer_md or "",
         }
@@ -103,3 +105,9 @@ class PromptCatalog:
             if field_name and field_name not in allowed:
                 raise ValueError(f"Unsupported template key: {field_name}")
         return template.format(**values)
+    @staticmethod
+    def _render_template_from_parameters(template: str, params: dict[str, object]) -> str:
+        rendered = template or ""
+        for key, value in (params or {}).items():
+            rendered = re.sub(r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered)
+        return rendered

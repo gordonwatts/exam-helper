@@ -31,6 +31,7 @@
       .prompt-preview-body { background: #fff; max-width: 860px; width: 92vw; max-height: 88vh; overflow: auto; border-radius: 6px; padding: 1rem; }
       .prompt-preview-body pre { white-space: pre-wrap; word-break: break-word; background: #f7f7f7; padding: 0.6rem; border-radius: 4px; border: 1px solid #ddd; }
       .status { margin-top: 0.5rem; min-height: 1.2rem; font-size: 0.95rem; }
+      .computed-stale { opacity: 0.5; filter: grayscale(0.4); }
       .good { color: #0a6; }
       .warn { color: #c50; }
       .btn { padding: 0.45rem 0.8rem; margin-top: 0.45rem; margin-right: 0.45rem; }
@@ -85,16 +86,9 @@
         </div>
       </div>
 
-      <div class="row">
-        <div class="card">
-          <label>Rendered Prompt (saved)</label>
-          <textarea name="prompt_md" id="prompt_md">{{ question.prompt_md if question else '' }}</textarea>
-          <div class="status">This updates automatically from template + parameters and is what gets exported.</div>
-        </div>
-        <div class="card">
-          <label>Parameters (YAML mapping)</label>
-          <textarea name="solution_parameters_yaml" id="solution_parameters_yaml">{{ solution_parameters_yaml }}</textarea>
-        </div>
+      <div class="card">
+        <label>Parameters (YAML mapping)</label>
+        <textarea name="solution_parameters_yaml" id="solution_parameters_yaml">{{ solution_parameters_yaml }}</textarea>
       </div>
 
       <div class="row">
@@ -107,14 +101,14 @@
         </div>
         <div class="card preview">
           <strong>Computed Answer</strong>
-          <div id="computed_answer_preview">{{ question.solution.last_computed_answer_md if question else '' }}</div>
+          <div id="computed_answer_preview" class="{% if question and question.solution.last_computed_answer_md %}{% else %}computed-stale{% endif %}">{{ question.solution.last_computed_answer_md if question else '(run harness to compute)' }}</div>
         </div>
       </div>
 
       <div id="mc_block" class="card">
         <label>Distractor Functions (text blocks, one per distractor)</label>
         <textarea name="distractor_functions_text" id="distractor_functions_text">{{ distractor_functions_text }}</textarea>
-        <button type="button" class="btn ai-action" id="btn_generate_mc" {% if not ai_enabled %}disabled{% endif %}>Generate MC Choices</button>
+        <button type="button" class="btn ai-action" id="btn_generate_mc" {% if not ai_enabled %}disabled{% endif %}>Generate MC Distractors</button>
         <button type="button" class="btn ai-action" id="btn_preview_mc" {% if not ai_enabled %}disabled{% endif %}>Preview Prompt</button>
         <label>MC Choices YAML (A-E)</label>
         <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
@@ -174,7 +168,6 @@
       const titleEl = document.getElementById("title");
       const pointsEl = document.getElementById("points");
       const templateEl = document.getElementById("question_template_md");
-      const promptEl = document.getElementById("prompt_md");
       const paramsEl = document.getElementById("solution_parameters_yaml");
       const answerCodeEl = document.getElementById("answer_python_code");
       const distractorFnsEl = document.getElementById("distractor_functions_text");
@@ -222,7 +215,6 @@
           const re = new RegExp("\\{\\{\\s*" + String(k).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\}\\}", "g");
           out = out.replace(re, String(v));
         }
-        promptEl.value = out;
         promptPreview.innerHTML = marked.parse(out || "");
       }
 
@@ -243,16 +235,18 @@
         choices = choices.slice().sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
         mcPreviewAnswers.innerHTML = choices.map((c) => {
           const text = marked.parseInline(String(c.content_md || ""));
-          const line = c.is_correct
-            ? `<strong>${String(c.label || "?")}. ${text}</strong>`
-            : `<span>${String(c.label || "?")}. ${text}</span>`;
+          const label = c.is_correct
+            ? `<strong>${String(c.label || "?")}.</strong>`
+            : `<span>${String(c.label || "?")}.</span>`;
+          const line = `${label} <span>${text}</span>`;
           return `<div>${line}</div>`;
         }).join("");
         mcPreviewRationale.innerHTML = choices.map((c) => {
           const text = marked.parseInline(String(c.content_md || ""));
-          const line = c.is_correct
-            ? `<strong>${String(c.label || "?")}. ${text}</strong>`
-            : `<span>${String(c.label || "?")}. ${text}</span>`;
+          const label = c.is_correct
+            ? `<strong>${String(c.label || "?")}.</strong>`
+            : `<span>${String(c.label || "?")}.</span>`;
+          const line = `${label} <span>${text}</span>`;
           const rationale = c.rationale ? `<div><em>${String(c.rationale)}</em></div>` : "";
           return `<div>${line}${rationale}</div>`;
         }).join("");
@@ -270,7 +264,6 @@
         return {
           title: titleEl.value,
           question_type: questionTypeEl.value,
-          prompt_md: promptEl.value,
           question_template_md: templateEl.value,
           solution_parameters_yaml: paramsEl.value,
           answer_python_code: answerCodeEl.value,
@@ -332,11 +325,12 @@
       }
 
       async function runHarnessNow() {
-        await callEndpoint("/harness/run", (data) => {
-          computedAnswerPreview.innerHTML = marked.parse(data.computed_answer_md || "");
-          if (data.choices_yaml) choicesEl.value = data.choices_yaml;
-          renderMCPreview();
-        });
+          await callEndpoint("/harness/run", (data) => {
+            computedAnswerPreview.innerHTML = marked.parse(data.computed_answer_md || "");
+            computedAnswerPreview.classList.remove("computed-stale");
+            if (data.choices_yaml) choicesEl.value = data.choices_yaml;
+            renderMCPreview();
+          });
       }
 
       document.getElementById("btn_rewrite").addEventListener("click", async () => {
@@ -346,7 +340,9 @@
             if (data.title && !titleEl.value.trim()) titleEl.value = data.title;
             templateEl.value = data.question_template_md || templateEl.value;
             paramsEl.value = data.solution_parameters_yaml || paramsEl.value;
-            promptEl.value = data.prompt_md || promptEl.value;
+            if (data.rendered_prompt_md) {
+              promptPreview.innerHTML = marked.parse(data.rendered_prompt_md || "");
+            }
             renderTemplate();
             setTypedStatus("stale");
           }, btn);
@@ -474,12 +470,15 @@
         }
       });
 
-      [questionTypeEl, titleEl, templateEl, promptEl, paramsEl, answerCodeEl, distractorFnsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, templateEl, paramsEl, answerCodeEl, distractorFnsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
           renderTemplate();
           renderMCPreview();
           renderTypedPreview();
           if (el === paramsEl || el === answerCodeEl || el === distractorFnsEl) setTypedStatus("stale");
+          if (el === answerCodeEl) {
+            computedAnswerPreview.classList.add("computed-stale");
+          }
           updateMCVisibility();
           scheduleAutosave();
         });

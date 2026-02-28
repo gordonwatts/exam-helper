@@ -23,6 +23,13 @@ _PANDOC_FAILED_WARNING = (
 )
 
 
+def _render_prompt(question: Question) -> str:
+    rendered = question.solution.question_template_md or ""
+    for key, value in (question.solution.parameters or {}).items():
+        rendered = re.sub(r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered)
+    return rendered.strip() or (question.title.strip() if question.title else "")
+
+
 def _normalize_for_docx(text: str) -> str:
     # Keep readable fallback by stripping latex delimiters for Word plain text runs.
     return (
@@ -153,7 +160,7 @@ def _build_project_markdown(
     lines: list[str] = [f"# {project_name or 'Exam'}", "", course, ""]
 
     for i, q in enumerate(questions, start=1):
-        prompt = _normalize_math_delimiters(q.prompt_md.strip() or (q.title.strip() if q.title else ""))
+        prompt = _normalize_math_delimiters(_render_prompt(q))
         lines.append(f"{i}. [{q.points} points] {prompt}")
 
         for figure in q.figures:
@@ -248,7 +255,7 @@ def _add_question(
     question_num_id: int,
     choice_abstract_id: int,
 ) -> None:
-    question_text = _normalize_for_docx(q.prompt_md.strip() or (q.title.strip() if q.title else ""))
+    question_text = _normalize_for_docx(_render_prompt(q))
     _add_numbered_paragraph(doc, f"[{q.points} points] {question_text}", question_num_id)
 
     for figure in q.figures:

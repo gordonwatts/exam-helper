@@ -24,7 +24,6 @@ from exam_helper.validation import validate_question
 class AutosavePayload(BaseModel):
     title: str = ""
     question_type: str = "free_response"
-    prompt_md: str = ""
     question_template_md: str = ""
     solution_parameters_yaml: str = "{}"
     answer_python_code: str = ""
@@ -112,10 +111,24 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return "\n---\n".join(chunks).strip() + "\n"
 
     def parse_choices_yaml(choices_yaml: str) -> list[MCChoice]:
+        def _strip_disallowed_bold(text: str) -> str:
+            out = text or ""
+            out = re.sub(r"\*\*(.*?)\*\*", r"\1", out, flags=re.DOTALL)
+            out = re.sub(r"__(.*?)__", r"\1", out, flags=re.DOTALL)
+            out = re.sub(r"</?strong>", "", out, flags=re.IGNORECASE)
+            out = re.sub(r"</?b>", "", out, flags=re.IGNORECASE)
+            return out
+
         raw = yaml.safe_load(choices_yaml or "[]") or []
         if not isinstance(raw, list):
             raise ValueError("choices_yaml YAML must parse to a list.")
-        choices = [MCChoice.model_validate(c) for c in raw]
+        choices = []
+        for c in raw:
+            item = MCChoice.model_validate(c)
+            item.content_md = _strip_disallowed_bold(item.content_md)
+            if item.rationale is not None:
+                item.rationale = _strip_disallowed_bold(item.rationale)
+            choices.append(item)
         return sorted(choices, key=lambda c: c.label)
 
     def dump_choices_yaml(choices: list[MCChoice]) -> str:
@@ -252,13 +265,13 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         figures = json.loads(figures_json or "[]")
         solution_parameters = parse_parameters_yaml(solution_parameters_yaml)
         distractor_funcs = parse_distractor_functions_text(distractor_functions_text)
+        rendered_prompt = _render_template_from_parameters(question_template_md, solution_parameters)
         question = Question.model_validate(
             {
                 "id": question_id,
                 "title": title,
                 "points": points,
                 "question_type": QuestionType(question_type),
-                "prompt_md": prompt_md,
                 "choices": choices,
                 "solution": {
                     "question_template_md": question_template_md,
@@ -267,6 +280,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "distractor_python_code": distractor_funcs,
                     "typed_solution_md": typed_solution_md,
                     "typed_solution_status": typed_solution_status,
+                    "last_computed_answer_md": (
+                        existing.solution.last_computed_answer_md if existing else ""
+                    ),
                 },
                 "figures": figures,
             }
@@ -292,7 +308,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "id": question_id,
                     "title": payload.title,
                     "question_type": QuestionType(payload.question_type),
-                    "prompt_md": payload.prompt_md,
                     "choices": choices,
                     "solution": {
                         "question_template_md": payload.question_template_md,
@@ -301,6 +316,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         "distractor_python_code": distractor_funcs,
                         "typed_solution_md": payload.typed_solution_md,
                         "typed_solution_status": payload.typed_solution_status,
+                        "last_computed_answer_md": (
+                            existing.solution.last_computed_answer_md if existing else ""
+                        ),
                     },
                     "figures": figures,
                     "points": payload.points,
@@ -338,7 +356,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             return {
                 "ok": True,
                 "question_template_md": result.question_template_md,
-                "prompt_md": rendered_prompt,
+                "rendered_prompt_md": rendered_prompt,
                 "solution_parameters_yaml": dump_parameters_yaml(result.parameters),
                 "title": title,
             }
@@ -381,6 +399,8 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     payload["ok"] = False
                     payload["error"] = "MC options are not unique."
                     return JSONResponse(payload, status_code=422)
+            q.solution.last_computed_answer_md = answer_result.answer_md
+            repo.save_question(q)
             return payload
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)

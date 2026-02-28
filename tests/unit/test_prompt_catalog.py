@@ -29,4 +29,4 @@ def test_prompt_catalog_includes_distractor_yaml_context() -> None:
     q.solution.answer_python_code = "def solve(params): return {'answer_md':'1','final_answer':'1'}"
     q.solution.distractor_python_code = []
     bundle = catalog.compose(action="generate_distractor_functions", question=q)
-    assert "Current distractor code blocks yaml" in bundle.user_prompt
+    assert "Current distractor code blocks:" in bundle.user_prompt

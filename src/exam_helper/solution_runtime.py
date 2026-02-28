@@ -136,6 +136,15 @@ def _numeric_sort_key(value: str) -> float | None:
         return None
 
 
+def _strip_disallowed_bold(text: str) -> str:
+    out = text or ""
+    out = re.sub(r"\*\*(.*?)\*\*", r"\1", out, flags=re.DOTALL)
+    out = re.sub(r"__(.*?)__", r"\1", out, flags=re.DOTALL)
+    out = re.sub(r"</?strong>", "", out, flags=re.IGNORECASE)
+    out = re.sub(r"</?b>", "", out, flags=re.IGNORECASE)
+    return out
+
+
 def run_mc_harness(
     answer_python_code: str,
     distractor_python_codes: list[tuple[str, str]],
@@ -146,7 +155,7 @@ def run_mc_harness(
     rows: list[dict[str, Any]] = [
         {
             "source_id": "answer",
-            "content_md": answer.final_answer,
+            "content_md": _strip_disallowed_bold(answer.final_answer),
             "is_correct": True,
             "rationale": "correct answer",
         }
@@ -156,9 +165,9 @@ def run_mc_harness(
         rows.append(
             {
                 "source_id": source_id,
-                "content_md": d.distractor_md,
+                "content_md": _strip_disallowed_bold(d.distractor_md),
                 "is_correct": False,
-                "rationale": d.rationale,
+                "rationale": _strip_disallowed_bold(d.rationale),
             }
         )
 

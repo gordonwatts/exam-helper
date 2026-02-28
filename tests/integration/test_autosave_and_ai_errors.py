@@ -95,7 +95,7 @@ def test_ai_rewrite_and_parameterize_updates_template_and_params(tmp_path) -> No
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] is True
-    assert "3.5" in data["prompt_md"]
+    assert "3.5" in data["rendered_prompt_md"]
 
 
 def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
