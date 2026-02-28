@@ -301,6 +301,13 @@
         }
       }
 
+      function renderComputedAnswerPreview(raw) {
+        computedAnswerPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(raw || ""));
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([computedAnswerPreview]);
+        }
+      }
+
       function updateMCVisibility() {
         mcBlock.style.display = isMC() ? "block" : "none";
       }
@@ -372,7 +379,7 @@
 
       async function runHarnessNow() {
           await callEndpoint("/harness/run", (data) => {
-            computedAnswerPreview.innerHTML = marked.parse(data.computed_answer_md || "");
+            renderComputedAnswerPreview(data.computed_answer_md || "");
             computedAnswerPreview.classList.remove("computed-stale");
             if (data.choices_yaml) choicesEl.value = data.choices_yaml;
             renderMCPreview();
@@ -539,6 +546,7 @@
       renderTemplate();
       renderMCPreview();
       renderTypedPreview();
+      renderComputedAnswerPreview(computedAnswerPreview.textContent || "");
       updateMCVisibility();
       setStatus("Ready", "good");
     </script>

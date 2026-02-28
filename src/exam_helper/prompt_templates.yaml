@@ -1,13 +1,66 @@
 actions:
   rewrite_parameterize:
-    system_prompt: "Return strict JSON object with keys question_template_md, parameters, and optional title. Rewrite the question cleanly, extract parameters as key/value mapping, and template parameter references in the question text. If title is already non-empty, return title as an empty string."
-    user_prompt_template: "Current title:\n{title}\nQuestion type: {question_type}\nCurrent prompt:\n{prompt_md}\nCurrent template (if any):\n{question_template_md}\nCurrent parameters yaml:\n{solution_parameters_yaml}"
+    system_prompt: |
+      Return exactly one strict JSON object with keys:
+      - question_template_md
+      - parameters
+      - title (optional)
+
+      Rewrite the question as a reusable Question Template (Markdown).
+      Extract variable values into Template Parameters (YAML-compatible key/value mapping).
+      Use {{parameter_name}} references in question_template_md.
+      If the current title is already non-empty, return title as an empty string.
+      Do not include any prose before or after the JSON object.
+    user_prompt_template: |
+      Rewrite this question and extract parameters.
+
+      {context_sections}
   generate_answer_function:
-    system_prompt: "Return strict JSON object with key answer_python_code only. The code must define solve(params) returning dict with keys answer_md and final_answer. answer_md may include markdown/units but must not use bold syntax. final_answer must be concise answer text used for MC option generation and must not use bold syntax."
-    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nTemplate:\n{question_template_md}\nParameters yaml:\n{solution_parameters_yaml}\nAnswer guidance from author:\n{answer_guidance}\nCurrent answer code:\n{answer_python_code}"
+    system_prompt: |
+      Return exactly one strict JSON object with one key:
+      - answer_python_code
+
+      answer_python_code must be Python code and must define:
+      - solve(params) -> dict with keys answer_md and final_answer
+
+      answer_md may include markdown and units, but must not use bold syntax.
+      final_answer must be concise answer text used for multiple-choice option generation, and must not use bold syntax.
+      Do not include any prose before or after the JSON object.
+    user_prompt_template: |
+      Write or revise the deterministic Answer Function (Python).
+
+      {context_sections}
   generate_distractor_functions:
-    system_prompt: "Return strict JSON object with key distractors, where distractors is a list of exactly 4 objects. Each object must contain id and python_code. Each python_code must define distractor(params) returning dict with keys distractor_md and rationale. distractor_md must be the actual option text shown to students (answer-like value), not an explanation. Distractors must be plausible and unique, and must not equal the correct answer. Do not use bold syntax in distractor_md or rationale. Rationale must be short: no more than about half a line (roughly <= 8 words)."
-    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nTemplate:\n{question_template_md}\nParameters yaml:\n{solution_parameters_yaml}\nAnswer code:\n{answer_python_code}\nCurrent distractor code blocks:\n{distractor_functions_text}"
+    system_prompt: |
+      Return exactly one strict JSON object with one key:
+      - distractors
+
+      distractors must be a list of exactly 4 objects.
+      Each object must contain:
+      - id
+      - python_code
+
+      Each python_code must define:
+      - distractor(params) -> dict with keys distractor_md and rationale
+
+      distractor_md must be the actual option text shown to students, not an explanation.
+      Distractors must be plausible, unique, and must not equal the correct answer.
+      Do not use bold syntax in distractor_md or rationale.
+      rationale must be short (roughly <= 8 words).
+      Do not include any prose before or after the JSON object.
+    user_prompt_template: |
+      Write deterministic distractor functions for multiple-choice options.
+
+      {context_sections}
   generate_typed_solution:
-    system_prompt: "Return only markdown for the worked solution (no JSON, no code fences). Use the current template/prompt, parameters, and deterministic answer output to draft a concise worked solution for exam authors."
-    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nTemplate:\n{question_template_md}\nParameters yaml:\n{solution_parameters_yaml}\nAnswer code:\n{answer_python_code}\nCurrent typed solution:\n{typed_solution_md}\nLatest computed answer:\n{last_computed_answer_md}"
+    system_prompt: |
+      Return only Markdown for the worked solution.
+      Do not return JSON.
+      Do not use code fences.
+
+      Use the Question Template (Markdown), Template Parameters (YAML), and deterministic answer output.
+      Write a concise worked solution for exam authors.
+    user_prompt_template: |
+      Write or revise the worked Typed Solution (Markdown).
+
+      {context_sections}
