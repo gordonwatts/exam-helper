@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from openai import OpenAI
+import yaml
 
 from exam_helper.models import AIPromptConfig, AIUsageTotals, DistractorFunction, Question
 from exam_helper.prompt_catalog import PromptBundle, PromptCatalog
@@ -188,6 +189,30 @@ class AIService:
                 return data
         raise ValueError("AI response was not parseable JSON object.")
 
+    @staticmethod
+    def _extract_typed_solution_text(raw: str) -> str:
+        text = (raw or "").strip()
+        if not text:
+            return ""
+        # Try strict/heuristic JSON object parsing first.
+        try:
+            payload = AIService._parse_json_object(text)
+            value = payload.get("typed_solution_md")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        except Exception:
+            pass
+        # Try YAML/JSON loading for near-JSON model outputs.
+        try:
+            loaded = yaml.safe_load(text)
+            if isinstance(loaded, dict):
+                value = loaded.get("typed_solution_md")
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        except Exception:
+            pass
+        return text
+
     def rewrite_parameterize(self, question: Question) -> RewriteResult:
         bundle = self.compose_prompt(action="rewrite_parameterize", question=question)
         result = self._text_with_question_context(bundle, question)
@@ -240,14 +265,7 @@ class AIService:
     def generate_typed_solution(self, question: Question) -> AIResult:
         bundle = self.compose_prompt(action="generate_typed_solution", question=question)
         result = self._text_with_question_context(bundle, question)
-        text = ""
-        try:
-            payload = self._parse_json_object(result.text)
-            text = str(payload.get("typed_solution_md", "")).strip()
-        except Exception:
-            # Fallback: if the model returns plain markdown instead of strict JSON,
-            # treat the full response as typed solution text.
-            text = (result.text or "").strip()
+        text = self._extract_typed_solution_text(result.text)
         if not text:
             raise ValueError("AI response field 'typed_solution_md' is required.")
         return AIService.AIResult(text=text, usage=result.usage)

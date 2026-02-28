@@ -283,7 +283,19 @@
       }
 
       function renderTypedPreview() {
-        typedPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(typedSolutionEl.value || ""));
+        let raw = typedSolutionEl.value || "";
+        const trimmed = raw.trim();
+        if (trimmed.startsWith("{") && trimmed.includes("typed_solution_md")) {
+          try {
+            const obj = JSON.parse(trimmed);
+            if (obj && typeof obj.typed_solution_md === "string") {
+              raw = obj.typed_solution_md;
+            }
+          } catch (_) {
+            // Keep raw text if it is not valid JSON.
+          }
+        }
+        typedPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(raw));
         if (window.MathJax && window.MathJax.typesetPromise) {
           window.MathJax.typesetPromise([typedPreview]);
         }
