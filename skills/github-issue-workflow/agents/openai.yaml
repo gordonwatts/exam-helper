@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Issue Workflow"
+  short_description: "GitHub issue scan and execution flow"
+  default_prompt: "Use the GitHub issue workflow to list open issues, inspect an issue in detail, branch from main, and start implementation with draft PR hygiene."
