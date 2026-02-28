@@ -93,6 +93,8 @@
 
       <div class="row">
         <div class="card">
+          <label>Answer Guidance</label>
+          <textarea name="answer_guidance" id="answer_guidance">{{ question.solution.answer_guidance if question else '' }}</textarea>
           <label>Answer Function Python (`solve(params)`)</label>
           <textarea name="answer_python_code" id="answer_python_code">{{ question.solution.answer_python_code if question else '' }}</textarea>
           <button type="button" class="btn ai-action" id="btn_generate_answer" {% if not ai_enabled %}disabled{% endif %}>Generate Answer Function</button>
@@ -169,6 +171,7 @@
       const pointsEl = document.getElementById("points");
       const templateEl = document.getElementById("question_template_md");
       const paramsEl = document.getElementById("solution_parameters_yaml");
+      const answerGuidanceEl = document.getElementById("answer_guidance");
       const answerCodeEl = document.getElementById("answer_python_code");
       const distractorFnsEl = document.getElementById("distractor_functions_text");
       const choicesEl = document.getElementById("choices_yaml");
@@ -266,6 +269,7 @@
           question_type: questionTypeEl.value,
           question_template_md: templateEl.value,
           solution_parameters_yaml: paramsEl.value,
+          answer_guidance: answerGuidanceEl.value,
           answer_python_code: answerCodeEl.value,
           distractor_functions_text: distractorFnsEl.value,
           choices_yaml: choicesEl.value,
@@ -470,7 +474,7 @@
         }
       });
 
-      [questionTypeEl, titleEl, templateEl, paramsEl, answerCodeEl, distractorFnsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, templateEl, paramsEl, answerGuidanceEl, answerCodeEl, distractorFnsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
           renderTemplate();
           renderMCPreview();

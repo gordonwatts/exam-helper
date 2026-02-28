@@ -53,6 +53,7 @@ class DistractorFunction(BaseModel):
 class Solution(BaseModel):
     question_template_md: str = ""
     parameters: dict[str, Any] = Field(default_factory=dict)
+    answer_guidance: str = ""
     answer_python_code: str = ""
     distractor_python_code: list[DistractorFunction] = Field(default_factory=list)
     typed_solution_md: str = ""

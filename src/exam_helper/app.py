@@ -26,6 +26,7 @@ class AutosavePayload(BaseModel):
     question_type: str = "free_response"
     question_template_md: str = ""
     solution_parameters_yaml: str = "{}"
+    answer_guidance: str = ""
     answer_python_code: str = ""
     distractor_functions_text: str = ""
     choices_yaml: str = "[]"
@@ -250,6 +251,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         question_template_md: str = Form(""),
         choices_yaml: str = Form("[]"),
         solution_parameters_yaml: str = Form("{}"),
+        answer_guidance: str = Form(""),
         answer_python_code: str = Form(""),
         distractor_functions_text: str = Form(""),
         typed_solution_md: str = Form(""),
@@ -276,6 +278,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "solution": {
                     "question_template_md": question_template_md,
                     "parameters": solution_parameters,
+                    "answer_guidance": answer_guidance,
                     "answer_python_code": answer_python_code,
                     "distractor_python_code": distractor_funcs,
                     "typed_solution_md": typed_solution_md,
@@ -312,6 +315,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "solution": {
                         "question_template_md": payload.question_template_md,
                         "parameters": solution_parameters,
+                        "answer_guidance": payload.answer_guidance,
                         "answer_python_code": payload.answer_python_code,
                         "distractor_python_code": distractor_funcs,
                         "typed_solution_md": payload.typed_solution_md,

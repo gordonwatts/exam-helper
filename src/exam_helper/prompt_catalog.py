@@ -70,6 +70,7 @@ class PromptCatalog:
             "solution_parameters_yaml": yaml.safe_dump(
                 question.solution.parameters or {}, sort_keys=False
             ).strip(),
+            "answer_guidance": question.solution.answer_guidance or "",
             "answer_python_code": question.solution.answer_python_code or "",
             "distractor_functions_text": (
                 "\n---\n".join(

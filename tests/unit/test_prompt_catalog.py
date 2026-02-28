@@ -15,12 +15,14 @@ def test_prompt_catalog_builds_rewrite_prompt() -> None:
 def test_prompt_catalog_applies_overall_override() -> None:
     catalog = PromptCatalog.from_package_yaml()
     q = Question(id="q1", title="T", prompt_md="P")
+    q.solution.answer_guidance = "Use energy conservation first."
     bundle = catalog.compose(
         action="generate_answer_function",
         question=q,
         prompts_override=AIPromptConfig(overall="Always keep SI units."),
     )
     assert "Always keep SI units." in bundle.system_prompt
+    assert "Use energy conservation first." in bundle.user_prompt
 
 
 def test_prompt_catalog_includes_distractor_yaml_context() -> None:
