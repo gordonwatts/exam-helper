@@ -240,8 +240,14 @@ class AIService:
     def generate_typed_solution(self, question: Question) -> AIResult:
         bundle = self.compose_prompt(action="generate_typed_solution", question=question)
         result = self._text_with_question_context(bundle, question)
-        payload = self._parse_json_object(result.text)
-        text = str(payload.get("typed_solution_md", "")).strip()
+        text = ""
+        try:
+            payload = self._parse_json_object(result.text)
+            text = str(payload.get("typed_solution_md", "")).strip()
+        except Exception:
+            # Fallback: if the model returns plain markdown instead of strict JSON,
+            # treat the full response as typed solution text.
+            text = (result.text or "").strip()
         if not text:
             raise ValueError("AI response field 'typed_solution_md' is required.")
         return AIService.AIResult(text=text, usage=result.usage)

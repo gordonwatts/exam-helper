@@ -75,3 +75,13 @@ def test_usage_parses_total_cost_from_formatted_string() -> None:
     usage = svc._usage_from_response(_Response())
     assert usage.total_tokens == 18
     assert abs(usage.total_cost_usd - 0.0123) < 1e-9
+
+
+def test_generate_typed_solution_falls_back_to_plain_text(monkeypatch) -> None:
+    from exam_helper import ai_service as mod
+
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient("Worked solution in markdown."))
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="t")
+    out = svc.generate_typed_solution(q)
+    assert out.text == "Worked solution in markdown."
