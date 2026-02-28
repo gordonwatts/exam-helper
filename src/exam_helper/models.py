@@ -87,9 +87,9 @@ class Question(BaseModel):
     @model_validator(mode="after")
     def check_mc(self) -> "Question":
         if self.question_type == QuestionType.multiple_choice and self.choices:
-            if len(self.choices) != 5:
-                raise ValueError("multiple_choice choices must define exactly five options (A-E)")
-            if sum(1 for c in self.choices if c.is_correct) != 1:
+            # Allow partial/in-progress MC editing states in the UI.
+            # Strict A-E/one-correct constraints are enforced when full sets are generated.
+            if len(self.choices) == 5 and sum(1 for c in self.choices if c.is_correct) != 1:
                 raise ValueError("multiple_choice requires exactly one correct choice")
         return self
 

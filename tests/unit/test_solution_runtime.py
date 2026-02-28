@@ -36,6 +36,19 @@ def test_distractor_function_success() -> None:
     assert result.rationale == "forgot sign"
 
 
+def test_distractor_function_repairs_swapped_answer_and_rationale() -> None:
+    code = (
+        "def distractor(params):\n"
+        "    return {\n"
+        "      'distractor_md': 'Mistakenly applies inverse scaling between p and T.',\n"
+        "      'rationale': '47.3 C'\n"
+        "    }\n"
+    )
+    result = run_distractor_function(code, {})
+    assert result.distractor_md == "47.3 C"
+    assert "mistakenly applies inverse scaling" in result.rationale.lower()
+
+
 def test_harness_detects_collisions() -> None:
     answer_code = (
         "def solve(params):\n"

@@ -120,6 +120,35 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             out = re.sub(r"</?b>", "", out, flags=re.IGNORECASE)
             return out
 
+        def _looks_explanatory(text: str) -> bool:
+            t = (text or "").strip().lower()
+            if not t:
+                return False
+            cue_words = (
+                "mistakenly",
+                "incorrect",
+                "wrong",
+                "misread",
+                "misreads",
+                "uses",
+                "treats",
+                "forgets",
+                "because",
+                "applies",
+                "directly",
+            )
+            return any(w in t for w in cue_words) or len(t) > 90
+
+        def _looks_answer_like(text: str) -> bool:
+            t = (text or "").strip()
+            if not t:
+                return False
+            if re.search(r"\d", t):
+                return True
+            if re.search(r"[=+\-/*^]", t):
+                return True
+            return len(t) <= 40 and not _looks_explanatory(t)
+
         raw = yaml.safe_load(choices_yaml or "[]") or []
         if not isinstance(raw, list):
             raise ValueError("choices_yaml YAML must parse to a list.")
@@ -129,6 +158,12 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             item.content_md = _strip_disallowed_bold(item.content_md)
             if item.rationale is not None:
                 item.rationale = _strip_disallowed_bold(item.rationale)
+            if (
+                item.rationale is not None
+                and _looks_explanatory(item.content_md)
+                and _looks_answer_like(item.rationale)
+            ):
+                item.content_md, item.rationale = item.rationale, item.content_md
             choices.append(item)
         return sorted(choices, key=lambda c: c.label)
 

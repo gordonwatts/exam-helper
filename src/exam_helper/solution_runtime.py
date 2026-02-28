@@ -109,6 +109,35 @@ def run_answer_function(python_code: str, params: dict[str, Any] | None = None) 
 
 
 def run_distractor_function(python_code: str, params: dict[str, Any] | None = None) -> DistractorRunResult:
+    def _looks_explanatory(text: str) -> bool:
+        t = (text or "").strip().lower()
+        if not t:
+            return False
+        cue_words = (
+            "mistakenly",
+            "incorrect",
+            "wrong",
+            "misread",
+            "misreads",
+            "uses",
+            "treats",
+            "forgets",
+            "because",
+            "applies",
+            "directly",
+        )
+        return any(w in t for w in cue_words) or len(t) > 90
+
+    def _looks_answer_like(text: str) -> bool:
+        t = (text or "").strip()
+        if not t:
+            return False
+        if re.search(r"\d", t):
+            return True
+        if re.search(r"[=+\-/*^]", t):
+            return True
+        return len(t) <= 40 and not _looks_explanatory(t)
+
     raw, _ = _run_callable(python_code, "distractor", params or {})
     if not isinstance(raw, dict):
         raise SolutionRuntimeError("distractor(params) must return a dict.")
@@ -118,6 +147,9 @@ def run_distractor_function(python_code: str, params: dict[str, Any] | None = No
         raise SolutionRuntimeError("distractor return must include non-empty string distractor_md.")
     if not isinstance(rationale, str) or not rationale.strip():
         raise SolutionRuntimeError("distractor return must include non-empty string rationale.")
+    # Repair common model error where answer/rationale are swapped.
+    if _looks_explanatory(distractor_md) and _looks_answer_like(rationale):
+        distractor_md, rationale = rationale, distractor_md
     return DistractorRunResult(distractor_md=distractor_md.strip(), rationale=rationale.strip())
 
 
