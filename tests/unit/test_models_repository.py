@@ -43,6 +43,18 @@ def test_question_defaults_allow_empty_title() -> None:
     assert q.points == 5
 
 
+def test_multiple_choice_allows_partial_choices_during_authoring() -> None:
+    q = Question(
+        id="q_mc_partial",
+        question_type=QuestionType.multiple_choice,
+        choices=[
+            {"label": "A", "content_md": "opt A", "is_correct": True},
+            {"label": "B", "content_md": "opt B", "is_correct": False},
+        ],
+    )
+    assert len(q.choices) == 2
+
+
 def test_project_defaults_include_ai_config(tmp_path: Path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")

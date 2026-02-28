@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from hashlib import sha256
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -36,11 +37,28 @@ class MCChoice(BaseModel):
     rationale: str | None = None
 
 
-class Solution(BaseModel):
-    worked_solution_md: str = ""
+class DistractorFunction(BaseModel):
+    id: str
     python_code: str = ""
-    parameters: dict[str, float | int | str] = Field(default_factory=dict)
-    rubric: list[str] = Field(default_factory=list)
+    label_hint: str | None = None
+
+    @field_validator("id")
+    @classmethod
+    def id_safe(cls, v: str) -> str:
+        if not v.replace("-", "").replace("_", "").isalnum():
+            raise ValueError("distractor id must be alphanumeric, underscore, or hyphen")
+        return v
+
+
+class Solution(BaseModel):
+    question_template_md: str = ""
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    answer_guidance: str = ""
+    answer_python_code: str = ""
+    distractor_python_code: list[DistractorFunction] = Field(default_factory=list)
+    typed_solution_md: str = ""
+    typed_solution_status: Literal["missing", "fresh", "stale"] = "missing"
+    last_computed_answer_md: str = ""
 
 
 class Question(BaseModel):
@@ -54,7 +72,6 @@ class Question(BaseModel):
     difficulty: int = 3
     points: int = 5
     question_type: QuestionType = QuestionType.free_response
-    prompt_md: str = ""
     mc_options_guidance: str = ""
     figures: list[FigureData] = Field(default_factory=list)
     choices: list[MCChoice] = Field(default_factory=list)
@@ -69,11 +86,11 @@ class Question(BaseModel):
 
     @model_validator(mode="after")
     def check_mc(self) -> "Question":
-        if self.question_type == QuestionType.multiple_choice:
-            if len(self.choices) < 2:
-                raise ValueError("multiple_choice requires at least two choices")
-            if sum(1 for c in self.choices if c.is_correct) < 1:
-                raise ValueError("multiple_choice requires at least one correct choice")
+        if self.question_type == QuestionType.multiple_choice and self.choices:
+            # Allow partial/in-progress MC editing states in the UI.
+            # Strict A-E/one-correct constraints are enforced when full sets are generated.
+            if len(self.choices) == 5 and sum(1 for c in self.choices if c.is_correct) != 1:
+                raise ValueError("multiple_choice requires exactly one correct choice")
         return self
 
 

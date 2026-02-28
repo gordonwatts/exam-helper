@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib.resources import files
 from string import Formatter
+import re
 
 import yaml
 
@@ -27,12 +28,10 @@ class PromptCatalog:
         if not isinstance(actions, dict):
             raise ValueError("prompt_templates.yaml must define 'actions' mapping")
         required = {
-            "suggest_title",
-            "improve_prompt",
-            "draft_solution",
-            "distractors",
-            "draft_solution_with_code",
-            "sync_parameters",
+            "rewrite_parameterize",
+            "generate_answer_function",
+            "generate_distractor_functions",
+            "generate_typed_solution",
         }
         missing = required.difference(actions.keys())
         if missing:
@@ -52,31 +51,37 @@ class PromptCatalog:
         action: str,
         question: Question,
         prompts_override: AIPromptConfig | None = None,
-        solution_md: str = "",
     ) -> PromptBundle:
         payload = self._actions.get(action)
         if payload is None:
             raise ValueError(f"Unknown prompt action: {action}")
         system_parts = [payload["system_prompt"].strip()]
-        if prompts_override:
-            if prompts_override.overall.strip():
-                system_parts.append(prompts_override.overall.strip())
-            scoped = self._scoped_override(action=action, prompts_override=prompts_override)
-            if scoped:
-                system_parts.append(scoped)
+        if prompts_override and prompts_override.overall.strip():
+            system_parts.append(prompts_override.overall.strip())
         system_prompt = "\n\n".join(p for p in system_parts if p)
-        resolved_solution_md = solution_md or question.solution.worked_solution_md or ""
         values = {
             "title": question.title or "",
-            "prompt_md": question.prompt_md or "",
-            "solution_md": resolved_solution_md,
-            "choices_yaml": self._choices_yaml(question),
-            "mc_options_guidance": question.mc_options_guidance or "",
+            "prompt_md": self._render_template_from_parameters(
+                question.solution.question_template_md or "",
+                question.solution.parameters or {},
+            ),
             "question_type": question.question_type.value,
-            "solution_python_code": question.solution.python_code or "",
+            "question_template_md": question.solution.question_template_md or "",
             "solution_parameters_yaml": yaml.safe_dump(
                 question.solution.parameters or {}, sort_keys=False
             ).strip(),
+            "answer_guidance": question.solution.answer_guidance or "",
+            "answer_python_code": question.solution.answer_python_code or "",
+            "distractor_functions_text": (
+                "\n---\n".join(
+                    [
+                        f"# distractor: {d.id}\n{(d.python_code or '').strip()}"
+                        for d in question.solution.distractor_python_code
+                    ]
+                ).strip()
+            ),
+            "typed_solution_md": question.solution.typed_solution_md or "",
+            "last_computed_answer_md": question.solution.last_computed_answer_md or "",
         }
         user_template = payload["user_prompt_template"]
         user_prompt = self._safe_format(user_template, values)
@@ -94,36 +99,16 @@ class PromptCatalog:
         return out
 
     @staticmethod
-    def _scoped_override(action: str, prompts_override: AIPromptConfig) -> str:
-        if action in {"draft_solution", "distractors"}:
-            return prompts_override.solution_and_mc.strip()
-        if action == "improve_prompt":
-            return prompts_override.prompt_review.strip()
-        return ""
-
-    @staticmethod
     def _safe_format(template: str, values: dict[str, str]) -> str:
         formatter = Formatter()
-        allowed = {
-            "title",
-            "prompt_md",
-            "solution_md",
-            "choices_yaml",
-            "mc_options_guidance",
-            "question_type",
-            "solution_python_code",
-            "solution_parameters_yaml",
-        }
+        allowed = set(values.keys())
         for _, field_name, _, _ in formatter.parse(template):
             if field_name and field_name not in allowed:
                 raise ValueError(f"Unsupported template key: {field_name}")
         return template.format(**values)
-
     @staticmethod
-    def _choices_yaml(question: Question) -> str:
-        if not question.choices:
-            return "[]"
-        return yaml.safe_dump(
-            [choice.model_dump(mode="json", exclude_none=True) for choice in question.choices],
-            sort_keys=False,
-        ).strip()
+    def _render_template_from_parameters(template: str, params: dict[str, object]) -> str:
+        rendered = template or ""
+        for key, value in (params or {}).items():
+            rendered = re.sub(r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered)
+        return rendered

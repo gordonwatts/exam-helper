@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import re
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+
 import yaml
 from fastapi import Body, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -14,21 +15,23 @@ from pydantic import BaseModel
 
 from exam_helper.ai_service import AIService
 from exam_helper.export_docx import render_project_docx_bytes
-from exam_helper.models import AIUsageTotals, MCChoice, ProjectConfig, Question, QuestionType
+from exam_helper.models import AIUsageTotals, DistractorFunction, MCChoice, ProjectConfig, Question, QuestionType
 from exam_helper.repository import ProjectRepository
-from exam_helper.solution_runtime import SolutionRuntimeError, run_solution_code
+from exam_helper.solution_runtime import SolutionRuntimeError, run_answer_function, run_mc_harness
 from exam_helper.validation import validate_question
 
 
 class AutosavePayload(BaseModel):
     title: str = ""
     question_type: str = "free_response"
-    prompt_md: str = ""
-    mc_options_guidance: str = ""
-    choices_yaml: str = "[]"
-    solution_md: str = ""
-    solution_python_code: str = ""
+    question_template_md: str = ""
     solution_parameters_yaml: str = "{}"
+    answer_guidance: str = ""
+    answer_python_code: str = ""
+    distractor_functions_text: str = ""
+    choices_yaml: str = "[]"
+    typed_solution_md: str = ""
+    typed_solution_status: str = "missing"
     figures_json: str = "[]"
     points: int = 5
 
@@ -53,17 +56,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             prompts_override=config.ai.prompts,
         )
 
-    def unpack_ai_text_and_usage(result: object) -> tuple[str, AIUsageTotals]:
-        if isinstance(result, str):
-            return result, AIUsageTotals()
-        if hasattr(result, "text") and hasattr(result, "usage"):
-            text = str(getattr(result, "text", ""))
-            usage = getattr(result, "usage")
-            if isinstance(usage, AIUsageTotals):
-                return text, usage
-            return text, AIUsageTotals.model_validate(usage)
-        raise ValueError("Unexpected AI response shape.")
-
     def refresh_ai_service() -> None:
         latest = repo.load_project()
         app.state.ai = make_ai_service(latest)
@@ -73,8 +65,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     app.state.repo = repo
     app.state.ai = make_ai_service(project)
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-    computed_output_start = "<!-- COMPUTED_OUTPUT_START -->"
-    computed_output_end = "<!-- COMPUTED_OUTPUT_END -->"
 
     def parse_parameters_yaml(raw_yaml: str) -> dict[str, Any]:
         data = yaml.safe_load(raw_yaml or "{}")
@@ -87,176 +77,167 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def dump_parameters_yaml(params: dict[str, Any]) -> str:
         return yaml.safe_dump(params or {}, sort_keys=False).strip()
 
-    def apply_computed_output(solution_md: str, final_answer_text: str) -> str:
-        block = (
-            f"{computed_output_start}\n"
-            "### Computed final result\n\n"
-            f"{final_answer_text.strip()}\n"
-            f"{computed_output_end}"
-        )
-        text = (solution_md or "").strip()
-        start = text.find(computed_output_start)
-        end = text.find(computed_output_end)
-        if start >= 0 and end > start:
-            end_idx = end + len(computed_output_end)
-            merged = f"{text[:start].rstrip()}\n\n{block}"
-            if end_idx < len(text):
-                merged += f"\n{text[end_idx:].lstrip()}"
-            return merged.strip()
+    def parse_distractor_functions_text(raw_text: str) -> list[DistractorFunction]:
+        text = (raw_text or "").strip()
         if not text:
-            return block
-        return f"{text}\n\n{block}".strip()
+            return []
+        # Backward-compatible: accept YAML list payload as well.
+        if text.startswith("- ") or text.startswith("["):
+            raw = yaml.safe_load(text) or []
+            if not isinstance(raw, list):
+                raise ValueError("Distractor functions must be YAML list or plain text blocks.")
+            return [DistractorFunction.model_validate(item) for item in raw]
 
-    def strip_inline_mc_options(prompt_md: str) -> str:
-        text = (prompt_md or "").strip()
-        if not text:
+        blocks = [b.strip() for b in re.split(r"\n---\n", text) if b.strip()]
+        out: list[DistractorFunction] = []
+        for idx, block in enumerate(blocks, start=1):
+            lines = block.splitlines()
+            header = lines[0].strip() if lines else ""
+            m = re.match(r"^#\s*distractor\s*:\s*([A-Za-z0-9_-]+)\s*$", header)
+            if m:
+                did = m.group(1)
+                code = "\n".join(lines[1:]).strip()
+            else:
+                did = f"d{idx}"
+                code = block
+            out.append(DistractorFunction(id=did, python_code=code))
+        return out
+
+    def dump_distractor_functions_text(funcs: list[DistractorFunction]) -> str:
+        if not funcs:
             return ""
-        filtered: list[str] = []
-        option_line = re.compile(r"^\s*(?:\*{0,2})[A-E](?:[.):]|\s*[-:])\s+")
-        for line in text.splitlines():
-            if option_line.match(line):
-                continue
-            filtered.append(line)
-        compact = "\n".join(filtered)
-        compact = re.sub(r"\n{3,}", "\n\n", compact).strip()
-        return compact
+        chunks: list[str] = []
+        for f in funcs:
+            chunks.append(f"# distractor: {f.id}\n{(f.python_code or '').strip()}")
+        return "\n---\n".join(chunks).strip() + "\n"
 
     def parse_choices_yaml(choices_yaml: str) -> list[MCChoice]:
-        def _to_bool(value: Any) -> bool:
-            if isinstance(value, bool):
-                return value
-            if isinstance(value, (int, float)):
-                return bool(value)
-            if isinstance(value, str):
-                return value.strip().lower() in {"1", "true", "yes", "y"}
-            return False
+        def _strip_disallowed_bold(text: str) -> str:
+            out = text or ""
+            out = re.sub(r"\*\*(.*?)\*\*", r"\1", out, flags=re.DOTALL)
+            out = re.sub(r"__(.*?)__", r"\1", out, flags=re.DOTALL)
+            out = re.sub(r"</?strong>", "", out, flags=re.IGNORECASE)
+            out = re.sub(r"</?b>", "", out, flags=re.IGNORECASE)
+            return out
 
-        def _normalize_choice_item(item: Any, fallback_label: str = "") -> dict[str, Any]:
-            if isinstance(item, dict):
-                return {
-                    "label": str(item.get("label", fallback_label)).strip().upper(),
-                    "content_md": str(
-                        item.get("content_md")
-                        or item.get("content")
-                        or item.get("text")
-                        or item.get("answer")
-                        or ""
-                    ),
-                    "is_correct": _to_bool(item.get("is_correct", item.get("correct", False))),
-                    "rationale": (
-                        str(item.get("rationale"))
-                        if item.get("rationale") is not None
-                        else None
-                    ),
-                }
-            return {
-                "label": fallback_label.strip().upper(),
-                "content_md": str(item),
-                "is_correct": False,
-            }
+        def _looks_explanatory(text: str) -> bool:
+            t = (text or "").strip().lower()
+            if not t:
+                return False
+            cue_words = (
+                "mistakenly",
+                "incorrect",
+                "wrong",
+                "misread",
+                "misreads",
+                "uses",
+                "treats",
+                "forgets",
+                "because",
+                "applies",
+                "directly",
+            )
+            return any(w in t for w in cue_words) or len(t) > 90
 
-        raw_loaded = yaml.safe_load(choices_yaml)
-        if raw_loaded is None:
-            raw_choices: list[Any] = []
-        elif isinstance(raw_loaded, list):
-            raw_choices = raw_loaded
-        elif isinstance(raw_loaded, dict):
-            if isinstance(raw_loaded.get("choices"), list):
-                raw_choices = raw_loaded["choices"]
-            else:
-                labels = {str(k).strip().upper() for k in raw_loaded.keys()}
-                if labels.issubset({"A", "B", "C", "D", "E"}) and labels:
-                    raw_choices = []
-                    for label, value in raw_loaded.items():
-                        raw_choices.append(_normalize_choice_item(value, str(label)))
-                else:
-                    raise ValueError(
-                        "choices_yaml must be a YAML list of choices or an A-E keyed mapping."
-                    )
-        else:
-            raise ValueError("choices_yaml YAML must parse to a list or mapping.")
+        def _looks_answer_like(text: str) -> bool:
+            t = (text or "").strip()
+            if not t:
+                return False
+            if re.search(r"\d", t):
+                return True
+            if re.search(r"[=+\-/*^]", t):
+                return True
+            return len(t) <= 40 and not _looks_explanatory(t)
 
-        choices = [MCChoice.model_validate(_normalize_choice_item(c)) for c in raw_choices]
-        if len(choices) != 5:
-            raise ValueError("choices_yaml must define exactly five options (A-E).")
-        if sum(1 for c in choices if c.is_correct) != 1:
-            raise ValueError("choices_yaml must mark exactly one correct option.")
-        labels = sorted((c.label or "").strip().upper() for c in choices)
-        if labels != ["A", "B", "C", "D", "E"]:
-            raise ValueError("choices_yaml options must be labeled A-E.")
+        raw = yaml.safe_load(choices_yaml or "[]") or []
+        if not isinstance(raw, list):
+            raise ValueError("choices_yaml YAML must parse to a list.")
+        choices = []
+        for c in raw:
+            item = MCChoice.model_validate(c)
+            item.content_md = _strip_disallowed_bold(item.content_md)
+            if item.rationale is not None:
+                item.rationale = _strip_disallowed_bold(item.rationale)
+            if (
+                item.rationale is not None
+                and _looks_explanatory(item.content_md)
+                and _looks_answer_like(item.rationale)
+            ):
+                item.content_md, item.rationale = item.rationale, item.content_md
+            choices.append(item)
         return sorted(choices, key=lambda c: c.label)
 
-    class _RationaleQuoted(str):
-        pass
-
-    class _RationaleQuotedDumper(yaml.SafeDumper):
-        pass
-
-    def _quoted_string_representer(
-        dumper: yaml.SafeDumper, data: _RationaleQuoted
-    ) -> yaml.ScalarNode:
-        return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style='"')
-
-    _RationaleQuotedDumper.add_representer(_RationaleQuoted, _quoted_string_representer)
-
     def dump_choices_yaml(choices: list[MCChoice]) -> str:
-        payload: list[dict[str, Any]] = []
-        for c in sorted(choices, key=lambda x: x.label):
-            item: dict[str, Any] = {
-                "label": c.label,
-                "content_md": c.content_md,
-                "is_correct": c.is_correct,
-            }
-            if c.rationale is not None:
-                # Always quote rationale to avoid YAML parsing edge cases with special chars.
-                item["rationale"] = _RationaleQuoted(c.rationale)
-            payload.append(item)
-        return yaml.dump(payload, Dumper=_RationaleQuotedDumper, sort_keys=False)
+        payload = [c.model_dump(mode="json", exclude_none=True) for c in sorted(choices, key=lambda x: x.label)]
+        return yaml.safe_dump(payload, sort_keys=False)
 
-    def normalize_choices_yaml(choices_yaml: str) -> str:
-        return dump_choices_yaml(parse_choices_yaml(choices_yaml))
-
-    def assess_mc_choices_parameterization(
-        python_code: str,
-        params: dict[str, Any],
-        context: dict[str, Any],
-        baseline_final_answer_text: str,
-        baseline_choices_yaml: str,
-    ) -> tuple[bool, str]:
-        numeric_keys = [k for k, v in (params or {}).items() if isinstance(v, (int, float))]
-        if not numeric_keys:
-            return True, ""
-        probe_key = numeric_keys[0]
-        probe_params = dict(params or {})
-        probe_value = float(probe_params[probe_key])
-        probe_params[probe_key] = (probe_value * 1.1) if probe_value != 0 else 1.0
-        try:
-            probe_result = run_solution_code(python_code, probe_params, context)
-        except Exception:
-            return True, ""
-        baseline_choices = (baseline_choices_yaml or "").strip()
-        probe_choices = (probe_result.choices_yaml or "").strip()
-        if (
-            baseline_final_answer_text.strip() != probe_result.final_answer_text.strip()
-            and baseline_choices
-            and baseline_choices == probe_choices
-        ):
-            return (
-                False,
-                "choices_yaml appears unchanged when numeric parameters change; use params/computed values "
-                "to build option text and rationale dynamically.",
+    def dedupe_choices(choices: list[MCChoice]) -> list[MCChoice]:
+        seen: set[str] = set()
+        unique: list[MCChoice] = []
+        for c in choices:
+            canonical = re.sub(r"\s+", " ", (c.content_md or "").strip()).casefold()
+            if canonical in seen:
+                continue
+            seen.add(canonical)
+            unique.append(c)
+        labels = ["A", "B", "C", "D", "E"]
+        out: list[MCChoice] = []
+        for idx, c in enumerate(unique):
+            out.append(
+                MCChoice(
+                    label=labels[idx] if idx < len(labels) else c.label,
+                    content_md=c.content_md,
+                    is_correct=c.is_correct,
+                    rationale=c.rationale,
+                )
             )
-        return True, ""
+        return out
 
     def default_mc_choices_yaml() -> str:
         defaults = [
-            {"label": "A", "content_md": "", "is_correct": True},
-            {"label": "B", "content_md": "", "is_correct": False},
-            {"label": "C", "content_md": "", "is_correct": False},
-            {"label": "D", "content_md": "", "is_correct": False},
-            {"label": "E", "content_md": "", "is_correct": False},
+            {"label": "A", "content_md": "", "is_correct": True, "rationale": ""},
+            {"label": "B", "content_md": "", "is_correct": False, "rationale": ""},
+            {"label": "C", "content_md": "", "is_correct": False, "rationale": ""},
+            {"label": "D", "content_md": "", "is_correct": False, "rationale": ""},
+            {"label": "E", "content_md": "", "is_correct": False, "rationale": ""},
         ]
         return yaml.safe_dump(defaults, sort_keys=False)
+
+    def _render_template_from_parameters(template: str, params: dict[str, Any]) -> str:
+        rendered = template or ""
+        for key, value in (params or {}).items():
+            rendered = re.sub(r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered)
+        return rendered
+
+    def _suggest_next_question_id() -> str:
+        try:
+            existing = [q.id for q in repo.list_questions()]
+        except Exception:
+            existing = []
+        used = set(existing)
+        for i in range(1, 10000):
+            candidate = f"q{i}"
+            if candidate not in used:
+                return candidate
+        return "q_new"
+
+    def _fallback_title_from_prompt(rendered_prompt: str) -> str:
+        words = re.findall(r"[A-Za-z0-9+\-/]+", rendered_prompt or "")
+        return " ".join(words[:8]).strip() or "Untitled question"
+
+    def _mark_typed_solution_stale_if_needed(existing: Question | None, candidate: Question) -> None:
+        if existing is None:
+            return
+        if (
+            existing.solution.parameters != candidate.solution.parameters
+            or existing.solution.answer_python_code != candidate.solution.answer_python_code
+            or [d.python_code for d in existing.solution.distractor_python_code]
+            != [d.python_code for d in candidate.solution.distractor_python_code]
+        ):
+            if candidate.solution.typed_solution_md.strip():
+                candidate.solution.typed_solution_status = "stale"
+            else:
+                candidate.solution.typed_solution_status = "missing"
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
@@ -290,25 +271,30 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "choices_yaml": default_mc_choices_yaml(),
                 "figures_json": "[]",
                 "solution_parameters_yaml": dump_parameters_yaml({}),
+                "distractor_functions_text": "",
+                "question_id_default": _suggest_next_question_id(),
+                "ai_enabled": bool(openai_key),
             },
         )
 
     @app.get("/questions/{question_id}/edit", response_class=HTMLResponse)
     def edit_question(request: Request, question_id: str) -> HTMLResponse:
         q = repo.get_question(question_id)
-        choices_yaml = yaml.safe_dump(
-            [c.model_dump(mode="json") for c in q.choices], sort_keys=False
-        )
+        choices_yaml = dump_choices_yaml(q.choices) if q.choices else default_mc_choices_yaml()
         figures_json = json.dumps([f.model_dump(mode="json") for f in q.figures])
         solution_parameters_yaml = dump_parameters_yaml(q.solution.parameters)
+        distractor_functions_text = dump_distractor_functions_text(q.solution.distractor_python_code)
         return templates.TemplateResponse(
             request,
             "question_form.html",
             {
                 "question": q,
-                "choices_yaml": choices_yaml if choices_yaml.strip() else default_mc_choices_yaml(),
+                "choices_yaml": choices_yaml,
                 "figures_json": figures_json,
                 "solution_parameters_yaml": solution_parameters_yaml,
+                "distractor_functions_text": distractor_functions_text,
+                "ai_enabled": bool(openai_key),
+                "question_id_default": q.id,
             },
         )
 
@@ -316,46 +302,272 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def save_question(
         question_id: str = Form(...),
         title: str = Form(""),
-        topic: str = Form(""),
-        course_level: str = Form("intro"),
-        tags: str = Form(""),
         points: int = Form(5),
         question_type: str = Form("free_response"),
-        prompt_md: str = Form(""),
-        mc_options_guidance: str = Form(""),
+        question_template_md: str = Form(""),
         choices_yaml: str = Form("[]"),
-        solution_md: str = Form(""),
-        solution_python_code: str = Form(""),
         solution_parameters_yaml: str = Form("{}"),
+        answer_guidance: str = Form(""),
+        answer_python_code: str = Form(""),
+        distractor_functions_text: str = Form(""),
+        typed_solution_md: str = Form(""),
+        typed_solution_status: str = Form("missing"),
         figures_json: str = Form("[]"),
     ) -> RedirectResponse:
-        raw_choices = yaml.safe_load(choices_yaml) or []
-        choices = [MCChoice.model_validate(c) for c in raw_choices]
+        existing = None
+        try:
+            existing = repo.get_question(question_id)
+        except Exception:
+            existing = None
+        choices = parse_choices_yaml(choices_yaml)
         figures = json.loads(figures_json or "[]")
         solution_parameters = parse_parameters_yaml(solution_parameters_yaml)
-
+        distractor_funcs = parse_distractor_functions_text(distractor_functions_text)
         question = Question.model_validate(
             {
                 "id": question_id,
                 "title": title,
-                "topic": topic,
-                "course_level": course_level,
-                "tags": [t.strip() for t in tags.split(",") if t.strip()],
                 "points": points,
                 "question_type": QuestionType(question_type),
-                "prompt_md": prompt_md,
-                "mc_options_guidance": mc_options_guidance,
                 "choices": choices,
                 "solution": {
-                    "worked_solution_md": solution_md,
-                    "python_code": solution_python_code,
+                    "question_template_md": question_template_md,
                     "parameters": solution_parameters,
+                    "answer_guidance": answer_guidance,
+                    "answer_python_code": answer_python_code,
+                    "distractor_python_code": distractor_funcs,
+                    "typed_solution_md": typed_solution_md,
+                    "typed_solution_status": typed_solution_status,
+                    "last_computed_answer_md": (
+                        existing.solution.last_computed_answer_md if existing else ""
+                    ),
                 },
                 "figures": figures,
             }
         )
+        _mark_typed_solution_stale_if_needed(existing, question)
         repo.save_question(question)
         return RedirectResponse("/", status_code=303)
+
+    @app.post("/questions/{question_id}/autosave")
+    def autosave_question(question_id: str, payload: AutosavePayload = Body(...)) -> JSONResponse:
+        try:
+            existing = None
+            try:
+                existing = repo.get_question(question_id)
+            except Exception:
+                existing = None
+            choices = parse_choices_yaml(payload.choices_yaml)
+            figures = json.loads(payload.figures_json or "[]")
+            solution_parameters = parse_parameters_yaml(payload.solution_parameters_yaml)
+            distractor_funcs = parse_distractor_functions_text(payload.distractor_functions_text)
+            question = Question.model_validate(
+                {
+                    "id": question_id,
+                    "title": payload.title,
+                    "question_type": QuestionType(payload.question_type),
+                    "choices": choices,
+                    "solution": {
+                        "question_template_md": payload.question_template_md,
+                        "parameters": solution_parameters,
+                        "answer_guidance": payload.answer_guidance,
+                        "answer_python_code": payload.answer_python_code,
+                        "distractor_python_code": distractor_funcs,
+                        "typed_solution_md": payload.typed_solution_md,
+                        "typed_solution_status": payload.typed_solution_status,
+                        "last_computed_answer_md": (
+                            existing.solution.last_computed_answer_md if existing else ""
+                        ),
+                    },
+                    "figures": figures,
+                    "points": payload.points,
+                }
+            )
+            _mark_typed_solution_stale_if_needed(existing, question)
+            repo.save_question(question)
+            return JSONResponse({"ok": True, "typed_solution_status": question.solution.typed_solution_status})
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
+    @app.post("/figures/validate")
+    def validate_figure(data_base64: str = Form(...)) -> dict:
+        import base64
+
+        raw = base64.b64decode(data_base64.encode("ascii"))
+        return {"sha256": sha256(raw).hexdigest(), "size": len(raw)}
+
+    @app.post("/questions/{question_id}/validate")
+    def validate_question_endpoint(question_id: str) -> dict:
+        q = repo.get_question(question_id)
+        errors = validate_question(q)
+        return {"question_id": question_id, "errors": errors, "ok": not errors}
+
+    @app.post("/questions/{question_id}/ai/rewrite-and-parameterize")
+    def ai_rewrite_and_parameterize(question_id: str) -> dict:
+        try:
+            q = repo.get_question(question_id)
+            result = app.state.ai.rewrite_parameterize(q)
+            repo.add_ai_usage(result.usage)
+            rendered_prompt = _render_template_from_parameters(result.question_template_md, result.parameters)
+            title = q.title.strip()
+            if not title:
+                title = result.title.strip() or _fallback_title_from_prompt(rendered_prompt)
+            return {
+                "ok": True,
+                "question_template_md": result.question_template_md,
+                "rendered_prompt_md": rendered_prompt,
+                "solution_parameters_yaml": dump_parameters_yaml(result.parameters),
+                "title": title,
+            }
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
+    @app.post("/questions/{question_id}/ai/generate-answer-function")
+    def ai_generate_answer_function(question_id: str) -> dict:
+        try:
+            q = repo.get_question(question_id)
+            error_feedback = ""
+            for _ in range(3):
+                result = app.state.ai.generate_answer_function(q, error_feedback=error_feedback)
+                repo.add_ai_usage(result.usage)
+                try:
+                    run_answer_function(result.answer_python_code, q.solution.parameters)
+                    return {
+                        "ok": True,
+                        "answer_python_code": result.answer_python_code,
+                    }
+                except Exception as ex:
+                    error_feedback = str(ex)
+                    q.solution.answer_python_code = result.answer_python_code
+            raise ValueError(
+                "AI-generated answer function failed validation after 3 attempts. "
+                f"Last error: {error_feedback}"
+            )
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
+    @app.post("/questions/{question_id}/harness/run")
+    def run_harness(question_id: str) -> dict:
+        try:
+            q = repo.get_question(question_id)
+            answer_result = run_answer_function(q.solution.answer_python_code, q.solution.parameters)
+            payload: dict[str, Any] = {
+                "ok": True,
+                "computed_answer_md": answer_result.answer_md,
+                "final_answer_text": answer_result.final_answer,
+            }
+            if q.question_type == QuestionType.multiple_choice:
+                funcs = [(d.id, d.python_code) for d in q.solution.distractor_python_code]
+                harness = run_mc_harness(
+                    answer_python_code=q.solution.answer_python_code,
+                    distractor_python_codes=funcs,
+                    params=q.solution.parameters,
+                )
+                payload["choices_yaml"] = dump_choices_yaml(harness.choices)
+                payload["collisions"] = harness.collisions
+                if harness.collisions:
+                    payload["ok"] = False
+                    payload["error"] = "MC options are not unique."
+                    return JSONResponse(payload, status_code=422)
+            q.solution.last_computed_answer_md = answer_result.answer_md
+            repo.save_question(q)
+            return payload
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
+    @app.post("/questions/{question_id}/ai/generate-mc-distractors")
+    def ai_generate_mc_distractors(question_id: str) -> dict:
+        try:
+            q = repo.get_question(question_id)
+            if q.question_type != QuestionType.multiple_choice:
+                raise ValueError("Distractor generation is only available for multiple_choice questions.")
+            last_collisions: list[str] = []
+            last_funcs: list[DistractorFunction] = []
+            best_unique_choices: list[MCChoice] = []
+            best_attempt = 0
+            max_attempts = 3
+            for attempt in range(1, max_attempts + 1):
+                result = app.state.ai.generate_distractor_functions(q)
+                repo.add_ai_usage(result.usage)
+                last_funcs = result.distractors
+                harness = run_mc_harness(
+                    answer_python_code=q.solution.answer_python_code,
+                    distractor_python_codes=[(d.id, d.python_code) for d in result.distractors],
+                    params=q.solution.parameters,
+                )
+                if not harness.collisions:
+                    return {
+                        "ok": True,
+                        "distractor_functions_text": dump_distractor_functions_text(result.distractors),
+                        "choices_yaml": dump_choices_yaml(harness.choices),
+                        "attempts": attempt,
+                    }
+                last_collisions = harness.collisions
+                unique_choices = dedupe_choices(harness.choices)
+                if len(unique_choices) > len(best_unique_choices):
+                    best_unique_choices = unique_choices
+                    best_attempt = attempt
+                q.solution.distractor_python_code = result.distractors
+            if best_unique_choices:
+                return {
+                    "ok": True,
+                    "warning": (
+                        "Could not generate a full unique MC set after 3 attempts. "
+                        f"Returning {len(best_unique_choices)} unique choices from attempt {best_attempt}."
+                    ),
+                    "collisions": last_collisions,
+                    "distractor_functions_text": dump_distractor_functions_text(last_funcs),
+                    "choices_yaml": dump_choices_yaml(best_unique_choices),
+                    "attempts": max_attempts,
+                }
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "Could not generate MC distractors.",
+                    "collisions": last_collisions,
+                    "distractor_functions_text": dump_distractor_functions_text(last_funcs),
+                },
+                status_code=422,
+            )
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
+    @app.post("/questions/{question_id}/ai/generate-typed-solution")
+    def ai_generate_typed_solution(question_id: str) -> dict:
+        try:
+            q = repo.get_question(question_id)
+            result = app.state.ai.generate_typed_solution(q)
+            repo.add_ai_usage(result.usage)
+            return {
+                "ok": True,
+                "typed_solution_md": result.text,
+                "typed_solution_status": "fresh",
+            }
+        except Exception as ex:
+            logger.exception(
+                "ai_generate_typed_solution failed question_id=%s template_len=%s params_keys=%s",
+                question_id,
+                len((q.solution.question_template_md or "").strip()) if "q" in locals() else 0,
+                sorted((q.solution.parameters or {}).keys()) if "q" in locals() else [],
+            )
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
+    @app.post("/questions/{question_id}/ai/preview/{action}")
+    def ai_preview_prompt(question_id: str, action: str) -> dict:
+        try:
+            q = repo.get_question(question_id)
+            valid_actions = {
+                "rewrite-and-parameterize": "rewrite_parameterize",
+                "generate-answer-function": "generate_answer_function",
+                "generate-mc-distractors": "generate_distractor_functions",
+                "generate-typed-solution": "generate_typed_solution",
+            }
+            if action not in valid_actions:
+                raise ValueError("Unknown preview action.")
+            preview = app.state.ai.preview_prompt(action=valid_actions[action], question=q)
+            return {"ok": True, **preview}
+        except Exception as ex:
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/export/docx")
     def export_docx(include_solutions: str | None = Form(None)) -> Response:
@@ -431,367 +643,5 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def reset_project_usage() -> RedirectResponse:
         repo.reset_ai_usage()
         return RedirectResponse("/", status_code=303)
-
-    @app.post("/questions/{question_id}/autosave")
-    def autosave_question(question_id: str, payload: AutosavePayload = Body(...)) -> JSONResponse:
-        try:
-            raw_choices = yaml.safe_load(payload.choices_yaml) or []
-            choices = [MCChoice.model_validate(c) for c in raw_choices]
-            figures = json.loads(payload.figures_json or "[]")
-            solution_parameters = parse_parameters_yaml(payload.solution_parameters_yaml)
-            question = Question.model_validate(
-                {
-                    "id": question_id,
-                    "title": payload.title,
-                    "question_type": QuestionType(payload.question_type),
-                    "prompt_md": payload.prompt_md,
-                    "mc_options_guidance": payload.mc_options_guidance,
-                    "choices": choices,
-                    "solution": {
-                        "worked_solution_md": payload.solution_md,
-                        "python_code": payload.solution_python_code,
-                        "parameters": solution_parameters,
-                    },
-                    "figures": figures,
-                    "points": payload.points,
-                }
-            )
-            repo.save_question(question)
-            return JSONResponse({"ok": True})
-        except Exception as ex:
-            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
-
-    @app.post("/figures/validate")
-    def validate_figure(data_base64: str = Form(...)) -> dict:
-        import base64
-
-        raw = base64.b64decode(data_base64.encode("ascii"))
-        return {"sha256": sha256(raw).hexdigest(), "size": len(raw)}
-
-    @app.post("/questions/{question_id}/validate")
-    def validate_question_endpoint(question_id: str) -> dict:
-        q = repo.get_question(question_id)
-        errors = validate_question(q)
-        return {"question_id": question_id, "errors": errors, "ok": not errors}
-
-    @app.post("/questions/{question_id}/ai/improve-prompt")
-    def ai_improve_prompt(question_id: str) -> dict:
-        try:
-            q = repo.get_question(question_id)
-            result = app.state.ai.improve_prompt(q)
-            text, usage = unpack_ai_text_and_usage(result)
-            repo.add_ai_usage(usage)
-            if q.question_type == QuestionType.multiple_choice:
-                text = strip_inline_mc_options(text)
-            return {"ok": True, "prompt_md": text}
-        except Exception as ex:
-            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
-
-    @app.post("/questions/{question_id}/ai/draft-solution")
-    def ai_draft_solution(question_id: str) -> dict:
-        try:
-            q = repo.get_question(question_id)
-            logger.info("ai_draft_solution start question_id=%s", question_id)
-            if hasattr(app.state.ai, "draft_solution_with_code"):
-                structured_failure: str | None = None
-                try:
-                    error_feedback = ""
-                    for attempt in range(1, 4):
-                        logger.info(
-                            "ai_draft_solution structured attempt=%s question_id=%s",
-                            attempt,
-                            question_id,
-                        )
-                        result = app.state.ai.draft_solution_with_code(q, error_feedback=error_feedback)
-                        raw_excerpt = (getattr(result, "raw_text", "") or "")[:800].replace("\r", " ").replace("\n", "\\n")
-                        if raw_excerpt:
-                            logger.info(
-                                "ai_draft_solution structured raw_excerpt question_id=%s attempt=%s excerpt=%s",
-                                question_id,
-                                attempt,
-                                raw_excerpt,
-                            )
-                        repo.add_ai_usage(AIUsageTotals.model_validate(result.usage))
-                        candidate = q.model_copy(deep=True)
-                        candidate.solution.worked_solution_md = result.worked_solution_md
-                        candidate.solution.python_code = result.python_code
-                        candidate.solution.parameters = result.parameters
-                        try:
-                            run_result = run_solution_code(
-                                candidate.solution.python_code,
-                                candidate.solution.parameters,
-                                {"question_type": candidate.question_type.value, "prompt_md": candidate.prompt_md},
-                            )
-                        except SolutionRuntimeError as ex:
-                            error_feedback = str(ex)
-                            logger.warning(
-                                "ai_draft_solution structured run failed question_id=%s attempt=%s error=%s",
-                                question_id,
-                                attempt,
-                                error_feedback,
-                            )
-                            q = candidate
-                            continue
-                        solution_md = apply_computed_output(
-                            candidate.solution.worked_solution_md,
-                            run_result.final_answer_text,
-                        )
-                        if candidate.question_type == QuestionType.multiple_choice:
-                            if not run_result.choices_yaml:
-                                error_feedback = (
-                                    "Missing choices_yaml from solve(...) for multiple_choice question."
-                                )
-                                logger.warning(
-                                    "ai_draft_solution structured missing choices_yaml question_id=%s attempt=%s",
-                                    question_id,
-                                    attempt,
-                                )
-                                q = candidate
-                                continue
-                        payload: dict[str, Any] = {
-                            "ok": True,
-                            "solution_md": solution_md,
-                            "solution_python_code": candidate.solution.python_code,
-                            "solution_parameters_yaml": dump_parameters_yaml(candidate.solution.parameters),
-                            "final_answer_text": run_result.final_answer_text,
-                        }
-                        if run_result.choices_yaml:
-                            if candidate.question_type == QuestionType.multiple_choice:
-                                try:
-                                    payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
-                                except Exception as ex:
-                                    error_feedback = f"Invalid choices_yaml format: {ex}"
-                                    logger.warning(
-                                        "ai_draft_solution structured invalid choices_yaml question_id=%s attempt=%s error=%s raw_choices_excerpt=%s",
-                                        question_id,
-                                        attempt,
-                                        ex,
-                                        (run_result.choices_yaml or "")[:800].replace("\r", " ").replace("\n", "\\n"),
-                                    )
-                                    q = candidate
-                                    continue
-                                is_parameterized, param_msg = assess_mc_choices_parameterization(
-                                    candidate.solution.python_code,
-                                    candidate.solution.parameters,
-                                    {
-                                        "question_type": candidate.question_type.value,
-                                        "prompt_md": candidate.prompt_md,
-                                    },
-                                    run_result.final_answer_text,
-                                    run_result.choices_yaml,
-                                )
-                                if not is_parameterized:
-                                    error_feedback = f"Invalid choices_yaml format: {param_msg}"
-                                    logger.warning(
-                                        "ai_draft_solution structured non-parameterized choices_yaml question_id=%s attempt=%s reason=%s",
-                                        question_id,
-                                        attempt,
-                                        param_msg,
-                                    )
-                                    q = candidate
-                                    continue
-                            else:
-                                try:
-                                    payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
-                                except Exception as ex:
-                                    warning = (
-                                        "Structured solution returned invalid choices_yaml for a non-MC question; "
-                                        f"ignoring it. Details: {ex}"
-                                    )
-                                    payload["warning"] = warning
-                                    logger.warning(
-                                        "ai_draft_solution ignoring non-mc choices_yaml question_id=%s error=%s",
-                                        question_id,
-                                        ex,
-                                    )
-                        logger.info(
-                            "ai_draft_solution structured success question_id=%s code_len=%s has_choices=%s",
-                            question_id,
-                            len(candidate.solution.python_code or ""),
-                            bool(run_result.choices_yaml),
-                        )
-                        return payload
-                    structured_failure = (
-                        "AI-generated solution code failed validation after 3 attempts. "
-                        f"Last error: {error_feedback}"
-                    )
-                    logger.warning(
-                        "ai_draft_solution structured exhausted question_id=%s reason=%s",
-                        question_id,
-                        structured_failure,
-                    )
-                except Exception as ex:
-                    structured_failure = f"Structured solution generation failed: {ex}"
-                    logger.exception(
-                        "ai_draft_solution structured exception question_id=%s",
-                        question_id,
-                    )
-
-                # Fallback keeps editing flow alive even when strict structured generation fails.
-                result = app.state.ai.draft_solution(q)
-                text, usage = unpack_ai_text_and_usage(result)
-                repo.add_ai_usage(usage)
-                logger.warning(
-                    "ai_draft_solution fallback question_id=%s warning=%s",
-                    question_id,
-                    structured_failure,
-                )
-                return {
-                    "ok": True,
-                    "solution_md": text,
-                    "solution_python_code": q.solution.python_code,
-                    "solution_parameters_yaml": dump_parameters_yaml(q.solution.parameters),
-                    "warning": structured_failure,
-                }
-            result = app.state.ai.draft_solution(q)
-            text, usage = unpack_ai_text_and_usage(result)
-            repo.add_ai_usage(usage)
-            logger.info("ai_draft_solution basic success question_id=%s", question_id)
-            return {
-                "ok": True,
-                "solution_md": text,
-                "solution_python_code": q.solution.python_code,
-                "solution_parameters_yaml": dump_parameters_yaml(q.solution.parameters),
-            }
-        except Exception as ex:
-            logger.exception("ai_draft_solution endpoint failed question_id=%s", question_id)
-            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
-
-    @app.post("/questions/{question_id}/ai/suggest-title")
-    def ai_suggest_title(question_id: str) -> dict:
-        try:
-            q = repo.get_question(question_id)
-            result = app.state.ai.suggest_title(q)
-            text, usage = unpack_ai_text_and_usage(result)
-            repo.add_ai_usage(usage)
-            return {"ok": True, "title": text}
-        except Exception as ex:
-            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
-
-    @app.post("/questions/{question_id}/ai/distractors")
-    def ai_distractors(question_id: str, count: int = 3) -> dict:
-        _ = count
-        try:
-            q = repo.get_question(question_id)
-            if not q.solution.python_code.strip():
-                raise ValueError("Solution python code is required to generate MC choices.")
-            run_result = run_solution_code(
-                q.solution.python_code,
-                q.solution.parameters,
-                {"question_type": q.question_type.value, "prompt_md": q.prompt_md},
-            )
-            if not run_result.choices_yaml:
-                raise ValueError("Solution code did not return choices_yaml for MC generation.")
-            choices = parse_choices_yaml(run_result.choices_yaml)
-            solution_md = apply_computed_output(q.solution.worked_solution_md, run_result.final_answer_text)
-            payload = {
-                "ok": True,
-                "choices_yaml": dump_choices_yaml(choices),
-                "solution_was_generated": False,
-                "solution_md": solution_md,
-                "final_answer_text": run_result.final_answer_text,
-            }
-            return payload
-        except Exception as ex:
-            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
-
-    @app.post("/questions/{question_id}/solution-code/run")
-    def run_solution_code_endpoint(question_id: str) -> dict:
-        try:
-            q = repo.get_question(question_id)
-            result = run_solution_code(
-                q.solution.python_code,
-                q.solution.parameters,
-                {"question_type": q.question_type.value, "prompt_md": q.prompt_md},
-            )
-            payload: dict[str, Any] = {
-                "ok": True,
-                "final_answer_text": result.final_answer_text,
-                "solution_md": apply_computed_output(q.solution.worked_solution_md, result.final_answer_text),
-            }
-            if result.choices_yaml:
-                payload["choices_yaml"] = normalize_choices_yaml(result.choices_yaml)
-                if q.question_type == QuestionType.multiple_choice:
-                    is_parameterized, param_msg = assess_mc_choices_parameterization(
-                        q.solution.python_code,
-                        q.solution.parameters,
-                        {"question_type": q.question_type.value, "prompt_md": q.prompt_md},
-                        result.final_answer_text,
-                        result.choices_yaml,
-                    )
-                    if not is_parameterized:
-                        payload["warning"] = param_msg
-            return payload
-        except Exception as ex:
-            logger.warning(
-                "solution_code_run failed question_id=%s error=%s",
-                question_id,
-                ex,
-            )
-            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
-
-    @app.post("/questions/{question_id}/ai/sync-parameters")
-    def ai_sync_parameters(question_id: str) -> dict:
-        try:
-            q = repo.get_question(question_id)
-            if not hasattr(app.state.ai, "sync_parameters_draft"):
-                raise ValueError("Current AI provider does not support parameter sync drafting.")
-            draft, usage = app.state.ai.sync_parameters_draft(q)
-            repo.add_ai_usage(AIUsageTotals.model_validate(usage))
-            prompt_md = draft["prompt_md"]
-            if q.question_type == QuestionType.multiple_choice:
-                prompt_md = strip_inline_mc_options(prompt_md)
-            payload: dict[str, Any] = {
-                "ok": True,
-                "prompt_md": prompt_md,
-                "solution_md": draft["worked_solution_md"],
-            }
-            try:
-                run_result = run_solution_code(
-                    q.solution.python_code,
-                    q.solution.parameters,
-                    {"question_type": q.question_type.value, "prompt_md": prompt_md},
-                )
-                payload["final_answer_text"] = run_result.final_answer_text
-                payload["solution_md"] = apply_computed_output(
-                    draft["worked_solution_md"], run_result.final_answer_text
-                )
-                if run_result.choices_yaml:
-                    payload["choices_yaml"] = normalize_choices_yaml(run_result.choices_yaml)
-            except Exception as ex:
-                payload["run_error"] = str(ex)
-            return payload
-        except Exception as ex:
-            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
-
-    @app.post("/questions/{question_id}/ai/preview/{action}")
-    def ai_preview_prompt(question_id: str, action: str) -> dict:
-        try:
-            q = repo.get_question(question_id)
-            valid_actions = {
-                "suggest-title",
-                "improve-prompt",
-                "draft-solution",
-                "draft-solution-with-code",
-                "distractors",
-                "sync-parameters",
-            }
-            if action not in valid_actions:
-                raise ValueError("Unknown preview action.")
-            normalized_action = action.replace("-", "_")
-            solution_md = (
-                q.solution.worked_solution_md
-                if normalized_action
-                in {"draft_solution", "draft_solution_with_code", "distractors", "sync_parameters"}
-                else ""
-            )
-            preview = app.state.ai.preview_prompt(
-                action=normalized_action,
-                question=q,
-                solution_md=solution_md,
-            )
-            return {"ok": True, **preview}
-        except Exception as ex:
-            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     return app

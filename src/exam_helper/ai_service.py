@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from openai import OpenAI
+import yaml
 
-from exam_helper.models import AIPromptConfig, AIUsageTotals, MCChoice, Question
+from exam_helper.models import AIPromptConfig, AIUsageTotals, DistractorFunction, Question
 from exam_helper.prompt_catalog import PromptBundle, PromptCatalog
 
 
@@ -24,12 +25,21 @@ class AIService:
         usage: AIUsageTotals
 
     @dataclass
-    class SolutionDraft:
-        worked_solution_md: str
-        python_code: str
+    class RewriteResult:
+        question_template_md: str
         parameters: dict[str, Any]
+        title: str
         usage: AIUsageTotals
-        raw_text: str
+
+    @dataclass
+    class AnswerFunctionResult:
+        answer_python_code: str
+        usage: AIUsageTotals
+
+    @dataclass
+    class DistractorFunctionsResult:
+        distractors: list[DistractorFunction]
+        usage: AIUsageTotals
 
     def _client(self) -> OpenAI:
         if not self.api_key:
@@ -53,31 +63,15 @@ class AIService:
         )
         return ids
 
-    @staticmethod
-    def _figure_content(question: Question) -> list[dict]:
-        items: list[dict] = []
-        for fig in question.figures:
-            caption = fig.caption or fig.id
-            items.append({"type": "input_text", "text": f"Figure {fig.id}: {caption}"})
-            items.append(
-                {
-                    "type": "input_image",
-                    "image_url": f"data:{fig.mime_type};base64,{fig.data_base64}",
-                    "detail": "low",
-                }
-            )
-        return items
-
-    def compose_prompt(self, action: str, question: Question, solution_md: str = "") -> PromptBundle:
+    def compose_prompt(self, action: str, question: Question) -> PromptBundle:
         return self._catalog().compose(
             action=action,
             question=question,
             prompts_override=self.prompts_override,
-            solution_md=solution_md,
         )
 
-    def preview_prompt(self, action: str, question: Question, solution_md: str = "") -> dict[str, Any]:
-        bundle = self.compose_prompt(action=action, question=question, solution_md=solution_md)
+    def preview_prompt(self, action: str, question: Question) -> dict[str, Any]:
+        bundle = self.compose_prompt(action=action, question=question)
         return {
             "action": action,
             "system_prompt": bundle.system_prompt,
@@ -134,48 +128,28 @@ class AIService:
 
     @classmethod
     def _extract_total_cost_usd(cls, data: dict[str, Any]) -> float:
-        direct_keys = [
-            "total_cost_usd",
-            "total_cost",
-            "cost",
-            "estimated_cost",
-            "cost_usd",
-            "usd_cost",
-        ]
-        for key in direct_keys:
+        for key in ("total_cost_usd", "total_cost", "cost"):
             value = cls._to_float(data.get(key))
             if value > 0:
                 return value
+        input_cost = cls._to_float(data.get("input_cost"))
+        output_cost = cls._to_float(data.get("output_cost"))
+        return max(0.0, input_cost + output_cost)
 
-        input_candidates = ["input_cost", "prompt_cost", "input_cost_usd", "prompt_cost_usd"]
-        output_candidates = ["output_cost", "completion_cost", "output_cost_usd", "completion_cost_usd"]
-        input_cost = max(cls._to_float(data.get(k)) for k in input_candidates)
-        output_cost = max(cls._to_float(data.get(k)) for k in output_candidates)
-        split_total = input_cost + output_cost
-        if split_total > 0:
-            return split_total
-
-        details = data.get("cost_details")
-        if isinstance(details, dict):
-            nested_total = cls._extract_total_cost_usd(details)
-            if nested_total > 0:
-                return nested_total
-        return 0.0
-
-    def _text(self, bundle: PromptBundle) -> AIResult:
-        client = self._client()
-        user_content = [{"type": "input_text", "text": bundle.user_prompt}]
-        response = client.responses.create(
-            model=self.model,
-            input=[
-                {"role": "system", "content": bundle.system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-        )
-        text = getattr(response, "output_text", "").strip()
-        if not text:
-            raise ValueError("Empty AI response.")
-        return AIService.AIResult(text=text, usage=self._usage_from_response(response))
+    @staticmethod
+    def _figure_content(question: Question) -> list[dict]:
+        items: list[dict] = []
+        for fig in question.figures:
+            caption = fig.caption or fig.id
+            items.append({"type": "input_text", "text": f"Figure {fig.id}: {caption}"})
+            items.append(
+                {
+                    "type": "input_image",
+                    "image_url": f"data:{fig.mime_type};base64,{fig.data_base64}",
+                    "detail": "low",
+                }
+            )
+        return items
 
     def _text_with_question_context(self, bundle: PromptBundle, question: Question) -> AIResult:
         client = self._client()
@@ -194,34 +168,6 @@ class AIService:
         return AIService.AIResult(text=text, usage=self._usage_from_response(response))
 
     @staticmethod
-    def _parse_json_payload(raw: str) -> list[dict]:
-        # First try strict JSON.
-        try:
-            data = json.loads(raw)
-            if isinstance(data, list):
-                return data
-        except json.JSONDecodeError:
-            pass
-
-        # Try fenced code block JSON.
-        fence_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, flags=re.DOTALL)
-        if fence_match:
-            data = json.loads(fence_match.group(1))
-            if isinstance(data, list):
-                return data
-
-        # Try first list-like JSON substring.
-        start = raw.find("[")
-        end = raw.rfind("]")
-        if start >= 0 and end > start:
-            candidate = raw[start : end + 1]
-            data = json.loads(candidate)
-            if isinstance(data, list):
-                return data
-
-        raise ValueError("AI response was not parseable JSON list.")
-
-    @staticmethod
     def _parse_json_object(raw: str) -> dict[str, Any]:
         try:
             data = json.loads(raw)
@@ -229,13 +175,11 @@ class AIService:
                 return data
         except json.JSONDecodeError:
             pass
-
         fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, flags=re.DOTALL)
         if fence_match:
             data = json.loads(fence_match.group(1))
             if isinstance(data, dict):
                 return data
-
         start = raw.find("{")
         end = raw.rfind("}")
         if start >= 0 and end > start:
@@ -243,108 +187,85 @@ class AIService:
             data = json.loads(candidate)
             if isinstance(data, dict):
                 return data
-
         raise ValueError("AI response was not parseable JSON object.")
 
-    def improve_prompt(self, question: Question) -> AIResult:
-        bundle = self.compose_prompt(action="improve_prompt", question=question)
-        return self._text_with_question_context(bundle, question)
+    @staticmethod
+    def _extract_typed_solution_text(raw: str) -> str:
+        text = (raw or "").strip()
+        if not text:
+            return ""
+        # Try strict/heuristic JSON object parsing first.
+        try:
+            payload = AIService._parse_json_object(text)
+            value = payload.get("typed_solution_md")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        except Exception:
+            pass
+        # Try YAML/JSON loading for near-JSON model outputs.
+        try:
+            loaded = yaml.safe_load(text)
+            if isinstance(loaded, dict):
+                value = loaded.get("typed_solution_md")
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        except Exception:
+            pass
+        return text
 
-    def draft_solution(self, question: Question) -> AIResult:
-        bundle = self.compose_prompt(
-            action="draft_solution",
-            question=question,
-            solution_md=question.solution.worked_solution_md,
+    def rewrite_parameterize(self, question: Question) -> RewriteResult:
+        bundle = self.compose_prompt(action="rewrite_parameterize", question=question)
+        result = self._text_with_question_context(bundle, question)
+        payload = self._parse_json_object(result.text)
+        template = str(payload.get("question_template_md", "")).strip()
+        title = str(payload.get("title", "")).strip()
+        params = payload.get("parameters") or {}
+        if not isinstance(params, dict):
+            raise ValueError("AI response field 'parameters' must be an object.")
+        if not template:
+            raise ValueError("AI response field 'question_template_md' is required.")
+        return AIService.RewriteResult(
+            question_template_md=template,
+            parameters=params,
+            title=title,
+            usage=result.usage,
         )
-        return self._text_with_question_context(bundle, question)
 
-    def suggest_title(self, question: Question) -> AIResult:
-        bundle = self.compose_prompt(action="suggest_title", question=question)
-        return self._text_with_question_context(bundle, question)
-
-    def generate_mc_options(self, question: Question) -> list[MCChoice]:
-        choices, _ = self.generate_mc_options_from_solution(question, question.solution.worked_solution_md)
-        return choices
-
-    def draft_solution_with_code(
+    def generate_answer_function(
         self,
         question: Question,
         error_feedback: str = "",
-    ) -> SolutionDraft:
-        bundle = self.compose_prompt(
-            action="draft_solution_with_code",
-            question=question,
-            solution_md=question.solution.worked_solution_md,
-        )
+    ) -> AnswerFunctionResult:
+        bundle = self.compose_prompt(action="generate_answer_function", question=question)
         if error_feedback.strip():
             bundle = PromptBundle(
                 system_prompt=bundle.system_prompt,
                 user_prompt=f"{bundle.user_prompt}\n\nPrevious execution error:\n{error_feedback.strip()}",
             )
         result = self._text_with_question_context(bundle, question)
-        try:
-            payload = self._parse_json_object(result.text)
-        except Exception as ex:
-            excerpt = result.text[:800].replace("\r", " ").replace("\n", "\\n")
-            raise ValueError(
-                f"AI structured solution response was not valid JSON object. Raw excerpt: {excerpt}"
-            ) from ex
-        worked_solution_md = str(payload.get("worked_solution_md", "")).strip()
-        python_code = str(payload.get("python_code", "")).strip()
-        parameters_raw = payload.get("parameters") or {}
-        if not isinstance(parameters_raw, dict):
-            raise ValueError("AI response field 'parameters' must be an object.")
-        if not worked_solution_md:
-            raise ValueError("AI response field 'worked_solution_md' is required.")
-        if not python_code:
-            raise ValueError("AI response field 'python_code' is required.")
-        return AIService.SolutionDraft(
-            worked_solution_md=worked_solution_md,
-            python_code=python_code,
-            parameters=parameters_raw,
+        payload = self._parse_json_object(result.text)
+        answer_python_code = str(payload.get("answer_python_code", "")).strip()
+        if not answer_python_code:
+            raise ValueError("AI response field 'answer_python_code' is required.")
+        return AIService.AnswerFunctionResult(
+            answer_python_code=answer_python_code,
             usage=result.usage,
-            raw_text=result.text,
         )
 
-    def sync_parameters_draft(self, question: Question) -> tuple[dict[str, Any], AIUsageTotals]:
-        bundle = self.compose_prompt(
-            action="sync_parameters",
-            question=question,
-            solution_md=question.solution.worked_solution_md,
-        )
+    def generate_distractor_functions(self, question: Question) -> DistractorFunctionsResult:
+        bundle = self.compose_prompt(action="generate_distractor_functions", question=question)
         result = self._text_with_question_context(bundle, question)
         payload = self._parse_json_object(result.text)
-        prompt_md = str(payload.get("prompt_md", "")).strip()
-        worked_solution_md = str(payload.get("worked_solution_md", "")).strip()
-        if not prompt_md:
-            raise ValueError("AI response field 'prompt_md' is required.")
-        if not worked_solution_md:
-            raise ValueError("AI response field 'worked_solution_md' is required.")
-        return {"prompt_md": prompt_md, "worked_solution_md": worked_solution_md}, result.usage
+        raw = payload.get("distractors")
+        if not isinstance(raw, list) or len(raw) != 4:
+            raise ValueError("AI response field 'distractors' must be a list with exactly 4 entries.")
+        distractors = [DistractorFunction.model_validate(item) for item in raw]
+        return AIService.DistractorFunctionsResult(distractors=distractors, usage=result.usage)
 
-    def generate_mc_options_from_solution(
-        self, question: Question, solution_md: str
-    ) -> tuple[list[MCChoice], AIUsageTotals]:
-        bundle = self.compose_prompt(action="distractors", question=question, solution_md=solution_md)
+    def generate_typed_solution(self, question: Question) -> AIResult:
+        bundle = self.compose_prompt(action="generate_typed_solution", question=question)
         result = self._text_with_question_context(bundle, question)
-        items = self._parse_json_payload(result.text)
-        if len(items) != 5:
-            raise ValueError("AI did not return exactly five options (A-E).")
-        out: list[MCChoice] = []
-        valid_labels = ["A", "B", "C", "D", "E"]
-        for item in items:
-            label = str(item.get("label", "")).strip().upper()
-            if label not in valid_labels:
-                raise ValueError("AI options must use labels A-E.")
-            out.append(
-                MCChoice(
-                    label=label,
-                    content_md=item["content_md"],
-                    is_correct=bool(item.get("is_correct", False)),
-                    rationale=item.get("rationale"),
-                )
-            )
-        if sum(1 for c in out if c.is_correct) != 1:
-            raise ValueError("AI must mark exactly one correct option.")
-        out.sort(key=lambda c: c.label)
-        return out, result.usage
+        text = self._extract_typed_solution_text(result.text)
+        if not text:
+            raise ValueError("AI response field 'typed_solution_md' is required.")
+        return AIService.AIResult(text=text, usage=result.usage)

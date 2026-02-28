@@ -23,6 +23,13 @@ _PANDOC_FAILED_WARNING = (
 )
 
 
+def _render_prompt(question: Question) -> str:
+    rendered = question.solution.question_template_md or ""
+    for key, value in (question.solution.parameters or {}).items():
+        rendered = re.sub(r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered)
+    return rendered.strip() or (question.title.strip() if question.title else "")
+
+
 def _normalize_for_docx(text: str) -> str:
     # Keep readable fallback by stripping latex delimiters for Word plain text runs.
     return (
@@ -153,7 +160,7 @@ def _build_project_markdown(
     lines: list[str] = [f"# {project_name or 'Exam'}", "", course, ""]
 
     for i, q in enumerate(questions, start=1):
-        prompt = _normalize_math_delimiters(q.prompt_md.strip() or (q.title.strip() if q.title else ""))
+        prompt = _normalize_math_delimiters(_render_prompt(q))
         lines.append(f"{i}. [{q.points} points] {prompt}")
 
         for figure in q.figures:
@@ -177,14 +184,10 @@ def _build_project_markdown(
         if include_solutions:
             lines.append("")
             lines.append("   *Solution:*")
-            cleaned_solution = _strip_problem_verbatim_lines(q.solution.worked_solution_md)
+            cleaned_solution = _strip_problem_verbatim_lines(q.solution.typed_solution_md)
             for line in _compact_lines(_normalize_math_delimiters(cleaned_solution)):
                 if line:
                     lines.append(f"   {line}")
-            if q.solution.rubric:
-                lines.append("   *Rubric:*")
-                for item in q.solution.rubric:
-                    lines.append(f"   - {_normalize_math_delimiters(item)}")
         lines.append("")
     return "\n".join(lines).strip() + "\n", warnings
 
@@ -252,7 +255,7 @@ def _add_question(
     question_num_id: int,
     choice_abstract_id: int,
 ) -> None:
-    question_text = _normalize_for_docx(q.prompt_md.strip() or (q.title.strip() if q.title else ""))
+    question_text = _normalize_for_docx(_render_prompt(q))
     _add_numbered_paragraph(doc, f"[{q.points} points] {question_text}", question_num_id)
 
     for figure in q.figures:
@@ -277,18 +280,12 @@ def _add_question(
         p.runs[0].italic = True
         p.runs[0].font.size = Pt(10)
         p.paragraph_format.left_indent = Inches(0.25)
-        cleaned_solution = _strip_problem_verbatim_lines(q.solution.worked_solution_md)
+        cleaned_solution = _strip_problem_verbatim_lines(q.solution.typed_solution_md)
         for line in _compact_lines(_normalize_for_docx(cleaned_solution)):
             if not line:
                 continue
             sol = doc.add_paragraph(line)
             _apply_solution_paragraph_style(sol)
-        if q.solution.rubric:
-            rubric_head = doc.add_paragraph("Rubric")
-            _apply_solution_paragraph_style(rubric_head)
-            for item in q.solution.rubric:
-                rub = doc.add_paragraph(f"- {_normalize_for_docx(item)}")
-                _apply_solution_paragraph_style(rub)
 
 
 def _render_docx_with_python_docx(
