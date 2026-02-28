@@ -6,6 +6,10 @@
     <title>Question Editor</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script>
+      window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
       body { font-family: "Segoe UI", Arial, sans-serif; margin: 1.2rem; }
       form { max-width: 1300px; }
@@ -218,7 +222,24 @@
           const re = new RegExp("\\{\\{\\s*" + String(k).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\}\\}", "g");
           out = out.replace(re, String(v));
         }
-        promptPreview.innerHTML = marked.parse(out || "");
+        promptPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(out || ""));
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([promptPreview]);
+        }
+      }
+
+      function normalizeMathDelimitersForPreview(text) {
+        return (text || "")
+          .replace(/\\\[(.*?)\\\]/gs, (_, inner) => `$$${inner}$$`)
+          .replace(/\\\((.*?)\\\)/gs, (_, inner) => `$${inner}$`);
+      }
+
+      function stripDisallowedBold(text) {
+        return String(text || "")
+          .replace(/\*\*(.*?)\*\*/gs, "$1")
+          .replace(/__(.*?)__/gs, "$1")
+          .replace(/<\/?strong>/gi, "")
+          .replace(/<\/?b>/gi, "");
       }
 
       function renderMCPreview() {
@@ -237,7 +258,8 @@
         }
         choices = choices.slice().sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
         mcPreviewAnswers.innerHTML = choices.map((c) => {
-          const text = marked.parseInline(String(c.content_md || ""));
+          const content = stripDisallowedBold(String(c.content_md || "")).split("\n")[0];
+          const text = marked.parseInline(normalizeMathDelimitersForPreview(content));
           const label = c.is_correct
             ? `<strong>${String(c.label || "?")}.</strong>`
             : `<span>${String(c.label || "?")}.</span>`;
@@ -245,18 +267,26 @@
           return `<div>${line}</div>`;
         }).join("");
         mcPreviewRationale.innerHTML = choices.map((c) => {
-          const text = marked.parseInline(String(c.content_md || ""));
+          const content = stripDisallowedBold(String(c.content_md || ""));
+          const text = marked.parseInline(normalizeMathDelimitersForPreview(content));
           const label = c.is_correct
             ? `<strong>${String(c.label || "?")}.</strong>`
             : `<span>${String(c.label || "?")}.</span>`;
           const line = `${label} <span>${text}</span>`;
-          const rationale = c.rationale ? `<div><em>${String(c.rationale)}</em></div>` : "";
+          const rationaleText = stripDisallowedBold(String(c.rationale || ""));
+          const rationale = c.rationale ? `<div><em>${marked.parseInline(normalizeMathDelimitersForPreview(rationaleText))}</em></div>` : "";
           return `<div>${line}${rationale}</div>`;
         }).join("");
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([mcPreviewAnswers, mcPreviewRationale]);
+        }
       }
 
       function renderTypedPreview() {
-        typedPreview.innerHTML = marked.parse(typedSolutionEl.value || "");
+        typedPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(typedSolutionEl.value || ""));
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([typedPreview]);
+        }
       }
 
       function updateMCVisibility() {
@@ -292,7 +322,7 @@
         const data = await res.json();
         if (!res.ok || !data.ok) {
           setStatus(`Save error: ${data.error || res.statusText}`, "warn");
-          return;
+          throw new Error(data.error || res.statusText);
         }
         if (data.typed_solution_status) setTypedStatus(data.typed_solution_status);
         setStatus("Saved", "good");

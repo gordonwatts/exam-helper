@@ -247,7 +247,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         title: str = Form(""),
         points: int = Form(5),
         question_type: str = Form("free_response"),
-        prompt_md: str = Form(""),
         question_template_md: str = Form(""),
         choices_yaml: str = Form("[]"),
         solution_parameters_yaml: str = Form("{}"),
@@ -267,7 +266,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         figures = json.loads(figures_json or "[]")
         solution_parameters = parse_parameters_yaml(solution_parameters_yaml)
         distractor_funcs = parse_distractor_functions_text(distractor_functions_text)
-        rendered_prompt = _render_template_from_parameters(question_template_md, solution_parameters)
         question = Question.model_validate(
             {
                 "id": question_id,

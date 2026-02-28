@@ -10,4 +10,4 @@ actions:
     user_prompt_template: "Question type: {question_type}\nTitle: {title}\nRendered prompt:\n{prompt_md}\nTemplate:\n{question_template_md}\nParameters yaml:\n{solution_parameters_yaml}\nAnswer code:\n{answer_python_code}\nCurrent distractor code blocks:\n{distractor_functions_text}"
   generate_typed_solution:
     system_prompt: "Return strict JSON object with key typed_solution_md only. Use the current template/prompt, parameters, and deterministic answer output to draft a concise worked solution for exam authors."
-    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nRendered prompt:\n{prompt_md}\nTemplate:\n{question_template_md}\nParameters yaml:\n{solution_parameters_yaml}\nAnswer code:\n{answer_python_code}\nCurrent typed solution:\n{typed_solution_md}\nLatest computed answer:\n{last_computed_answer_md}"
+    user_prompt_template: "Question type: {question_type}\nTitle: {title}\nTemplate:\n{question_template_md}\nParameters yaml:\n{solution_parameters_yaml}\nAnswer code:\n{answer_python_code}\nCurrent typed solution:\n{typed_solution_md}\nLatest computed answer:\n{last_computed_answer_md}"
