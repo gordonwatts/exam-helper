@@ -424,13 +424,19 @@
       document.getElementById("btn_generate_mc").addEventListener("click", async () => {
         try {
           const btn = document.getElementById("btn_generate_mc");
+          let mcWarning = "";
           await callEndpoint("/ai/generate-mc-distractors", (data) => {
             distractorFnsEl.value = data.distractor_functions_text || distractorFnsEl.value;
             choicesEl.value = data.choices_yaml || choicesEl.value;
             renderMCPreview();
             setTypedStatus("stale");
+            mcWarning = data.warning || "";
           }, btn);
-          setStatus("MC distractors generated with unique options.", "good");
+          if (mcWarning) {
+            setStatus(`MC distractors generated with warning: ${mcWarning}`, "warn");
+          } else {
+            setStatus("MC distractors generated with unique options.", "good");
+          }
         } catch (err) {
           setStatus(`MC generation error: ${err.message}`, "warn");
         }

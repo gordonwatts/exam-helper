@@ -171,6 +171,28 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         payload = [c.model_dump(mode="json", exclude_none=True) for c in sorted(choices, key=lambda x: x.label)]
         return yaml.safe_dump(payload, sort_keys=False)
 
+    def dedupe_choices(choices: list[MCChoice]) -> list[MCChoice]:
+        seen: set[str] = set()
+        unique: list[MCChoice] = []
+        for c in choices:
+            canonical = re.sub(r"\s+", " ", (c.content_md or "").strip()).casefold()
+            if canonical in seen:
+                continue
+            seen.add(canonical)
+            unique.append(c)
+        labels = ["A", "B", "C", "D", "E"]
+        out: list[MCChoice] = []
+        for idx, c in enumerate(unique):
+            out.append(
+                MCChoice(
+                    label=labels[idx] if idx < len(labels) else c.label,
+                    content_md=c.content_md,
+                    is_correct=c.is_correct,
+                    rationale=c.rationale,
+                )
+            )
+        return out
+
     def default_mc_choices_yaml() -> str:
         defaults = [
             {"label": "A", "content_md": "", "is_correct": True, "rationale": ""},
@@ -461,6 +483,8 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 raise ValueError("Distractor generation is only available for multiple_choice questions.")
             last_collisions: list[str] = []
             last_funcs: list[DistractorFunction] = []
+            best_unique_choices: list[MCChoice] = []
+            best_attempt = 0
             max_attempts = 3
             for attempt in range(1, max_attempts + 1):
                 result = app.state.ai.generate_distractor_functions(q)
@@ -479,11 +503,27 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         "attempts": attempt,
                     }
                 last_collisions = harness.collisions
+                unique_choices = dedupe_choices(harness.choices)
+                if len(unique_choices) > len(best_unique_choices):
+                    best_unique_choices = unique_choices
+                    best_attempt = attempt
                 q.solution.distractor_python_code = result.distractors
+            if best_unique_choices:
+                return {
+                    "ok": True,
+                    "warning": (
+                        "Could not generate a full unique MC set after 3 attempts. "
+                        f"Returning {len(best_unique_choices)} unique choices from attempt {best_attempt}."
+                    ),
+                    "collisions": last_collisions,
+                    "distractor_functions_text": dump_distractor_functions_text(last_funcs),
+                    "choices_yaml": dump_choices_yaml(best_unique_choices),
+                    "attempts": max_attempts,
+                }
             return JSONResponse(
                 {
                     "ok": False,
-                    "error": "Could not generate unique MC distractors after 3 attempts.",
+                    "error": "Could not generate MC distractors.",
                     "collisions": last_collisions,
                     "distractor_functions_text": dump_distractor_functions_text(last_funcs),
                 },

@@ -143,7 +143,7 @@ def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
     assert resp.json()["collisions"]
 
 
-def test_generate_mc_distractors_retries_and_fails_with_actionable_error(tmp_path) -> None:
+def test_generate_mc_distractors_retries_and_returns_partial_unique_set(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key="k")
@@ -181,10 +181,14 @@ def test_generate_mc_distractors_retries_and_fails_with_actionable_error(tmp_pat
 
     app.state.ai = _AI()
     resp = client.post("/questions/q_retry/ai/generate-mc-distractors")
-    assert resp.status_code == 422
+    assert resp.status_code == 200
     body = resp.json()
-    assert "after 3 attempts" in body["error"]
+    assert body["ok"] is True
+    assert "warning" in body
+    assert "full unique MC set" in body["warning"]
     assert body["collisions"]
+    choices = body["choices_yaml"]
+    assert "label: A" in choices
 
 
 def test_generate_typed_solution_sets_status_fresh(tmp_path) -> None:
