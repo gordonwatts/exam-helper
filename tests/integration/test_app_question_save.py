@@ -48,6 +48,38 @@ def test_create_question_with_embedded_figure(tmp_path) -> None:
     assert len(saved.figures) == 1
 
 
+def test_validate_figure_endpoint_returns_hash_and_size(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    raw = b"png-bytes"
+    b64 = base64.b64encode(raw).decode("ascii")
+    digest = hashlib.sha256(raw).hexdigest()
+
+    resp = client.post("/figures/validate", data={"data_base64": b64})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["sha256"] == digest
+    assert payload["size"] == len(raw)
+
+
+def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    resp = client.get("/questions/new")
+    assert resp.status_code == 200
+    html = resp.text
+    assert 'id="figures_json"' in html
+    assert 'id="figures_preview"' in html
+    assert 'id="btn_add_figure"' in html
+    assert 'id="figure_file_input"' in html
+
+
 def test_save_clears_legacy_checker_data(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
