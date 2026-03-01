@@ -153,3 +153,33 @@ def test_soft_delete_hides_question_but_keeps_yaml_on_disk(tmp_path) -> None:
     question_file = tmp_path / "questions" / "q1.yaml"
     assert question_file.exists()
     assert repo.get_question("q1").is_deleted is True
+
+
+def test_new_question_id_skips_soft_deleted_ids(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    save = client.post(
+        "/questions/save",
+        data={
+            "question_id": "q1",
+            "title": "Delete Me",
+            "question_type": "free_response",
+            "question_template_md": "Prompt",
+            "choices_yaml": "[]",
+            "distractor_functions_text": "",
+            "typed_solution_md": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+    assert save.status_code == 303
+    delete = client.post("/questions/q1/delete", follow_redirects=False)
+    assert delete.status_code == 303
+
+    new_page = client.get("/questions/new")
+    assert new_page.status_code == 200
+    assert 'id="question_id" value="q2"' in new_page.text
