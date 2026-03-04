@@ -143,7 +143,9 @@ def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
     assert resp.json()["collisions"]
 
 
-def test_generate_mc_distractors_retries_and_returns_partial_unique_set(tmp_path) -> None:
+def test_generate_mc_distractors_retries_and_returns_partial_unique_set(
+    tmp_path,
+) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key="k")
@@ -171,10 +173,22 @@ def test_generate_mc_distractors_retries_and_returns_partial_unique_set(tmp_path
         def generate_distractor_functions(self, question):
             return AIService.DistractorFunctionsResult(
                 distractors=[
-                    DistractorFunction(id="d1", python_code="def distractor(params):\n    return {'distractor_md':'2','rationale':'dup'}"),
-                    DistractorFunction(id="d2", python_code="def distractor(params):\n    return {'distractor_md':'2','rationale':'dup'}"),
-                    DistractorFunction(id="d3", python_code="def distractor(params):\n    return {'distractor_md':'2','rationale':'dup'}"),
-                    DistractorFunction(id="d4", python_code="def distractor(params):\n    return {'distractor_md':'2','rationale':'dup'}"),
+                    DistractorFunction(
+                        id="d1",
+                        python_code="def distractor(params):\n    return {'distractor_md':'2','rationale':'dup'}",
+                    ),
+                    DistractorFunction(
+                        id="d2",
+                        python_code="def distractor(params):\n    return {'distractor_md':'2','rationale':'dup'}",
+                    ),
+                    DistractorFunction(
+                        id="d3",
+                        python_code="def distractor(params):\n    return {'distractor_md':'2','rationale':'dup'}",
+                    ),
+                    DistractorFunction(
+                        id="d4",
+                        python_code="def distractor(params):\n    return {'distractor_md':'2','rationale':'dup'}",
+                    ),
                 ],
                 usage=AIUsageTotals(),
             )

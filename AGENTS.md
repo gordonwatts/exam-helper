@@ -77,6 +77,8 @@ Core requirements:
   - `uv run exam-helper export docx my-exam --output exam.docx`
 - tests:
   - `uv run --extra dev pytest -q`
+- black:
+  - `uv run --extra dev black --check .`
 
 ## GitHub Issue Workflow
 
@@ -95,7 +97,10 @@ Core requirements:
 4. Open a **draft PR** from the branch into `main` as soon as implementation starts.
 5. Keep the PR in draft until tests and review items are complete, then mark it ready for review.
 6. In the PR description, include an issue-closing reference such as `fix #123` so GitHub automatically closes the issue when the PR is merged.
-7. Run local tests before every push that updates an issue branch/PR (at minimum `uv run --extra dev pytest -q` unless a narrower test scope is explicitly justified in the PR).
+7. Run local checks before every push that updates an issue branch/PR:
+   - `uv run --extra dev pytest -q`
+   - `uv run --extra dev black --check .`
+   - If `black` reports formatting changes, run `uv run --extra dev black .` and re-run the check command.
 
 ## Packaging and Distribution
 

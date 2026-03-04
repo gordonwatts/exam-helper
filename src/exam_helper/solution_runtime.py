@@ -10,7 +10,6 @@ from pint import UnitRegistry
 
 from exam_helper.models import MCChoice
 
-
 ureg = UnitRegistry()
 
 
@@ -74,7 +73,9 @@ def _safe_globals() -> dict[str, Any]:
     }
 
 
-def _run_callable(python_code: str, fn_name: str, params: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+def _run_callable(
+    python_code: str, fn_name: str, params: dict[str, Any]
+) -> tuple[Any, dict[str, Any]]:
     if not python_code.strip():
         raise SolutionRuntimeError("Python code is empty.")
     ns: dict[str, Any] = {}
@@ -84,7 +85,9 @@ def _run_callable(python_code: str, fn_name: str, params: dict[str, Any]) -> tup
         raise SolutionRuntimeError(f"Solution compile error: {ex}") from ex
     fn = ns.get(fn_name)
     if not callable(fn):
-        raise SolutionRuntimeError(f"Solution code must define callable {fn_name}(params).")
+        raise SolutionRuntimeError(
+            f"Solution code must define callable {fn_name}(params)."
+        )
     safe_params = params or {}
     if not isinstance(safe_params, dict):
         raise SolutionRuntimeError("Solution params must be a mapping.")
@@ -95,20 +98,30 @@ def _run_callable(python_code: str, fn_name: str, params: dict[str, Any]) -> tup
     return raw, ns
 
 
-def run_answer_function(python_code: str, params: dict[str, Any] | None = None) -> AnswerRunResult:
+def run_answer_function(
+    python_code: str, params: dict[str, Any] | None = None
+) -> AnswerRunResult:
     raw, _ = _run_callable(python_code, "solve", params or {})
     if not isinstance(raw, dict):
         raise SolutionRuntimeError("solve(params) must return a dict.")
     answer_md = raw.get("answer_md")
     final_answer = raw.get("final_answer")
     if not isinstance(answer_md, str) or not answer_md.strip():
-        raise SolutionRuntimeError("solve return must include non-empty string answer_md.")
+        raise SolutionRuntimeError(
+            "solve return must include non-empty string answer_md."
+        )
     if not isinstance(final_answer, str) or not final_answer.strip():
-        raise SolutionRuntimeError("solve return must include non-empty string final_answer.")
-    return AnswerRunResult(answer_md=answer_md.strip(), final_answer=final_answer.strip())
+        raise SolutionRuntimeError(
+            "solve return must include non-empty string final_answer."
+        )
+    return AnswerRunResult(
+        answer_md=answer_md.strip(), final_answer=final_answer.strip()
+    )
 
 
-def run_distractor_function(python_code: str, params: dict[str, Any] | None = None) -> DistractorRunResult:
+def run_distractor_function(
+    python_code: str, params: dict[str, Any] | None = None
+) -> DistractorRunResult:
     def _looks_explanatory(text: str) -> bool:
         t = (text or "").strip().lower()
         if not t:
@@ -144,13 +157,19 @@ def run_distractor_function(python_code: str, params: dict[str, Any] | None = No
     distractor_md = raw.get("distractor_md")
     rationale = raw.get("rationale")
     if not isinstance(distractor_md, str) or not distractor_md.strip():
-        raise SolutionRuntimeError("distractor return must include non-empty string distractor_md.")
+        raise SolutionRuntimeError(
+            "distractor return must include non-empty string distractor_md."
+        )
     if not isinstance(rationale, str) or not rationale.strip():
-        raise SolutionRuntimeError("distractor return must include non-empty string rationale.")
+        raise SolutionRuntimeError(
+            "distractor return must include non-empty string rationale."
+        )
     # Repair common model error where answer/rationale are swapped.
     if _looks_explanatory(distractor_md) and _looks_answer_like(rationale):
         distractor_md, rationale = rationale, distractor_md
-    return DistractorRunResult(distractor_md=distractor_md.strip(), rationale=rationale.strip())
+    return DistractorRunResult(
+        distractor_md=distractor_md.strip(), rationale=rationale.strip()
+    )
 
 
 def _normalize_choice_text(value: str) -> str:
@@ -217,8 +236,18 @@ def run_mc_harness(
     def _sort_tuple(row: dict[str, Any]) -> tuple[int, float, str, str]:
         numeric = _numeric_sort_key(str(row["content_md"]))
         if numeric is None:
-            return (1, 0.0, _normalize_choice_text(str(row["content_md"])), str(row["source_id"]))
-        return (0, numeric, _normalize_choice_text(str(row["content_md"])), str(row["source_id"]))
+            return (
+                1,
+                0.0,
+                _normalize_choice_text(str(row["content_md"])),
+                str(row["source_id"]),
+            )
+        return (
+            0,
+            numeric,
+            _normalize_choice_text(str(row["content_md"])),
+            str(row["source_id"]),
+        )
 
     rows.sort(key=_sort_tuple)
     labels = ["A", "B", "C", "D", "E"]

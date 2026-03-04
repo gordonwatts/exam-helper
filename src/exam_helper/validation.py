@@ -13,12 +13,16 @@ def validate_question(question: Question) -> list[str]:
     errors: list[str] = []
     if question.solution.answer_python_code.strip():
         try:
-            run_answer_function(question.solution.answer_python_code, question.solution.parameters)
+            run_answer_function(
+                question.solution.answer_python_code, question.solution.parameters
+            )
         except SolutionRuntimeError as ex:
             errors.append(f"{question.id}: {ex}")
     if question.question_type.value == "multiple_choice":
         if len(question.solution.distractor_python_code) != 4:
-            errors.append(f"{question.id}: multiple_choice requires exactly four distractor functions.")
+            errors.append(
+                f"{question.id}: multiple_choice requires exactly four distractor functions."
+            )
         for d in question.solution.distractor_python_code:
             if not d.python_code.strip():
                 continue

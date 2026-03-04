@@ -73,7 +73,12 @@ def test_usage_totals_accumulate_and_reset(tmp_path) -> None:
                 question_template_md="Find v={{v}}",
                 parameters={"v": 12},
                 title="",
-                usage=AIUsageTotals(input_tokens=10, output_tokens=4, total_tokens=14, total_cost_usd=0.01),
+                usage=AIUsageTotals(
+                    input_tokens=10,
+                    output_tokens=4,
+                    total_tokens=14,
+                    total_cost_usd=0.01,
+                ),
             )
 
     app.state.ai = _AI()

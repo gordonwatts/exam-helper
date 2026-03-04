@@ -25,3 +25,7 @@ jobs:
         run: pandoc --version
       - name: Run tests
         run: uv run --python 3.12 --extra dev pytest -q
+      - name: Run black check
+        run: uv run --python 3.12 --extra dev black --check .
+      - name: Run flake8
+        run: uv run --python 3.12 --extra dev flake8 .

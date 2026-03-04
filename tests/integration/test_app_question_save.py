@@ -92,7 +92,9 @@ def test_save_clears_legacy_checker_data(tmp_path) -> None:
                 "question_type": "free_response",
                 "prompt_md": "Prompt",
                 "choices": [],
-                "checker": {"python_code": "def grade(student_answer, context): return {}"},
+                "checker": {
+                    "python_code": "def grade(student_answer, context): return {}"
+                },
             },
             sort_keys=False,
         ),

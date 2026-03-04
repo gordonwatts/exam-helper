@@ -97,7 +97,9 @@ def test_export_docx_includes_solution_when_enabled(tmp_path: Path) -> None:
     assert solution_paragraph.runs[0].italic is True
 
 
-def test_export_docx_falls_back_when_pandoc_missing(tmp_path: Path, monkeypatch) -> None:
+def test_export_docx_falls_back_when_pandoc_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Fallback Exam", "Physics")
     q = Question(
@@ -135,7 +137,9 @@ def test_export_docx_falls_back_when_pandoc_missing(tmp_path: Path, monkeypatch)
     assert "<w:numPr>" in xml
 
 
-def test_export_docx_uses_a_paren_markers_for_pandoc_mc_lists(tmp_path: Path, monkeypatch) -> None:
+def test_export_docx_uses_a_paren_markers_for_pandoc_mc_lists(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Pandoc MC", "Physics")
     q = Question(

@@ -15,7 +15,9 @@ from exam_helper.validation import validate_project
 def cmd_init(args: argparse.Namespace) -> int:
     root = Path(args.path)
     repo = ProjectRepository(root)
-    repo.init_project(name=args.name, course=args.course, openai_model=args.openai_model)
+    repo.init_project(
+        name=args.name, course=args.course, openai_model=args.openai_model
+    )
     return 0
 
 

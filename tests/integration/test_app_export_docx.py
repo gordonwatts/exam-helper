@@ -48,7 +48,9 @@ def test_export_docx_route_include_solutions_and_warning_headers(tmp_path) -> No
 
     def _fake_export(project_root, include_solutions=False):
         captured["include"] = include_solutions
-        return fake_docx, ["Pandoc not available; DOCX was exported with plain-text math fallback."]
+        return fake_docx, [
+            "Pandoc not available; DOCX was exported with plain-text math fallback."
+        ]
 
     import exam_helper.app as app_module
 

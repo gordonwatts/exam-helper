@@ -75,3 +75,10 @@ After publishing the package:
 - `docs/images-and-math.md`
 - `docs/validation.md`
 - `docs/export-to-word.md`
+
+## Development Linting
+
+Run formatting and lint checks with the dev extras installed:
+
+- `uv run --extra dev black --check .`
+- `uv run --extra dev flake8 .`

@@ -16,7 +16,9 @@ class ProjectRepository:
     def ensure_layout(self) -> None:
         self.questions_dir.mkdir(parents=True, exist_ok=True)
 
-    def init_project(self, name: str, course: str, openai_model: str = "gpt-5.2") -> None:
+    def init_project(
+        self, name: str, course: str, openai_model: str = "gpt-5.2"
+    ) -> None:
         self.ensure_layout()
         cfg = ProjectConfig(name=name, course=course)
         cfg.ai.model = openai_model
@@ -31,7 +33,8 @@ class ProjectRepository:
     def save_project(self, project: ProjectConfig) -> None:
         self.ensure_layout()
         self.project_file.write_text(
-            yaml.safe_dump(project.model_dump(mode="json"), sort_keys=False), encoding="utf-8"
+            yaml.safe_dump(project.model_dump(mode="json"), sort_keys=False),
+            encoding="utf-8",
         )
 
     def list_questions(self, include_deleted: bool = False) -> list[Question]:
