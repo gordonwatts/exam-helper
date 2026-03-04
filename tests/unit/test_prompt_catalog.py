@@ -39,7 +39,9 @@ def test_prompt_catalog_applies_solution_and_mc_override_to_answer_generation() 
     bundle = catalog.compose(
         action="generate_answer_function",
         question=q,
-        prompts_override=AIPromptConfig(solution_and_mc="Keep units explicit in final_answer."),
+        prompts_override=AIPromptConfig(
+            solution_and_mc="Keep units explicit in final_answer."
+        ),
     )
     assert "Keep units explicit in final_answer." in bundle.system_prompt
 
@@ -47,7 +49,9 @@ def test_prompt_catalog_applies_solution_and_mc_override_to_answer_generation() 
 def test_prompt_catalog_omits_empty_old_code_sections() -> None:
     catalog = PromptCatalog.from_package_yaml()
     q = Question(id="q1", title="T", prompt_md="P")
-    q.solution.answer_python_code = "def solve(params): return {'answer_md':'1','final_answer':'1'}"
+    q.solution.answer_python_code = (
+        "def solve(params): return {'answer_md':'1','final_answer':'1'}"
+    )
     q.solution.distractor_python_code = []
     bundle = catalog.compose(action="generate_distractor_functions", question=q)
     assert "Distractor Functions (Python):" not in bundle.user_prompt

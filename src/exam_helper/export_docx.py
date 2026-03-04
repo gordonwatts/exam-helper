@@ -26,7 +26,9 @@ _PANDOC_FAILED_WARNING = (
 def _render_prompt(question: Question) -> str:
     rendered = question.solution.question_template_md or ""
     for key, value in (question.solution.parameters or {}).items():
-        rendered = re.sub(r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered)
+        rendered = re.sub(
+            r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered
+        )
     return rendered.strip() or (question.title.strip() if question.title else "")
 
 
@@ -154,7 +156,11 @@ def _normalize_math_delimiters(text: str) -> str:
 
 
 def _build_project_markdown(
-    project_name: str, course: str, questions: list[Question], include_solutions: bool, image_dir: Path
+    project_name: str,
+    course: str,
+    questions: list[Question],
+    include_solutions: bool,
+    image_dir: Path,
 ) -> tuple[str, list[str]]:
     warnings: list[str] = []
     lines: list[str] = [f"# {project_name or 'Exam'}", "", course, ""]
@@ -166,7 +172,11 @@ def _build_project_markdown(
         for figure in q.figures:
             try:
                 raw = base64.b64decode(figure.data_base64.encode("ascii"))
-                ext = figure.mime_type.split("/")[-1] if "/" in figure.mime_type else "bin"
+                ext = (
+                    figure.mime_type.split("/")[-1]
+                    if "/" in figure.mime_type
+                    else "bin"
+                )
                 img_name = f"{q.id}_{figure.id}.{ext}"
                 img_path = image_dir / img_name
                 img_path.write_bytes(raw)
@@ -174,7 +184,9 @@ def _build_project_markdown(
                 lines.append(f"   ![{caption}]({img_name})")
             except Exception:
                 lines.append("   [Figure could not be rendered in DOCX]")
-                warnings.append(f"Figure '{figure.id}' in question '{q.id}' could not be exported.")
+                warnings.append(
+                    f"Figure '{figure.id}' in question '{q.id}' could not be exported."
+                )
 
         if q.question_type == QuestionType.multiple_choice and q.choices:
             for choice in sorted(q.choices, key=lambda c: c.label):
@@ -184,7 +196,9 @@ def _build_project_markdown(
         if include_solutions:
             lines.append("")
             lines.append("   *Solution:*")
-            cleaned_solution = _strip_problem_verbatim_lines(q.solution.typed_solution_md)
+            cleaned_solution = _strip_problem_verbatim_lines(
+                q.solution.typed_solution_md
+            )
             for line in _compact_lines(_normalize_math_delimiters(cleaned_solution)):
                 if line:
                     lines.append(f"   {line}")
@@ -209,13 +223,24 @@ def _render_docx_with_pandoc(
         md_path.write_text(markdown, encoding="utf-8")
 
         subprocess.run(
-            ["pandoc", str(md_path), "-o", str(out_path), "--from=markdown+tex_math_dollars+fancy_lists"],
+            [
+                "pandoc",
+                str(md_path),
+                "-o",
+                str(out_path),
+                "--from=markdown+tex_math_dollars+fancy_lists",
+            ],
             check=True,
             capture_output=True,
             text=True,
             cwd=tmp,
         )
-        return _postprocess_pandoc_docx(out_path.read_bytes(), include_solutions=include_solutions), warnings
+        return (
+            _postprocess_pandoc_docx(
+                out_path.read_bytes(), include_solutions=include_solutions
+            ),
+            warnings,
+        )
 
 
 def _postprocess_pandoc_docx(content: bytes, include_solutions: bool) -> bytes:
@@ -256,7 +281,9 @@ def _add_question(
     choice_abstract_id: int,
 ) -> None:
     question_text = _normalize_for_docx(_render_prompt(q))
-    _add_numbered_paragraph(doc, f"[{q.points} points] {question_text}", question_num_id)
+    _add_numbered_paragraph(
+        doc, f"[{q.points} points] {question_text}", question_num_id
+    )
 
     for figure in q.figures:
         raw = base64.b64decode(figure.data_base64.encode("ascii"))
@@ -273,7 +300,9 @@ def _add_question(
         choice_num_id = _create_numbering_instance(numbering, choice_abstract_id)
         sorted_choices = sorted(q.choices, key=lambda c: c.label)
         for choice in sorted_choices:
-            _add_numbered_paragraph(doc, _normalize_for_docx(choice.content_md), choice_num_id)
+            _add_numbered_paragraph(
+                doc, _normalize_for_docx(choice.content_md), choice_num_id
+            )
 
     if include_solutions:
         p = doc.add_paragraph("Solution:")

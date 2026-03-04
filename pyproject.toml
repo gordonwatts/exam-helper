@@ -40,6 +40,7 @@ testpaths = ["tests"]
 [tool.black]
 line-length = 88
 target-version = ["py312"]
+extend-exclude = "\\.pytest-tmp"
 
 [tool.flake8]
 max-line-length = 88

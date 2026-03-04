@@ -15,9 +15,19 @@ from pydantic import BaseModel
 
 from exam_helper.ai_service import AIService
 from exam_helper.export_docx import render_project_docx_bytes
-from exam_helper.models import AIUsageTotals, DistractorFunction, MCChoice, ProjectConfig, Question, QuestionType
+from exam_helper.models import (
+    AIUsageTotals,
+    DistractorFunction,
+    MCChoice,
+    ProjectConfig,
+    Question,
+    QuestionType,
+)
 from exam_helper.repository import ProjectRepository
-from exam_helper.solution_runtime import SolutionRuntimeError, run_answer_function, run_mc_harness
+from exam_helper.solution_runtime import (
+    run_answer_function,
+    run_mc_harness,
+)
 from exam_helper.validation import validate_question
 
 
@@ -47,7 +57,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     logger.setLevel(logging.INFO)
     app = FastAPI(title="Exam Helper")
     repo = ProjectRepository(project_root)
-    project = repo.load_project() if repo.project_file.exists() else ProjectConfig(name="(uninitialized)", course="")
+    project = (
+        repo.load_project()
+        if repo.project_file.exists()
+        else ProjectConfig(name="(uninitialized)", course="")
+    )
 
     def make_ai_service(config: ProjectConfig) -> AIService:
         return AIService(
@@ -85,7 +99,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         if text.startswith("- ") or text.startswith("["):
             raw = yaml.safe_load(text) or []
             if not isinstance(raw, list):
-                raise ValueError("Distractor functions must be YAML list or plain text blocks.")
+                raise ValueError(
+                    "Distractor functions must be YAML list or plain text blocks."
+                )
             return [DistractorFunction.model_validate(item) for item in raw]
 
         blocks = [b.strip() for b in re.split(r"\n---\n", text) if b.strip()]
@@ -168,7 +184,10 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return sorted(choices, key=lambda c: c.label)
 
     def dump_choices_yaml(choices: list[MCChoice]) -> str:
-        payload = [c.model_dump(mode="json", exclude_none=True) for c in sorted(choices, key=lambda x: x.label)]
+        payload = [
+            c.model_dump(mode="json", exclude_none=True)
+            for c in sorted(choices, key=lambda x: x.label)
+        ]
         return yaml.safe_dump(payload, sort_keys=False)
 
     def dedupe_choices(choices: list[MCChoice]) -> list[MCChoice]:
@@ -206,7 +225,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def _render_template_from_parameters(template: str, params: dict[str, Any]) -> str:
         rendered = template or ""
         for key, value in (params or {}).items():
-            rendered = re.sub(r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered)
+            rendered = re.sub(
+                r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered
+            )
         return rendered
 
     def _suggest_next_question_id() -> str:
@@ -225,12 +246,15 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         words = re.findall(r"[A-Za-z0-9+\-/]+", rendered_prompt or "")
         return " ".join(words[:8]).strip() or "Untitled question"
 
-    def _mark_typed_solution_stale_if_needed(existing: Question | None, candidate: Question) -> None:
+    def _mark_typed_solution_stale_if_needed(
+        existing: Question | None, candidate: Question
+    ) -> None:
         if existing is None:
             return
         if (
             existing.solution.parameters != candidate.solution.parameters
-            or existing.solution.answer_python_code != candidate.solution.answer_python_code
+            or existing.solution.answer_python_code
+            != candidate.solution.answer_python_code
             or [d.python_code for d in existing.solution.distractor_python_code]
             != [d.python_code for d in candidate.solution.distractor_python_code]
         ):
@@ -280,10 +304,14 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     @app.get("/questions/{question_id}/edit", response_class=HTMLResponse)
     def edit_question(request: Request, question_id: str) -> HTMLResponse:
         q = repo.get_question(question_id)
-        choices_yaml = dump_choices_yaml(q.choices) if q.choices else default_mc_choices_yaml()
+        choices_yaml = (
+            dump_choices_yaml(q.choices) if q.choices else default_mc_choices_yaml()
+        )
         figures_json = json.dumps([f.model_dump(mode="json") for f in q.figures])
         solution_parameters_yaml = dump_parameters_yaml(q.solution.parameters)
-        distractor_functions_text = dump_distractor_functions_text(q.solution.distractor_python_code)
+        distractor_functions_text = dump_distractor_functions_text(
+            q.solution.distractor_python_code
+        )
         return templates.TemplateResponse(
             request,
             "question_form.html",
@@ -358,7 +386,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return RedirectResponse("/", status_code=303)
 
     @app.post("/questions/{question_id}/autosave")
-    def autosave_question(question_id: str, payload: AutosavePayload = Body(...)) -> JSONResponse:
+    def autosave_question(
+        question_id: str, payload: AutosavePayload = Body(...)
+    ) -> JSONResponse:
         try:
             existing = None
             try:
@@ -367,8 +397,12 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 existing = None
             choices = parse_choices_yaml(payload.choices_yaml)
             figures = json.loads(payload.figures_json or "[]")
-            solution_parameters = parse_parameters_yaml(payload.solution_parameters_yaml)
-            distractor_funcs = parse_distractor_functions_text(payload.distractor_functions_text)
+            solution_parameters = parse_parameters_yaml(
+                payload.solution_parameters_yaml
+            )
+            distractor_funcs = parse_distractor_functions_text(
+                payload.distractor_functions_text
+            )
             question = Question.model_validate(
                 {
                     "id": question_id,
@@ -384,7 +418,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         "typed_solution_md": payload.typed_solution_md,
                         "typed_solution_status": payload.typed_solution_status,
                         "last_computed_answer_md": (
-                            existing.solution.last_computed_answer_md if existing else ""
+                            existing.solution.last_computed_answer_md
+                            if existing
+                            else ""
                         ),
                     },
                     "figures": figures,
@@ -394,7 +430,12 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             )
             _mark_typed_solution_stale_if_needed(existing, question)
             repo.save_question(question)
-            return JSONResponse({"ok": True, "typed_solution_status": question.solution.typed_solution_status})
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "typed_solution_status": question.solution.typed_solution_status,
+                }
+            )
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
@@ -417,10 +458,14 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             q = repo.get_question(question_id)
             result = app.state.ai.rewrite_parameterize(q)
             repo.add_ai_usage(result.usage)
-            rendered_prompt = _render_template_from_parameters(result.question_template_md, result.parameters)
+            rendered_prompt = _render_template_from_parameters(
+                result.question_template_md, result.parameters
+            )
             title = q.title.strip()
             if not title:
-                title = result.title.strip() or _fallback_title_from_prompt(rendered_prompt)
+                title = result.title.strip() or _fallback_title_from_prompt(
+                    rendered_prompt
+                )
             return {
                 "ok": True,
                 "question_template_md": result.question_template_md,
@@ -437,10 +482,14 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             q = repo.get_question(question_id)
             error_feedback = ""
             for _ in range(3):
-                result = app.state.ai.generate_answer_function(q, error_feedback=error_feedback)
+                result = app.state.ai.generate_answer_function(
+                    q, error_feedback=error_feedback
+                )
                 repo.add_ai_usage(result.usage)
                 try:
-                    run_answer_function(result.answer_python_code, q.solution.parameters)
+                    run_answer_function(
+                        result.answer_python_code, q.solution.parameters
+                    )
                     return {
                         "ok": True,
                         "answer_python_code": result.answer_python_code,
@@ -459,14 +508,18 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def run_harness(question_id: str) -> dict:
         try:
             q = repo.get_question(question_id)
-            answer_result = run_answer_function(q.solution.answer_python_code, q.solution.parameters)
+            answer_result = run_answer_function(
+                q.solution.answer_python_code, q.solution.parameters
+            )
             payload: dict[str, Any] = {
                 "ok": True,
                 "computed_answer_md": answer_result.answer_md,
                 "final_answer_text": answer_result.final_answer,
             }
             if q.question_type == QuestionType.multiple_choice:
-                funcs = [(d.id, d.python_code) for d in q.solution.distractor_python_code]
+                funcs = [
+                    (d.id, d.python_code) for d in q.solution.distractor_python_code
+                ]
                 harness = run_mc_harness(
                     answer_python_code=q.solution.answer_python_code,
                     distractor_python_codes=funcs,
@@ -489,7 +542,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         try:
             q = repo.get_question(question_id)
             if q.question_type != QuestionType.multiple_choice:
-                raise ValueError("Distractor generation is only available for multiple_choice questions.")
+                raise ValueError(
+                    "Distractor generation is only available for multiple_choice questions."
+                )
             last_collisions: list[str] = []
             last_funcs: list[DistractorFunction] = []
             best_unique_choices: list[MCChoice] = []
@@ -501,13 +556,17 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 last_funcs = result.distractors
                 harness = run_mc_harness(
                     answer_python_code=q.solution.answer_python_code,
-                    distractor_python_codes=[(d.id, d.python_code) for d in result.distractors],
+                    distractor_python_codes=[
+                        (d.id, d.python_code) for d in result.distractors
+                    ],
                     params=q.solution.parameters,
                 )
                 if not harness.collisions:
                     return {
                         "ok": True,
-                        "distractor_functions_text": dump_distractor_functions_text(result.distractors),
+                        "distractor_functions_text": dump_distractor_functions_text(
+                            result.distractors
+                        ),
                         "choices_yaml": dump_choices_yaml(harness.choices),
                         "attempts": attempt,
                     }
@@ -525,7 +584,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         f"Returning {len(best_unique_choices)} unique choices from attempt {best_attempt}."
                     ),
                     "collisions": last_collisions,
-                    "distractor_functions_text": dump_distractor_functions_text(last_funcs),
+                    "distractor_functions_text": dump_distractor_functions_text(
+                        last_funcs
+                    ),
                     "choices_yaml": dump_choices_yaml(best_unique_choices),
                     "attempts": max_attempts,
                 }
@@ -534,7 +595,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "ok": False,
                     "error": "Could not generate MC distractors.",
                     "collisions": last_collisions,
-                    "distractor_functions_text": dump_distractor_functions_text(last_funcs),
+                    "distractor_functions_text": dump_distractor_functions_text(
+                        last_funcs
+                    ),
                 },
                 status_code=422,
             )
@@ -556,7 +619,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             logger.exception(
                 "ai_generate_typed_solution failed question_id=%s template_len=%s params_keys=%s",
                 question_id,
-                len((q.solution.question_template_md or "").strip()) if "q" in locals() else 0,
+                (
+                    len((q.solution.question_template_md or "").strip())
+                    if "q" in locals()
+                    else 0
+                ),
                 sorted((q.solution.parameters or {}).keys()) if "q" in locals() else [],
             )
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
@@ -573,7 +640,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             }
             if action not in valid_actions:
                 raise ValueError("Unknown preview action.")
-            preview = app.state.ai.preview_prompt(action=valid_actions[action], question=q)
+            preview = app.state.ai.preview_prompt(
+                action=valid_actions[action], question=q
+            )
             return {"ok": True, **preview}
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
@@ -646,7 +715,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             models = app.state.ai.list_models()
             return {"ok": True, "models": models}
         except Exception as ex:
-            return JSONResponse({"ok": False, "error": str(ex), "models": []}, status_code=422)
+            return JSONResponse(
+                {"ok": False, "error": str(ex), "models": []}, status_code=422
+            )
 
     @app.post("/project/usage/reset")
     def reset_project_usage() -> RedirectResponse:

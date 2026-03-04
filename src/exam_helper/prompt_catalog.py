@@ -22,7 +22,11 @@ class PromptCatalog:
 
     @classmethod
     def from_package_yaml(cls) -> "PromptCatalog":
-        data = files("exam_helper").joinpath("prompt_templates.yaml").read_text(encoding="utf-8")
+        data = (
+            files("exam_helper")
+            .joinpath("prompt_templates.yaml")
+            .read_text(encoding="utf-8")
+        )
         raw = yaml.safe_load(data) or {}
         actions = raw.get("actions")
         if not isinstance(actions, dict):
@@ -35,7 +39,9 @@ class PromptCatalog:
         }
         missing = required.difference(actions.keys())
         if missing:
-            raise ValueError(f"prompt_templates.yaml missing actions: {sorted(missing)}")
+            raise ValueError(
+                f"prompt_templates.yaml missing actions: {sorted(missing)}"
+            )
         for action_name, payload in actions.items():
             if not isinstance(payload, dict):
                 raise ValueError(f"Action '{action_name}' must be a mapping")
@@ -59,7 +65,9 @@ class PromptCatalog:
         if prompts_override:
             if prompts_override.overall.strip():
                 system_parts.append(prompts_override.overall.strip())
-            action_override = self._action_override_text(action=action, prompts_override=prompts_override)
+            action_override = self._action_override_text(
+                action=action, prompts_override=prompts_override
+            )
             if action_override:
                 system_parts.append(action_override)
         system_prompt = "\n\n".join(p for p in system_parts if p)
@@ -88,7 +96,9 @@ class PromptCatalog:
             "typed_solution_md": question.solution.typed_solution_md or "",
             "last_computed_answer_md": question.solution.last_computed_answer_md or "",
         }
-        values["context_sections"] = self._build_context_sections(action=action, values=values)
+        values["context_sections"] = self._build_context_sections(
+            action=action, values=values
+        )
         user_template = payload["user_prompt_template"]
         user_prompt = self._safe_format(user_template, values)
         return PromptBundle(system_prompt=system_prompt, user_prompt=user_prompt)
@@ -143,7 +153,11 @@ class PromptCatalog:
                 ("Question Template (Markdown)", "question_template_md", "markdown"),
                 ("Template Parameters (YAML)", "solution_parameters_yaml", "yaml"),
                 ("Answer Function (Python)", "answer_python_code", "python"),
-                ("Distractor Functions (Python)", "distractor_functions_text", "python"),
+                (
+                    "Distractor Functions (Python)",
+                    "distractor_functions_text",
+                    "python",
+                ),
             ],
             "generate_typed_solution": [
                 ("Question Type", "question_type", None),
@@ -152,7 +166,11 @@ class PromptCatalog:
                 ("Template Parameters (YAML)", "solution_parameters_yaml", "yaml"),
                 ("Answer Function (Python)", "answer_python_code", "python"),
                 ("Typed Solution (Markdown)", "typed_solution_md", "markdown"),
-                ("Latest Computed Answer (Markdown)", "last_computed_answer_md", "markdown"),
+                (
+                    "Latest Computed Answer (Markdown)",
+                    "last_computed_answer_md",
+                    "markdown",
+                ),
             ],
         }
         if action not in section_specs:
@@ -169,7 +187,9 @@ class PromptCatalog:
         return "\n\n".join(parts)
 
     @staticmethod
-    def _format_section(*, heading: str, content: str, code_lang: str | None = None) -> str:
+    def _format_section(
+        *, heading: str, content: str, code_lang: str | None = None
+    ) -> str:
         text = (content or "").strip()
         if not text:
             return ""
@@ -180,8 +200,12 @@ class PromptCatalog:
         return f"{heading}:\n{body}"
 
     @staticmethod
-    def _render_template_from_parameters(template: str, params: dict[str, object]) -> str:
+    def _render_template_from_parameters(
+        template: str, params: dict[str, object]
+    ) -> str:
         rendered = template or ""
         for key, value in (params or {}).items():
-            rendered = re.sub(r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered)
+            rendered = re.sub(
+                r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered
+            )
         return rendered

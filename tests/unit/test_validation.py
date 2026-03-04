@@ -61,8 +61,7 @@ def test_validate_project_skips_soft_deleted_questions(tmp_path: Path) -> None:
             is_deleted=True,
             solution={
                 "answer_python_code": (
-                    "def solve(params, context):\n"
-                    "    raise RuntimeError('boom')\n"
+                    "def solve(params, context):\n" "    raise RuntimeError('boom')\n"
                 ),
                 "parameters": {},
             },

@@ -46,7 +46,9 @@ class DistractorFunction(BaseModel):
     @classmethod
     def id_safe(cls, v: str) -> str:
         if not v.replace("-", "").replace("_", "").isalnum():
-            raise ValueError("distractor id must be alphanumeric, underscore, or hyphen")
+            raise ValueError(
+                "distractor id must be alphanumeric, underscore, or hyphen"
+            )
         return v
 
 
@@ -90,7 +92,10 @@ class Question(BaseModel):
         if self.question_type == QuestionType.multiple_choice and self.choices:
             # Allow partial/in-progress MC editing states in the UI.
             # Strict A-E/one-correct constraints are enforced when full sets are generated.
-            if len(self.choices) == 5 and sum(1 for c in self.choices if c.is_correct) != 1:
+            if (
+                len(self.choices) == 5
+                and sum(1 for c in self.choices if c.is_correct) != 1
+            ):
                 raise ValueError("multiple_choice requires exactly one correct choice")
         return self
 

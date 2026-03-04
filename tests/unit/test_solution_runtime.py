@@ -60,7 +60,12 @@ def test_harness_detects_collisions() -> None:
     )
     out = run_mc_harness(
         answer_code,
-        [("d1", distractor_code), ("d2", distractor_code), ("d3", distractor_code), ("d4", distractor_code)],
+        [
+            ("d1", distractor_code),
+            ("d2", distractor_code),
+            ("d3", distractor_code),
+            ("d4", distractor_code),
+        ],
         {},
     )
     assert out.collisions
@@ -75,6 +80,14 @@ def test_harness_sorts_numeric_then_text_tiebreak_by_source() -> None:
     d2 = "def distractor(params):\n    return {'distractor_md': '20 m/s', 'rationale': 'r'}\n"
     d3 = "def distractor(params):\n    return {'distractor_md': 'alpha', 'rationale': 'r'}\n"
     d4 = "def distractor(params):\n    return {'distractor_md': 'beta', 'rationale': 'r'}\n"
-    out = run_mc_harness(answer_code, [("d1", d1), ("d2", d2), ("d3", d3), ("d4", d4)], {})
+    out = run_mc_harness(
+        answer_code, [("d1", d1), ("d2", d2), ("d3", d3), ("d4", d4)], {}
+    )
     assert [c.label for c in out.choices] == ["A", "B", "C", "D", "E"]
-    assert [c.content_md for c in out.choices] == ["2 m/s", "10 m/s", "20 m/s", "alpha", "beta"]
+    assert [c.content_md for c in out.choices] == [
+        "2 m/s",
+        "10 m/s",
+        "20 m/s",
+        "alpha",
+        "beta",
+    ]

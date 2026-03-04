@@ -80,14 +80,18 @@ def test_usage_parses_total_cost_from_formatted_string() -> None:
 def test_generate_typed_solution_falls_back_to_plain_text(monkeypatch) -> None:
     from exam_helper import ai_service as mod
 
-    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient("Worked solution in markdown."))
+    monkeypatch.setattr(
+        mod, "OpenAI", lambda api_key: _FakeClient("Worked solution in markdown.")
+    )
     svc = AIService(api_key="k")
     q = Question(id="q1", title="t")
     out = svc.generate_typed_solution(q)
     assert out.text == "Worked solution in markdown."
 
 
-def test_generate_typed_solution_extracts_typed_solution_md_from_yaml_like_payload(monkeypatch) -> None:
+def test_generate_typed_solution_extracts_typed_solution_md_from_yaml_like_payload(
+    monkeypatch,
+) -> None:
     from exam_helper import ai_service as mod
 
     payload = "typed_solution_md: |\n  Step 1: Use conservation.\n  Final: 2.0 m/s\n"

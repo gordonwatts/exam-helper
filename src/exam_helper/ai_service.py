@@ -8,7 +8,12 @@ from typing import Any
 from openai import OpenAI
 import yaml
 
-from exam_helper.models import AIPromptConfig, AIUsageTotals, DistractorFunction, Question
+from exam_helper.models import (
+    AIPromptConfig,
+    AIUsageTotals,
+    DistractorFunction,
+    Question,
+)
 from exam_helper.prompt_catalog import PromptBundle, PromptCatalog
 
 
@@ -94,8 +99,12 @@ class AIService:
                 "total_tokens": getattr(usage, "total_tokens", None),
                 "total_cost": getattr(usage, "total_cost", None),
             }
-        input_tokens = self._to_int(data.get("input_tokens") or data.get("prompt_tokens"))
-        output_tokens = self._to_int(data.get("output_tokens") or data.get("completion_tokens"))
+        input_tokens = self._to_int(
+            data.get("input_tokens") or data.get("prompt_tokens")
+        )
+        output_tokens = self._to_int(
+            data.get("output_tokens") or data.get("completion_tokens")
+        )
         total_tokens = self._to_int(data.get("total_tokens"))
         if total_tokens == 0:
             total_tokens = input_tokens + output_tokens
@@ -151,7 +160,9 @@ class AIService:
             )
         return items
 
-    def _text_with_question_context(self, bundle: PromptBundle, question: Question) -> AIResult:
+    def _text_with_question_context(
+        self, bundle: PromptBundle, question: Question
+    ) -> AIResult:
         client = self._client()
         user_content = [{"type": "input_text", "text": bundle.user_prompt}]
         user_content.extend(self._figure_content(question))
@@ -236,7 +247,9 @@ class AIService:
         question: Question,
         error_feedback: str = "",
     ) -> AnswerFunctionResult:
-        bundle = self.compose_prompt(action="generate_answer_function", question=question)
+        bundle = self.compose_prompt(
+            action="generate_answer_function", question=question
+        )
         if error_feedback.strip():
             bundle = PromptBundle(
                 system_prompt=bundle.system_prompt,
@@ -252,18 +265,28 @@ class AIService:
             usage=result.usage,
         )
 
-    def generate_distractor_functions(self, question: Question) -> DistractorFunctionsResult:
-        bundle = self.compose_prompt(action="generate_distractor_functions", question=question)
+    def generate_distractor_functions(
+        self, question: Question
+    ) -> DistractorFunctionsResult:
+        bundle = self.compose_prompt(
+            action="generate_distractor_functions", question=question
+        )
         result = self._text_with_question_context(bundle, question)
         payload = self._parse_json_object(result.text)
         raw = payload.get("distractors")
         if not isinstance(raw, list) or len(raw) != 4:
-            raise ValueError("AI response field 'distractors' must be a list with exactly 4 entries.")
+            raise ValueError(
+                "AI response field 'distractors' must be a list with exactly 4 entries."
+            )
         distractors = [DistractorFunction.model_validate(item) for item in raw]
-        return AIService.DistractorFunctionsResult(distractors=distractors, usage=result.usage)
+        return AIService.DistractorFunctionsResult(
+            distractors=distractors, usage=result.usage
+        )
 
     def generate_typed_solution(self, question: Question) -> AIResult:
-        bundle = self.compose_prompt(action="generate_typed_solution", question=question)
+        bundle = self.compose_prompt(
+            action="generate_typed_solution", question=question
+        )
         result = self._text_with_question_context(bundle, question)
         text = self._extract_typed_solution_text(result.text)
         if not text:

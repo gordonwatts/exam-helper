@@ -67,7 +67,9 @@ def test_project_defaults_include_ai_config(tmp_path: Path) -> None:
 def test_project_load_back_compat_without_ai_block(tmp_path: Path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.ensure_layout()
-    (tmp_path / "project.yaml").write_text("name: Exam\ncourse: Physics\n", encoding="utf-8")
+    (tmp_path / "project.yaml").write_text(
+        "name: Exam\ncourse: Physics\n", encoding="utf-8"
+    )
     project = repo.load_project()
     assert project.ai.model == "gpt-5.2"
     assert project.ai.usage.total_cost_usd == 0.0
