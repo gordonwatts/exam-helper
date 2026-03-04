@@ -48,6 +48,38 @@ def test_create_question_with_embedded_figure(tmp_path) -> None:
     assert len(saved.figures) == 1
 
 
+def test_validate_figure_endpoint_returns_hash_and_size(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    raw = b"png-bytes"
+    b64 = base64.b64encode(raw).decode("ascii")
+    digest = hashlib.sha256(raw).hexdigest()
+
+    resp = client.post("/figures/validate", data={"data_base64": b64})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["sha256"] == digest
+    assert payload["size"] == len(raw)
+
+
+def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    resp = client.get("/questions/new")
+    assert resp.status_code == 200
+    html = resp.text
+    assert 'id="figures_json"' in html
+    assert 'id="figures_preview"' in html
+    assert 'id="btn_add_figure"' in html
+    assert 'id="figure_file_input"' in html
+
+
 def test_save_clears_legacy_checker_data(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
@@ -121,3 +153,33 @@ def test_soft_delete_hides_question_but_keeps_yaml_on_disk(tmp_path) -> None:
     question_file = tmp_path / "questions" / "q1.yaml"
     assert question_file.exists()
     assert repo.get_question("q1").is_deleted is True
+
+
+def test_new_question_id_skips_soft_deleted_ids(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    save = client.post(
+        "/questions/save",
+        data={
+            "question_id": "q1",
+            "title": "Delete Me",
+            "question_type": "free_response",
+            "question_template_md": "Prompt",
+            "choices_yaml": "[]",
+            "distractor_functions_text": "",
+            "typed_solution_md": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+    assert save.status_code == 303
+    delete = client.post("/questions/q1/delete", follow_redirects=False)
+    assert delete.status_code == 303
+
+    new_page = client.get("/questions/new")
+    assert new_page.status_code == 200
+    assert 'id="question_id" value="q2"' in new_page.text

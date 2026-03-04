@@ -211,7 +211,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
     def _suggest_next_question_id() -> str:
         try:
-            existing = [q.id for q in repo.list_questions()]
+            existing = [q.id for q in repo.list_questions(include_deleted=True)]
         except Exception:
             existing = []
         used = set(existing)

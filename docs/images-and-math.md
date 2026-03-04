@@ -8,12 +8,17 @@ Without Pandoc, export falls back to plain text math and prints a warning.
 ## Image handling
 
 - Open question editor page.
-- Copy an image to clipboard.
-- Paste while editor page is focused (`Ctrl+V` / `Cmd+V`).
+- Copy an image to clipboard and paste in the **Question Template** field (`Ctrl+V` / `Cmd+V`).
+- Copy an image file in your file browser and paste in the **Question Template** field.
+- Click **Add Image File** in the Figures section to use a file picker.
+- Drag/drop image files onto the question editor page.
 - App stores image directly in question YAML as:
   - `data_base64`
   - `mime_type`
   - `sha256`
+
+Each added image inserts a `<figure fig_n>` placeholder in the Question Template field.
+Image paste/upload is currently not supported in answer/solution fields.
 
 No separate figure file is required.
 
