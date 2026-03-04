@@ -28,7 +28,11 @@ Open `http://127.0.0.1:8000`.
 
 - Click **New Question**
 - Fill prompt and solution fields
-- Paste images from clipboard directly into the editor page
+- Add images using any of:
+  - paste clipboard image into **Question Template**
+  - paste copied image file into **Question Template**
+  - **Add Image File** button (file picker)
+  - drag/drop image file onto the page
 - Use AI buttons when needed (`Improve Text`, `Improve Solution`, `Generate MC A-E`)
 - Use `Preview Prompt` buttons to inspect what will be sent before an AI call
 - Autosave runs automatically as you edit

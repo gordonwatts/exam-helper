@@ -40,8 +40,14 @@
       .warn { color: #c50; }
       .btn { padding: 0.45rem 0.8rem; margin-top: 0.45rem; margin-right: 0.45rem; }
       .actions { margin-top: 1rem; }
+      .figures-help { margin: 0.4rem 0 0.5rem 0; color: #444; font-size: 0.95rem; }
+      .figure-item { border: 1px solid #ddd; border-radius: 6px; padding: 0.5rem; margin-top: 0.5rem; display: grid; grid-template-columns: 120px 1fr auto; gap: 0.6rem; align-items: center; background: #fafafa; }
+      .figure-item img { width: 120px; max-height: 90px; object-fit: contain; background: #fff; border: 1px solid #eee; }
+      .figure-meta { font-size: 0.9rem; color: #333; }
       @media (max-width: 900px) {
         .row, .row3 { grid-template-columns: 1fr; }
+        .figure-item { grid-template-columns: 1fr; }
+        .figure-item img { width: 100%; max-height: 200px; }
       }
     </style>
   </head>
@@ -146,6 +152,9 @@
 
       <div class="card" id="figures_section">
         <label>Figures (embedded)</label>
+        <div class="figures-help">Paste image into Question Template, drag/drop onto this page, or pick files below. Placeholders are inserted in Question Template only.</div>
+        <button type="button" class="btn" id="btn_add_figure">Add Image File</button>
+        <input type="file" id="figure_file_input" accept="image/*" multiple style="display:none;" />
         <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
         <div id="figures_preview"></div>
       </div>
@@ -183,6 +192,10 @@
       const typedStatusEl = document.getElementById("typed_solution_status");
       const typedStateLabelEl = document.getElementById("typed_solution_state");
       const figuresInput = document.getElementById("figures_json");
+      const figuresPreviewEl = document.getElementById("figures_preview");
+      const figuresSectionEl = document.getElementById("figures_section");
+      const addFigureBtn = document.getElementById("btn_add_figure");
+      const figureFileInput = document.getElementById("figure_file_input");
       const promptPreview = document.getElementById("prompt_preview");
       const computedAnswerPreview = document.getElementById("computed_answer_preview");
       const mcBlock = document.getElementById("mc_block");
@@ -208,6 +221,142 @@
       function setTypedStatus(status) {
         typedStatusEl.value = status;
         typedStateLabelEl.textContent = `Status: ${status}`;
+      }
+
+      function escapeHtml(text) {
+        return String(text || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function parseFigures() {
+        try {
+          const parsed = JSON.parse(figuresInput.value || "[]");
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function setFigures(figures) {
+        figuresInput.value = JSON.stringify(figures);
+        renderFiguresPreview();
+      }
+
+      function nextFigureId(figures) {
+        const used = new Set((figures || []).map((f) => String(f.id || "").trim()).filter(Boolean));
+        for (let i = 1; i < 10000; i += 1) {
+          const candidate = `fig_${i}`;
+          if (!used.has(candidate)) return candidate;
+        }
+        return `fig_${Date.now()}`;
+      }
+
+      function renderFiguresPreview() {
+        const figures = parseFigures();
+        if (!figures.length) {
+          figuresPreviewEl.innerHTML = "<em>No figures yet.</em>";
+          return;
+        }
+        figuresPreviewEl.innerHTML = figures.map((fig, idx) => {
+          const mime = String(fig.mime_type || "image/unknown");
+          const id = escapeHtml(String(fig.id || `fig_${idx + 1}`));
+          const sha = escapeHtml(String(fig.sha256 || "").slice(0, 12));
+          const src = `data:${mime};base64,${fig.data_base64 || ""}`;
+          return (
+            `<div class="figure-item">` +
+            `<img src="${src}" alt="${id}" />` +
+            `<div class="figure-meta"><div><strong>${id}</strong></div><div>${escapeHtml(mime)}</div><div>sha256: ${sha}...</div></div>` +
+            `<button type="button" class="btn" data-remove-figure="${idx}">Remove</button>` +
+            `</div>`
+          );
+        }).join("");
+      }
+
+      function insertTemplateAtCursor(text, fallbackAppend = true) {
+        const value = templateEl.value || "";
+        const insertion = String(text || "");
+        const start = Number.isInteger(templateEl.selectionStart) ? templateEl.selectionStart : value.length;
+        const end = Number.isInteger(templateEl.selectionEnd) ? templateEl.selectionEnd : start;
+        if (document.activeElement !== templateEl && fallbackAppend) {
+          const glue = value && !value.endsWith("\n") ? "\n" : "";
+          templateEl.value = value + glue + insertion;
+          return;
+        }
+        templateEl.focus();
+        templateEl.value = value.slice(0, start) + insertion + value.slice(end);
+        const cursor = start + insertion.length;
+        templateEl.selectionStart = cursor;
+        templateEl.selectionEnd = cursor;
+      }
+
+      function insertFigurePlaceholder(figureId, fallbackAppend = true) {
+        insertTemplateAtCursor(`<figure ${figureId}>`, fallbackAppend);
+      }
+
+      async function validateFigureData(dataBase64) {
+        const body = new FormData();
+        body.append("data_base64", dataBase64);
+        const res = await fetch("/figures/validate", { method: "POST", body });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || res.statusText || "Figure validation failed.");
+        }
+        return data;
+      }
+
+      function arrayBufferToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+        }
+        return btoa(binary);
+      }
+
+      async function buildFigureFromFile(file) {
+        const mime = String(file.type || "").startsWith("image/") ? file.type : "image/png";
+        const buf = await file.arrayBuffer();
+        const dataBase64 = arrayBufferToBase64(buf);
+        const validated = await validateFigureData(dataBase64);
+        return {
+          mime_type: mime,
+          data_base64: dataBase64,
+          sha256: String(validated.sha256 || ""),
+          caption: "",
+        };
+      }
+
+      async function addFigureFromFile(file, fallbackAppend = true) {
+        if (!file || !String(file.type || "").startsWith("image/")) return false;
+        const figures = parseFigures();
+        const pendingId = nextFigureId(figures);
+        setStatus("Processing image...", "warn");
+        const figure = await buildFigureFromFile(file);
+        figure.id = pendingId;
+        figures.push(figure);
+        setFigures(figures);
+        insertFigurePlaceholder(pendingId, fallbackAppend);
+        renderTemplate();
+        scheduleAutosave();
+        setStatus(`Added ${pendingId}`, "good");
+        return true;
+      }
+
+      function extractImageFilesFromClipboard(event) {
+        const files = [];
+        const items = Array.from((event.clipboardData && event.clipboardData.items) || []);
+        for (const item of items) {
+          if (item.kind === "file" && String(item.type || "").startsWith("image/")) {
+            const file = item.getAsFile();
+            if (file) files.push(file);
+          }
+        }
+        return files;
       }
 
       function renderTemplate() {
@@ -543,11 +692,82 @@
         });
       });
 
+      addFigureBtn.addEventListener("click", () => {
+        figureFileInput.click();
+      });
+
+      figureFileInput.addEventListener("change", async () => {
+        const files = Array.from(figureFileInput.files || []);
+        if (!files.length) return;
+        try {
+          for (const file of files) {
+            await addFigureFromFile(file, true);
+          }
+        } catch (err) {
+          setStatus(`Image error: ${err.message}`, "warn");
+        } finally {
+          figureFileInput.value = "";
+        }
+      });
+
+      figuresPreviewEl.addEventListener("click", (event) => {
+        const btn = event.target.closest("[data-remove-figure]");
+        if (!btn) return;
+        const idx = Number(btn.getAttribute("data-remove-figure"));
+        if (!Number.isInteger(idx)) return;
+        const figures = parseFigures();
+        if (idx < 0 || idx >= figures.length) return;
+        figures.splice(idx, 1);
+        setFigures(figures);
+        scheduleAutosave();
+      });
+
+      templateEl.addEventListener("paste", async (event) => {
+        const files = extractImageFilesFromClipboard(event);
+        if (!files.length) return;
+        event.preventDefault();
+        try {
+          for (const file of files) {
+            await addFigureFromFile(file, false);
+          }
+        } catch (err) {
+          setStatus(`Image paste error: ${err.message}`, "warn");
+        }
+      });
+
+      document.addEventListener("dragover", (event) => {
+        const hasImage = Array.from(event.dataTransfer?.items || []).some((item) => item.kind === "file" && String(item.type || "").startsWith("image/"));
+        if (hasImage) {
+          event.preventDefault();
+          if (figuresSectionEl) figuresSectionEl.style.borderColor = "#6aa9ff";
+        }
+      });
+
+      document.addEventListener("dragleave", () => {
+        if (figuresSectionEl) figuresSectionEl.style.borderColor = "#ddd";
+      });
+
+      document.addEventListener("drop", async (event) => {
+        if (figuresSectionEl) figuresSectionEl.style.borderColor = "#ddd";
+        const files = Array.from(event.dataTransfer?.files || []).filter((f) => String(f.type || "").startsWith("image/"));
+        if (!files.length) return;
+        event.preventDefault();
+        try {
+          const appendFallback = document.activeElement !== templateEl;
+          for (const file of files) {
+            await addFigureFromFile(file, appendFallback);
+          }
+        } catch (err) {
+          setStatus(`Image drop error: ${err.message}`, "warn");
+        }
+      });
+
       renderTemplate();
       renderMCPreview();
       renderTypedPreview();
       renderComputedAnswerPreview(computedAnswerPreview.textContent || "");
       updateMCVisibility();
+      renderFiguresPreview();
       setStatus("Ready", "good");
     </script>
   </body>
