@@ -44,6 +44,9 @@ def test_question_editor_has_new_workflow_hooks(tmp_path) -> None:
     assert 'id="btn_rewrite"' in resp.text
     assert 'id="btn_generate_answer"' in resp.text
     assert 'id="btn_generate_typed_solution"' in resp.text
+    assert "function setAiBusy(isBusy)" in resp.text
+    assert "await autosaveNow({ allowWhenBusy: true });" in resp.text
+    assert "AI request in progress; editing is temporarily disabled." in resp.text
 
 
 def test_usage_totals_accumulate_and_reset(tmp_path) -> None:

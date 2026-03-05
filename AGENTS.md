@@ -166,6 +166,7 @@ Source contributor docs are useful but secondary.
 - Do not rewrite history unless explicitly requested.
 - Avoid destructive git commands.
 - If you discover unexpected unrelated changes, pause and ask before proceeding.
+- For issue implementation work, default to committing changes and opening a draft PR after validations pass unless the user explicitly asks not to.
 
 ## CI
 
