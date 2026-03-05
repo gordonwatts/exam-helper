@@ -11,6 +11,9 @@ def test_prompt_catalog_builds_rewrite_prompt() -> None:
     q.solution.parameters = {"v": 12}
     bundle = catalog.compose(action="rewrite_parameterize", question=q)
     assert "strict JSON object" in bundle.system_prompt
+    assert "under 10 words" in bundle.system_prompt
+    assert "<Law or Theorem Name>: ..." in bundle.system_prompt
+    assert "should not restate the full problem statement" in bundle.system_prompt
     assert "Rendered Question (Markdown):" in bundle.user_prompt
     assert "Template Parameters (YAML):" in bundle.user_prompt
     assert "```markdown" in bundle.user_prompt
