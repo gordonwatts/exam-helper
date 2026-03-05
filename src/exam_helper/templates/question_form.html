@@ -206,8 +206,32 @@
       const promptPreviewSystemEl = document.getElementById("prompt_preview_system");
       const promptPreviewUserEl = document.getElementById("prompt_preview_user");
       const promptPreviewModal = document.getElementById("prompt_preview_modal");
+      const aiActionButtons = Array.from(document.querySelectorAll(".ai-action"));
+      const aiLockControls = [
+        questionIdEl,
+        questionTypeEl,
+        titleEl,
+        pointsEl,
+        templateEl,
+        paramsEl,
+        answerGuidanceEl,
+        answerCodeEl,
+        distractorFnsEl,
+        choicesEl,
+        typedSolutionEl,
+        addFigureBtn,
+        figureFileInput,
+        document.getElementById("btn_run_harness"),
+        form.querySelector('button[type="submit"]'),
+        ...aiActionButtons,
+      ];
+      const aiLockInitialDisabled = new Map(
+        aiLockControls.filter((el) => !!el).map((el) => [el, Boolean(el.disabled)])
+      );
 
       let autosaveTimer = null;
+      let aiBusy = false;
+      let pendingAutosave = false;
 
       function setStatus(text, cls) {
         saveStatus.textContent = text;
@@ -478,7 +502,28 @@
         };
       }
 
-      async function autosaveNow() {
+      function setAiBusy(isBusy) {
+        aiBusy = isBusy;
+        if (isBusy && autosaveTimer) {
+          clearTimeout(autosaveTimer);
+          autosaveTimer = null;
+        }
+        aiLockControls.forEach((el) => {
+          if (!el) return;
+          if (isBusy) {
+            el.disabled = true;
+            return;
+          }
+          el.disabled = aiLockInitialDisabled.get(el) || false;
+        });
+      }
+
+      async function autosaveNow(options = {}) {
+        const allowWhenBusy = Boolean(options.allowWhenBusy);
+        if (aiBusy && !allowWhenBusy) {
+          pendingAutosave = true;
+          return;
+        }
         const qid = questionIdEl.value.trim();
         if (!qid) return;
         setStatus("Saving...", "warn");
@@ -512,7 +557,7 @@
         if (btn) btn.disabled = true;
         setStatus("Calling endpoint...", "warn");
         try {
-          await autosaveNow();
+          await autosaveNow({ allowWhenBusy: true });
           const res = await fetch(`/questions/${qid}${endpoint}`, { method: "POST" });
           const data = await res.json();
           if (!res.ok || !data.ok) {
@@ -526,19 +571,50 @@
         }
       }
 
+      async function callAiEndpoint(endpoint, applyFn, btn = null) {
+        const qid = questionIdEl.value.trim();
+        if (!qid) {
+          throw new Error("Set question ID first.");
+        }
+        await autosaveNow({ allowWhenBusy: true });
+        setAiBusy(true);
+        setStatus("AI request in progress; editing is temporarily disabled.", "warn");
+        try {
+          const res = await fetch(`/questions/${qid}${endpoint}`, { method: "POST" });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            const collisions = data.collisions ? ` ${data.collisions.join(" | ")}` : "";
+            throw new Error((data.error || res.statusText) + collisions);
+          }
+          applyFn(data);
+          await autosaveNow({ allowWhenBusy: true });
+        } finally {
+          setAiBusy(false);
+          if (btn && (aiLockInitialDisabled.get(btn) || false)) {
+            btn.disabled = true;
+          }
+          if (pendingAutosave) {
+            pendingAutosave = false;
+            autosaveNow({ allowWhenBusy: true }).catch((err) => {
+              setStatus(`Save error: ${err.message}`, "warn");
+            });
+          }
+        }
+      }
+
       async function runHarnessNow() {
-          await callEndpoint("/harness/run", (data) => {
-            renderComputedAnswerPreview(data.computed_answer_md || "");
-            computedAnswerPreview.classList.remove("computed-stale");
-            if (data.choices_yaml) choicesEl.value = data.choices_yaml;
-            renderMCPreview();
-          });
+        await callEndpoint("/harness/run", (data) => {
+          renderComputedAnswerPreview(data.computed_answer_md || "");
+          computedAnswerPreview.classList.remove("computed-stale");
+          if (data.choices_yaml) choicesEl.value = data.choices_yaml;
+          renderMCPreview();
+        });
       }
 
       document.getElementById("btn_rewrite").addEventListener("click", async () => {
         try {
           const btn = document.getElementById("btn_rewrite");
-          await callEndpoint("/ai/rewrite-and-parameterize", (data) => {
+          await callAiEndpoint("/ai/rewrite-and-parameterize", (data) => {
             if (data.title && !titleEl.value.trim()) titleEl.value = data.title;
             templateEl.value = data.question_template_md || templateEl.value;
             paramsEl.value = data.solution_parameters_yaml || paramsEl.value;
@@ -557,7 +633,7 @@
       document.getElementById("btn_generate_answer").addEventListener("click", async () => {
         try {
           const btn = document.getElementById("btn_generate_answer");
-          await callEndpoint("/ai/generate-answer-function", (data) => {
+          await callAiEndpoint("/ai/generate-answer-function", (data) => {
             answerCodeEl.value = data.answer_python_code || "";
             setTypedStatus("stale");
           }, btn);
@@ -581,7 +657,7 @@
         try {
           const btn = document.getElementById("btn_generate_mc");
           let mcWarning = "";
-          await callEndpoint("/ai/generate-mc-distractors", (data) => {
+          await callAiEndpoint("/ai/generate-mc-distractors", (data) => {
             distractorFnsEl.value = data.distractor_functions_text || distractorFnsEl.value;
             choicesEl.value = data.choices_yaml || choicesEl.value;
             renderMCPreview();
@@ -601,7 +677,7 @@
       document.getElementById("btn_generate_typed_solution").addEventListener("click", async () => {
         try {
           const btn = document.getElementById("btn_generate_typed_solution");
-          await callEndpoint("/ai/generate-typed-solution", (data) => {
+          await callAiEndpoint("/ai/generate-typed-solution", (data) => {
             typedSolutionEl.value = data.typed_solution_md || "";
             renderTypedPreview();
             setTypedStatus(data.typed_solution_status || "fresh");
@@ -615,7 +691,7 @@
       document.getElementById("btn_preview_rewrite").addEventListener("click", async () => {
         try {
           const btn = document.getElementById("btn_preview_rewrite");
-          await callEndpoint("/ai/preview/rewrite-and-parameterize", (data) => {
+          await callAiEndpoint("/ai/preview/rewrite-and-parameterize", (data) => {
             promptPreviewTitleEl.textContent = "Rewrite + Extract Parameters";
             promptPreviewSystemEl.textContent = data.system_prompt || "";
             promptPreviewUserEl.textContent = data.user_prompt || "";
@@ -629,7 +705,7 @@
       document.getElementById("btn_preview_answer").addEventListener("click", async () => {
         try {
           const btn = document.getElementById("btn_preview_answer");
-          await callEndpoint("/ai/preview/generate-answer-function", (data) => {
+          await callAiEndpoint("/ai/preview/generate-answer-function", (data) => {
             promptPreviewTitleEl.textContent = "Generate Answer Function";
             promptPreviewSystemEl.textContent = data.system_prompt || "";
             promptPreviewUserEl.textContent = data.user_prompt || "";
@@ -643,7 +719,7 @@
       document.getElementById("btn_preview_mc").addEventListener("click", async () => {
         try {
           const btn = document.getElementById("btn_preview_mc");
-          await callEndpoint("/ai/preview/generate-mc-distractors", (data) => {
+          await callAiEndpoint("/ai/preview/generate-mc-distractors", (data) => {
             promptPreviewTitleEl.textContent = "Generate MC Distractors";
             promptPreviewSystemEl.textContent = data.system_prompt || "";
             promptPreviewUserEl.textContent = data.user_prompt || "";
@@ -657,7 +733,7 @@
       document.getElementById("btn_preview_typed_solution").addEventListener("click", async () => {
         try {
           const btn = document.getElementById("btn_preview_typed_solution");
-          await callEndpoint("/ai/preview/generate-typed-solution", (data) => {
+          await callAiEndpoint("/ai/preview/generate-typed-solution", (data) => {
             promptPreviewTitleEl.textContent = "Generate Typed Solution";
             promptPreviewSystemEl.textContent = data.system_prompt || "";
             promptPreviewUserEl.textContent = data.user_prompt || "";
