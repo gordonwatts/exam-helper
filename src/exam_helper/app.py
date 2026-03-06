@@ -242,11 +242,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             if candidate not in used:
                 return candidate
         return "q_new"
-
-    def _fallback_title_from_prompt(rendered_prompt: str) -> str:
-        words = re.findall(r"[A-Za-z0-9+\-/]+", rendered_prompt or "")
-        return " ".join(words[:8]).strip() or "Untitled question"
-
     def _mark_typed_solution_stale_if_needed(
         existing: Question | None, candidate: Question
     ) -> None:
@@ -473,11 +468,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             rendered_prompt = _render_template_from_parameters(
                 result.question_template_md, result.parameters
             )
-            title = q.title.strip()
-            if not title:
-                title = result.title.strip() or _fallback_title_from_prompt(
-                    rendered_prompt
-                )
+            title = q.title.strip() or result.title.strip()
             return {
                 "ok": True,
                 "question_template_md": result.question_template_md,
@@ -748,4 +739,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return RedirectResponse("/", status_code=303)
 
     return app
+
+
 

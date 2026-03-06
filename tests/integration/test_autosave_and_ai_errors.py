@@ -98,6 +98,30 @@ def test_ai_rewrite_and_parameterize_updates_template_and_params(tmp_path) -> No
     assert "3.5" in data["rendered_prompt_md"]
 
 
+
+def test_ai_rewrite_and_parameterize_does_not_fallback_title_from_prompt(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_rewrite_no_title")
+
+    class _AI:
+        def rewrite_parameterize(self, question):
+            return AIService.RewriteResult(
+                question_template_md="You shine photons with frequency {{f}}.",
+                parameters={"f": 5.0},
+                title="",
+                usage=AIUsageTotals(),
+            )
+
+    app.state.ai = _AI()
+    resp = client.post("/questions/q_rewrite_no_title/ai/rewrite-and-parameterize")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["title"] == ""
+
 def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
@@ -272,3 +296,7 @@ def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> Non
     assert data["ok"] is True
     assert "final_answer" in data["answer_python_code"]
     assert fake.calls == 2
+
+
+
+
