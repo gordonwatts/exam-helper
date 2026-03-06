@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 
 import uvicorn
@@ -50,13 +51,26 @@ def cmd_export_docx(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
+    verbosity = int(getattr(args, "verbose", 0) or 0)
+    level = logging.WARNING
+    if verbosity == 1:
+        level = logging.INFO
+    elif verbosity >= 2:
+        level = logging.DEBUG
+    logging.basicConfig(level=level, format="%(levelname)s:%(name)s:%(message)s")
+
     key = resolve_openai_api_key(args.openai_key)
     if key:
         print("OpenAI key loaded.")
     else:
         print("OpenAI key not configured. AI features will be unavailable.")
     app = create_app(project_root=Path(args.project), openai_key=key)
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        log_level=("debug" if verbosity >= 2 else "info"),
+    )
     return 0
 
 
@@ -76,6 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument("--port", type=int, default=8000)
     p_serve.add_argument("--project", default=".")
     p_serve.add_argument("--openai-key", default=None)
+    p_serve.add_argument("-v", "--verbose", action="count", default=0)
     p_serve.set_defaults(func=cmd_serve)
 
     p_validate = sub.add_parser("validate", help="Validate question files.")

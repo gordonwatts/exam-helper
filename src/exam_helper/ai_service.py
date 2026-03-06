@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -15,6 +16,8 @@ from exam_helper.models import (
     Question,
 )
 from exam_helper.prompt_catalog import PromptBundle, PromptCatalog
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -180,25 +183,69 @@ class AIService:
 
     @staticmethod
     def _parse_json_object(raw: str) -> dict[str, Any]:
+        text = (raw or "").strip()
+        if not text:
+            raise ValueError("AI response was empty.")
+
+        def _as_dict(candidate: Any) -> dict[str, Any] | None:
+            return candidate if isinstance(candidate, dict) else None
+
         try:
-            data = json.loads(raw)
-            if isinstance(data, dict):
+            data = _as_dict(json.loads(text))
+            if data is not None:
                 return data
         except json.JSONDecodeError:
             pass
-        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, flags=re.DOTALL)
-        if fence_match:
-            data = json.loads(fence_match.group(1))
-            if isinstance(data, dict):
-                return data
-        start = raw.find("{")
-        end = raw.rfind("}")
+
+        for pattern in (
+            r"```(?:json)?\s*(\{.*?\})\s*```",
+            r"```(?:yaml|yml)\s*(.*?)\s*```",
+        ):
+            fence_match = re.search(pattern, text, flags=re.DOTALL)
+            if not fence_match:
+                continue
+            fenced = fence_match.group(1)
+            try:
+                data = _as_dict(json.loads(fenced))
+                if data is not None:
+                    return data
+            except json.JSONDecodeError:
+                pass
+            try:
+                data = _as_dict(yaml.safe_load(fenced))
+                if data is not None:
+                    return data
+            except Exception:
+                pass
+
+        start = text.find("{")
+        end = text.rfind("}")
         if start >= 0 and end > start:
-            candidate = raw[start : end + 1]
-            data = json.loads(candidate)
-            if isinstance(data, dict):
+            candidate = text[start : end + 1]
+            try:
+                data = _as_dict(json.loads(candidate))
+                if data is not None:
+                    return data
+            except json.JSONDecodeError:
+                pass
+            try:
+                data = _as_dict(yaml.safe_load(candidate))
+                if data is not None:
+                    return data
+            except Exception:
+                pass
+
+        try:
+            data = _as_dict(yaml.safe_load(text))
+            if data is not None:
                 return data
-        raise ValueError("AI response was not parseable JSON object.")
+        except Exception:
+            pass
+
+        sample = re.sub(r"\s+", " ", text)[:500]
+        raise ValueError(
+            "AI response was not parseable as an object. " f"Sample: {sample}"
+        )
 
     @staticmethod
     def _extract_typed_solution_text(raw: str) -> str:
@@ -224,15 +271,170 @@ class AIService:
             pass
         return text
 
+    @staticmethod
+    def _coerce_parameters_object(raw_params: Any) -> dict[str, Any]:
+        if raw_params is None:
+            return {}
+        if isinstance(raw_params, dict):
+            return raw_params
+        if isinstance(raw_params, str):
+            text = raw_params.strip()
+            if not text:
+                return {}
+            for loader in (json.loads, yaml.safe_load):
+                try:
+                    parsed = loader(text)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except Exception:
+                    pass
+            sample = re.sub(r"\s+", " ", text)[:200]
+            raise ValueError(
+                "AI response field 'parameters' was a string but could not be "
+                f"parsed as an object. Sample: {sample}"
+            )
+        if isinstance(raw_params, list):
+            out: dict[str, Any] = {}
+            for idx, item in enumerate(raw_params):
+                if not isinstance(item, dict):
+                    raise ValueError(
+                        "AI response field 'parameters' list entries must be "
+                        "objects with name/key and value."
+                    )
+                key = item.get("name", item.get("key"))
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError(
+                        "AI response field 'parameters' list entry is missing a "
+                        f"valid name/key at index {idx}."
+                    )
+                if "value" in item:
+                    value = item["value"]
+                elif "val" in item:
+                    value = item["val"]
+                else:
+                    raise ValueError(
+                        "AI response field 'parameters' list entry is missing a "
+                        f"value at index {idx}."
+                    )
+                out[key] = value
+            return out
+        raise ValueError(
+            "AI response field 'parameters' must be an object or a coercible "
+            f"string/list, got {type(raw_params).__name__}."
+        )
+
+    @staticmethod
+    def _coerce_numeric_scalar(value: Any) -> Any:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return value
+
+        if re.fullmatch(r"[+-]?\d+", text):
+            try:
+                return int(text)
+            except Exception:
+                return value
+
+        if re.fullmatch(r"[+-]?(?:\d+\.\d*|\d*\.\d+)(?:[eE][+-]?\d+)?", text):
+            try:
+                return float(text)
+            except Exception:
+                return value
+
+        frac_match = re.fullmatch(r"([+-]?\d+)\s*/\s*([+-]?\d+)", text)
+        if frac_match:
+            denom = int(frac_match.group(2))
+            if denom != 0:
+                return int(frac_match.group(1)) / denom
+            return value
+
+        latex_frac_match = re.fullmatch(
+            r"\\(?:t?frac)\{([+-]?\d+)\}\{([+-]?\d+)\}", text
+        )
+        if latex_frac_match:
+            denom = int(latex_frac_match.group(2))
+            if denom != 0:
+                return int(latex_frac_match.group(1)) / denom
+        return value
+
+    @classmethod
+    def _normalize_rewrite_parameters(
+        cls,
+        params: dict[str, Any],
+        question: Question,
+        template: str,
+    ) -> tuple[dict[str, Any], str]:
+        figure_ids = {f.id for f in (question.figures or [])}
+        filtered: dict[str, Any] = {}
+        rewritten_template = template
+
+        for key, value in (params or {}).items():
+            key_clean = str(key).strip()
+            if not key_clean:
+                continue
+            key_lower = key_clean.casefold()
+            is_figure_ref_key = (
+                key_lower
+                in {
+                    "figure_ref",
+                    "fig_ref",
+                    "figure_id",
+                    "fig_id",
+                    "image_ref",
+                    "image_id",
+                }
+                or (key_lower.startswith("figure_") and key_lower.endswith("_ref"))
+                or (key_lower.startswith("fig_") and key_lower.endswith("_ref"))
+            )
+            value_str = str(value).strip() if isinstance(value, str) else ""
+            looks_like_figure_id = bool(re.fullmatch(r"fig_[A-Za-z0-9_-]+", value_str))
+            if is_figure_ref_key and (value_str in figure_ids or looks_like_figure_id):
+                if value_str:
+                    rewritten_template = re.sub(
+                        r"\{\{\s*" + re.escape(key_clean) + r"\s*\}\}",
+                        value_str,
+                        rewritten_template,
+                    )
+                continue
+            filtered[key_clean] = cls._coerce_numeric_scalar(value)
+
+        return filtered, rewritten_template
+
     def rewrite_parameterize(self, question: Question) -> RewriteResult:
         bundle = self.compose_prompt(action="rewrite_parameterize", question=question)
         result = self._text_with_question_context(bundle, question)
         payload = self._parse_json_object(result.text)
         template = str(payload.get("question_template_md", "")).strip()
-        title = str(payload.get("title", "")).strip()
-        params = payload.get("parameters") or {}
-        if not isinstance(params, dict):
-            raise ValueError("AI response field 'parameters' must be an object.")
+
+        title = ""
+        title_key = "title"
+        for candidate_key in ("title", "question_title", "short_title", "name"):
+            candidate_value = payload.get(candidate_key)
+            if isinstance(candidate_value, str) and candidate_value.strip():
+                title = candidate_value.strip()
+                title_key = candidate_key
+                break
+        if not title and isinstance(payload.get("title"), str):
+            title = str(payload.get("title", "")).strip()
+
+        logger.debug(
+            "rewrite_parameterize parsed payload keys=%s title_key=%s title_empty=%s",
+            sorted(payload.keys()),
+            title_key,
+            (not bool(title)),
+        )
+        params = self._coerce_parameters_object(payload.get("parameters"))
+        params, template = self._normalize_rewrite_parameters(
+            params=params,
+            question=question,
+            template=template,
+        )
         if not template:
             raise ValueError("AI response field 'question_template_md' is required.")
         return AIService.RewriteResult(

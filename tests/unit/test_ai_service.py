@@ -35,6 +35,81 @@ def test_ai_service_rewrite_parameterize(monkeypatch) -> None:
     assert out.title == "Car Motion"
 
 
+def test_ai_service_rewrite_parameterize_accepts_yaml_payload(monkeypatch) -> None:
+    from exam_helper import ai_service as mod
+
+    payload = "question_template_md: A car moves at {{v}} m/s\nparameters:\n  v: 9\ntitle: YAML Motion\n"
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="", prompt_md="old")
+    out = svc.rewrite_parameterize(q)
+    assert out.question_template_md == "A car moves at {{v}} m/s"
+    assert out.parameters["v"] == 9
+    assert out.title == "YAML Motion"
+
+
+def test_ai_service_rewrite_parameterize_accepts_question_title_alias(
+    monkeypatch,
+) -> None:
+    from exam_helper import ai_service as mod
+
+    payload = """{"question_template_md":"A car moves at {{v}} m/s","parameters":{"v":9},"question_title":"Photon Work Function"}"""
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="", prompt_md="old")
+    out = svc.rewrite_parameterize(q)
+    assert out.title == "Photon Work Function"
+
+
+def test_ai_service_rewrite_parameterize_coerces_string_parameters(monkeypatch) -> None:
+    from exam_helper import ai_service as mod
+
+    payload = "\n".join(
+        [
+            "question_template_md: A car moves at {{v}} m/s",
+            "parameters: |",
+            "  v: 12",
+            "  figure_ref: fig_1",
+            'title: ""',
+            "",
+        ]
+    )
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="", prompt_md="old")
+    out = svc.rewrite_parameterize(q)
+    assert out.parameters["v"] == 12
+    assert "figure_ref" not in out.parameters
+
+
+def test_ai_service_rewrite_parameterize_coerces_list_parameters(monkeypatch) -> None:
+    from exam_helper import ai_service as mod
+
+    payload = """{"question_template_md":"A car moves at {{v}} m/s","parameters":[{"name":"v","value":12},{"name":"figure_ref","value":"fig_1"}],"title":""}"""
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="", prompt_md="old")
+    out = svc.rewrite_parameterize(q)
+    assert out.parameters["v"] == 12
+    assert "figure_ref" not in out.parameters
+
+
+def test_ai_service_rewrite_parameterize_normalizes_fraction_and_drops_figure_ref(
+    monkeypatch,
+) -> None:
+    from exam_helper import ai_service as mod
+
+    payload = """{"question_template_md":"![]({{figure_ref}}) factor={{work_function_factor}}","parameters":{"figure_ref":"fig_1","work_function_factor":"\\\\tfrac{1}{2}"},"title":""}"""
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="", prompt_md="old")
+    out = svc.rewrite_parameterize(q)
+    assert "figure_ref" not in out.parameters
+    assert out.parameters["work_function_factor"] == 0.5
+    assert "{{figure_ref}}" not in out.question_template_md
+    assert "fig_1" in out.question_template_md
+
+
 def test_ai_service_generate_answer_function(monkeypatch) -> None:
     from exam_helper import ai_service as mod
 

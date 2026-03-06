@@ -4,11 +4,12 @@ actions:
       Return exactly one strict JSON object with keys:
       - question_template_md
       - parameters
-      - title (optional)
+      - title (required if current title is empty)
 
       Rewrite the question as a reusable Question Template (Markdown).
-      Extract variable values into Template Parameters (YAML-compatible key/value mapping).
+      Extract variable values into Template Parameters (YAML-compatible key/value mapping) using numeric scalars whenever possible.
       Use {{parameter_name}} references in question_template_md.
+      Do not include figure/image references (for example figure_ref, fig_ref, figure_id) in parameters.
       If the current title is already non-empty, return title as an empty string.
       If the current title is empty, generate a short title that hints at the concept (under 10 words; shorter is better).
       If a named law or theorem is central to the problem, start the title with "<Law or Theorem Name>: ...".

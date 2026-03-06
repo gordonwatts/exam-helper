@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import base64
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -242,10 +243,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 return candidate
         return "q_new"
 
-    def _fallback_title_from_prompt(rendered_prompt: str) -> str:
-        words = re.findall(r"[A-Za-z0-9+\-/]+", rendered_prompt or "")
-        return " ".join(words[:8]).strip() or "Untitled question"
-
     def _mark_typed_solution_stale_if_needed(
         existing: Question | None, candidate: Question
     ) -> None:
@@ -439,10 +436,21 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
+    @app.get("/questions/{question_id}/{figure_id}")
+    def serve_embedded_figure(question_id: str, figure_id: str) -> Response:
+        q = repo.get_question(question_id)
+        fig = next((f for f in q.figures if f.id == figure_id), None)
+        if fig is None:
+            return Response(status_code=404)
+        try:
+            raw = base64.b64decode((fig.data_base64 or "").encode("ascii"))
+        except Exception:
+            return Response(status_code=404)
+        media_type = fig.mime_type or "application/octet-stream"
+        return Response(content=raw, media_type=media_type)
+
     @app.post("/figures/validate")
     def validate_figure(data_base64: str = Form(...)) -> dict:
-        import base64
-
         raw = base64.b64decode(data_base64.encode("ascii"))
         return {"sha256": sha256(raw).hexdigest(), "size": len(raw)}
 
@@ -461,11 +469,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             rendered_prompt = _render_template_from_parameters(
                 result.question_template_md, result.parameters
             )
-            title = q.title.strip()
-            if not title:
-                title = result.title.strip() or _fallback_title_from_prompt(
-                    rendered_prompt
-                )
+            title = q.title.strip() or result.title.strip()
             return {
                 "ok": True,
                 "question_template_md": result.question_template_md,
@@ -474,6 +478,17 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "title": title,
             }
         except Exception as ex:
+            logger.exception(
+                "ai_rewrite_and_parameterize failed question_id=%s template_len=%s params_keys=%s figures=%s",
+                question_id,
+                (
+                    len((q.solution.question_template_md or "").strip())
+                    if "q" in locals()
+                    else 0
+                ),
+                sorted((q.solution.parameters or {}).keys()) if "q" in locals() else [],
+                [f.id for f in (q.figures or [])] if "q" in locals() else [],
+            )
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/questions/{question_id}/ai/generate-answer-function")
