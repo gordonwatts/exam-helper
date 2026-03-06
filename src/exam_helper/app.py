@@ -486,6 +486,17 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "title": title,
             }
         except Exception as ex:
+            logger.exception(
+                "ai_rewrite_and_parameterize failed question_id=%s template_len=%s params_keys=%s figures=%s",
+                question_id,
+                (
+                    len((q.solution.question_template_md or "").strip())
+                    if "q" in locals()
+                    else 0
+                ),
+                sorted((q.solution.parameters or {}).keys()) if "q" in locals() else [],
+                [f.id for f in (q.figures or [])] if "q" in locals() else [],
+            )
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/questions/{question_id}/ai/generate-answer-function")
@@ -737,3 +748,4 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return RedirectResponse("/", status_code=303)
 
     return app
+

@@ -236,7 +236,12 @@ class AIService:
         except Exception:
             pass
 
-        raise ValueError("AI response was not parseable as an object.")
+        sample = re.sub(r"\s+", " ", text)[:500]
+        raise ValueError(
+            "AI response was not parseable as an object. "
+            f"Sample: {sample}"
+        )
+
     @staticmethod
     def _extract_typed_solution_text(raw: str) -> str:
         text = (raw or "").strip()
@@ -329,3 +334,4 @@ class AIService:
         if not text:
             raise ValueError("AI response field 'typed_solution_md' is required.")
         return AIService.AIResult(text=text, usage=result.usage)
+
