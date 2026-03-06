@@ -4,7 +4,7 @@ actions:
       Return exactly one strict JSON object with keys:
       - question_template_md
       - parameters
-      - title (optional)
+      - title (required if current title is empty)
 
       Rewrite the question as a reusable Question Template (Markdown).
       Extract variable values into Template Parameters (YAML-compatible key/value mapping) using numeric scalars whenever possible.

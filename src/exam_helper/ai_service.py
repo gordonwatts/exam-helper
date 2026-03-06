@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -15,6 +16,8 @@ from exam_helper.models import (
     Question,
 )
 from exam_helper.prompt_catalog import PromptBundle, PromptCatalog
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -399,7 +402,24 @@ class AIService:
         result = self._text_with_question_context(bundle, question)
         payload = self._parse_json_object(result.text)
         template = str(payload.get("question_template_md", "")).strip()
-        title = str(payload.get("title", "")).strip()
+
+        title = ""
+        title_key = "title"
+        for candidate_key in ("title", "question_title", "short_title", "name"):
+            candidate_value = payload.get(candidate_key)
+            if isinstance(candidate_value, str) and candidate_value.strip():
+                title = candidate_value.strip()
+                title_key = candidate_key
+                break
+        if not title and isinstance(payload.get("title"), str):
+            title = str(payload.get("title", "")).strip()
+
+        logger.debug(
+            "rewrite_parameterize parsed payload keys=%s title_key=%s title_empty=%s",
+            sorted(payload.keys()),
+            title_key,
+            (not bool(title)),
+        )
         params = self._coerce_parameters_object(payload.get("parameters"))
         params, template = self._normalize_rewrite_parameters(
             params=params,
