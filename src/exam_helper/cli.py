@@ -64,7 +64,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         print("OpenAI key loaded.")
     else:
         print("OpenAI key not configured. AI features will be unavailable.")
-    app = create_app(project_root=Path(args.project), openai_key=key)
+    app = create_app(project_root=Path(args.path), openai_key=key)
     uvicorn.run(
         app,
         host=args.host,
@@ -86,9 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.set_defaults(func=cmd_init)
 
     p_serve = sub.add_parser("serve", help="Serve the local web app.")
+    p_serve.add_argument("path", nargs="?", default=".")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8000)
-    p_serve.add_argument("--project", default=".")
     p_serve.add_argument("--openai-key", default=None)
     p_serve.add_argument("-v", "--verbose", action="count", default=0)
     p_serve.set_defaults(func=cmd_serve)
