@@ -180,26 +180,63 @@ class AIService:
 
     @staticmethod
     def _parse_json_object(raw: str) -> dict[str, Any]:
+        text = (raw or "").strip()
+        if not text:
+            raise ValueError("AI response was empty.")
+
+        def _as_dict(candidate: Any) -> dict[str, Any] | None:
+            return candidate if isinstance(candidate, dict) else None
+
         try:
-            data = json.loads(raw)
-            if isinstance(data, dict):
+            data = _as_dict(json.loads(text))
+            if data is not None:
                 return data
         except json.JSONDecodeError:
             pass
-        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, flags=re.DOTALL)
-        if fence_match:
-            data = json.loads(fence_match.group(1))
-            if isinstance(data, dict):
-                return data
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start >= 0 and end > start:
-            candidate = raw[start : end + 1]
-            data = json.loads(candidate)
-            if isinstance(data, dict):
-                return data
-        raise ValueError("AI response was not parseable JSON object.")
 
+        for pattern in (r"```(?:json)?\s*(\{.*?\})\s*```", r"```(?:yaml|yml)\s*(.*?)\s*```"):
+            fence_match = re.search(pattern, text, flags=re.DOTALL)
+            if not fence_match:
+                continue
+            fenced = fence_match.group(1)
+            try:
+                data = _as_dict(json.loads(fenced))
+                if data is not None:
+                    return data
+            except json.JSONDecodeError:
+                pass
+            try:
+                data = _as_dict(yaml.safe_load(fenced))
+                if data is not None:
+                    return data
+            except Exception:
+                pass
+
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            candidate = text[start : end + 1]
+            try:
+                data = _as_dict(json.loads(candidate))
+                if data is not None:
+                    return data
+            except json.JSONDecodeError:
+                pass
+            try:
+                data = _as_dict(yaml.safe_load(candidate))
+                if data is not None:
+                    return data
+            except Exception:
+                pass
+
+        try:
+            data = _as_dict(yaml.safe_load(text))
+            if data is not None:
+                return data
+        except Exception:
+            pass
+
+        raise ValueError("AI response was not parseable as an object.")
     @staticmethod
     def _extract_typed_solution_text(raw: str) -> str:
         text = (raw or "").strip()

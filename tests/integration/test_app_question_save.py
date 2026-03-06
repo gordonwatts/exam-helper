@@ -65,6 +65,44 @@ def test_validate_figure_endpoint_returns_hash_and_size(tmp_path) -> None:
     assert payload["size"] == len(raw)
 
 
+def test_embedded_figure_route_serves_question_figure_bytes(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    raw = b"figure-bytes"
+    b64 = base64.b64encode(raw).decode("ascii")
+    digest = hashlib.sha256(raw).hexdigest()
+    fig = (
+        '[{"id":"fig_1","mime_type":"image/png","data_base64":"'
+        + b64
+        + '","sha256":"'
+        + digest
+        + '","caption":""}]'
+    )
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q1",
+            "title": "Title",
+            "question_type": "free_response",
+            "question_template_md": "![]({{figure_ref}})",
+            "solution_parameters_yaml": "{figure_ref: fig_1}",
+            "choices_yaml": "[]",
+            "distractor_functions_text": "",
+            "typed_solution_md": "",
+            "figures_json": fig,
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+
+    resp = client.get("/questions/q1/fig_1")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/png")
+    assert resp.content == raw
+
 def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")

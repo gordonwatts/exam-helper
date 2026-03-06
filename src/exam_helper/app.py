@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import base64
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -439,10 +440,21 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
+    @app.get("/questions/{question_id}/{figure_id}")
+    def serve_embedded_figure(question_id: str, figure_id: str) -> Response:
+        q = repo.get_question(question_id)
+        fig = next((f for f in q.figures if f.id == figure_id), None)
+        if fig is None:
+            return Response(status_code=404)
+        try:
+            raw = base64.b64decode((fig.data_base64 or "").encode("ascii"))
+        except Exception:
+            return Response(status_code=404)
+        media_type = fig.mime_type or "application/octet-stream"
+        return Response(content=raw, media_type=media_type)
+
     @app.post("/figures/validate")
     def validate_figure(data_base64: str = Form(...)) -> dict:
-        import base64
-
         raw = base64.b64decode(data_base64.encode("ascii"))
         return {"sha256": sha256(raw).hexdigest(), "size": len(raw)}
 

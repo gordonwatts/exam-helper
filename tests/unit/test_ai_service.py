@@ -35,6 +35,18 @@ def test_ai_service_rewrite_parameterize(monkeypatch) -> None:
     assert out.title == "Car Motion"
 
 
+def test_ai_service_rewrite_parameterize_accepts_yaml_payload(monkeypatch) -> None:
+    from exam_helper import ai_service as mod
+
+    payload = "question_template_md: A car moves at {{v}} m/s\nparameters:\n  v: 9\ntitle: YAML Motion\n"
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="", prompt_md="old")
+    out = svc.rewrite_parameterize(q)
+    assert out.question_template_md == "A car moves at {{v}} m/s"
+    assert out.parameters["v"] == 9
+    assert out.title == "YAML Motion"
+
 def test_ai_service_generate_answer_function(monkeypatch) -> None:
     from exam_helper import ai_service as mod
 
