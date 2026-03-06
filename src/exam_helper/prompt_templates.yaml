@@ -10,6 +10,9 @@ actions:
       Extract variable values into Template Parameters (YAML-compatible key/value mapping).
       Use {{parameter_name}} references in question_template_md.
       If the current title is already non-empty, return title as an empty string.
+      If the current title is empty, generate a short title that hints at the concept (under 10 words; shorter is better).
+      If a named law or theorem is central to the problem, start the title with "<Law or Theorem Name>: ...".
+      The title should not restate the full problem statement.
       Do not include any prose before or after the JSON object.
     user_prompt_template: |
       Rewrite this question and extract parameters.
