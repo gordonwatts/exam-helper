@@ -197,7 +197,10 @@ class AIService:
         except json.JSONDecodeError:
             pass
 
-        for pattern in (r"```(?:json)?\s*(\{.*?\})\s*```", r"```(?:yaml|yml)\s*(.*?)\s*```"):
+        for pattern in (
+            r"```(?:json)?\s*(\{.*?\})\s*```",
+            r"```(?:yaml|yml)\s*(.*?)\s*```",
+        ):
             fence_match = re.search(pattern, text, flags=re.DOTALL)
             if not fence_match:
                 continue
@@ -241,8 +244,7 @@ class AIService:
 
         sample = re.sub(r"\s+", " ", text)[:500]
         raise ValueError(
-            "AI response was not parseable as an object. "
-            f"Sample: {sample}"
+            "AI response was not parseable as an object. " f"Sample: {sample}"
         )
 
     @staticmethod
@@ -379,7 +381,14 @@ class AIService:
             key_lower = key_clean.casefold()
             is_figure_ref_key = (
                 key_lower
-                in {"figure_ref", "fig_ref", "figure_id", "fig_id", "image_ref", "image_id"}
+                in {
+                    "figure_ref",
+                    "fig_ref",
+                    "figure_id",
+                    "fig_id",
+                    "image_ref",
+                    "image_id",
+                }
                 or (key_lower.startswith("figure_") and key_lower.endswith("_ref"))
                 or (key_lower.startswith("fig_") and key_lower.endswith("_ref"))
             )

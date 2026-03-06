@@ -242,6 +242,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             if candidate not in used:
                 return candidate
         return "q_new"
+
     def _mark_typed_solution_stale_if_needed(
         existing: Question | None, candidate: Question
     ) -> None:
@@ -739,6 +740,3 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return RedirectResponse("/", status_code=303)
 
     return app
-
-
-

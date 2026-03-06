@@ -98,8 +98,9 @@ def test_ai_rewrite_and_parameterize_updates_template_and_params(tmp_path) -> No
     assert "3.5" in data["rendered_prompt_md"]
 
 
-
-def test_ai_rewrite_and_parameterize_does_not_fallback_title_from_prompt(tmp_path) -> None:
+def test_ai_rewrite_and_parameterize_does_not_fallback_title_from_prompt(
+    tmp_path,
+) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key="k")
@@ -121,6 +122,7 @@ def test_ai_rewrite_and_parameterize_does_not_fallback_title_from_prompt(tmp_pat
     data = resp.json()
     assert data["ok"] is True
     assert data["title"] == ""
+
 
 def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
@@ -296,7 +298,3 @@ def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> Non
     assert data["ok"] is True
     assert "final_answer" in data["answer_python_code"]
     assert fake.calls == 2
-
-
-
-

@@ -103,6 +103,7 @@ def test_embedded_figure_route_serves_question_figure_bytes(tmp_path) -> None:
     assert resp.headers["content-type"].startswith("image/png")
     assert resp.content == raw
 
+
 def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
