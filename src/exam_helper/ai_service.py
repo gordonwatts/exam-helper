@@ -265,6 +265,7 @@ class AIService:
         except Exception:
             pass
         return text
+
     @staticmethod
     def _coerce_parameters_object(raw_params: Any) -> dict[str, Any]:
         if raw_params is None:
@@ -317,6 +318,82 @@ class AIService:
             f"string/list, got {type(raw_params).__name__}."
         )
 
+    @staticmethod
+    def _coerce_numeric_scalar(value: Any) -> Any:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return value
+
+        if re.fullmatch(r"[+-]?\d+", text):
+            try:
+                return int(text)
+            except Exception:
+                return value
+
+        if re.fullmatch(r"[+-]?(?:\d+\.\d*|\d*\.\d+)(?:[eE][+-]?\d+)?", text):
+            try:
+                return float(text)
+            except Exception:
+                return value
+
+        frac_match = re.fullmatch(r"([+-]?\d+)\s*/\s*([+-]?\d+)", text)
+        if frac_match:
+            denom = int(frac_match.group(2))
+            if denom != 0:
+                return int(frac_match.group(1)) / denom
+            return value
+
+        latex_frac_match = re.fullmatch(
+            r"\\(?:t?frac)\{([+-]?\d+)\}\{([+-]?\d+)\}", text
+        )
+        if latex_frac_match:
+            denom = int(latex_frac_match.group(2))
+            if denom != 0:
+                return int(latex_frac_match.group(1)) / denom
+        return value
+
+    @classmethod
+    def _normalize_rewrite_parameters(
+        cls,
+        params: dict[str, Any],
+        question: Question,
+        template: str,
+    ) -> tuple[dict[str, Any], str]:
+        figure_ids = {f.id for f in (question.figures or [])}
+        filtered: dict[str, Any] = {}
+        rewritten_template = template
+
+        for key, value in (params or {}).items():
+            key_clean = str(key).strip()
+            if not key_clean:
+                continue
+            key_lower = key_clean.casefold()
+            is_figure_ref_key = (
+                key_lower
+                in {"figure_ref", "fig_ref", "figure_id", "fig_id", "image_ref", "image_id"}
+                or (key_lower.startswith("figure_") and key_lower.endswith("_ref"))
+                or (key_lower.startswith("fig_") and key_lower.endswith("_ref"))
+            )
+            value_str = str(value).strip() if isinstance(value, str) else ""
+            looks_like_figure_id = bool(re.fullmatch(r"fig_[A-Za-z0-9_-]+", value_str))
+            if is_figure_ref_key and (value_str in figure_ids or looks_like_figure_id):
+                if value_str:
+                    rewritten_template = re.sub(
+                        r"\{\{\s*" + re.escape(key_clean) + r"\s*\}\}",
+                        value_str,
+                        rewritten_template,
+                    )
+                continue
+            filtered[key_clean] = cls._coerce_numeric_scalar(value)
+
+        return filtered, rewritten_template
+
     def rewrite_parameterize(self, question: Question) -> RewriteResult:
         bundle = self.compose_prompt(action="rewrite_parameterize", question=question)
         result = self._text_with_question_context(bundle, question)
@@ -324,6 +401,11 @@ class AIService:
         template = str(payload.get("question_template_md", "")).strip()
         title = str(payload.get("title", "")).strip()
         params = self._coerce_parameters_object(payload.get("parameters"))
+        params, template = self._normalize_rewrite_parameters(
+            params=params,
+            question=question,
+            template=template,
+        )
         if not template:
             raise ValueError("AI response field 'question_template_md' is required.")
         return AIService.RewriteResult(
