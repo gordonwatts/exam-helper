@@ -265,6 +265,57 @@ class AIService:
         except Exception:
             pass
         return text
+    @staticmethod
+    def _coerce_parameters_object(raw_params: Any) -> dict[str, Any]:
+        if raw_params is None:
+            return {}
+        if isinstance(raw_params, dict):
+            return raw_params
+        if isinstance(raw_params, str):
+            text = raw_params.strip()
+            if not text:
+                return {}
+            for loader in (json.loads, yaml.safe_load):
+                try:
+                    parsed = loader(text)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except Exception:
+                    pass
+            sample = re.sub(r"\s+", " ", text)[:200]
+            raise ValueError(
+                "AI response field 'parameters' was a string but could not be "
+                f"parsed as an object. Sample: {sample}"
+            )
+        if isinstance(raw_params, list):
+            out: dict[str, Any] = {}
+            for idx, item in enumerate(raw_params):
+                if not isinstance(item, dict):
+                    raise ValueError(
+                        "AI response field 'parameters' list entries must be "
+                        "objects with name/key and value."
+                    )
+                key = item.get("name", item.get("key"))
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError(
+                        "AI response field 'parameters' list entry is missing a "
+                        f"valid name/key at index {idx}."
+                    )
+                if "value" in item:
+                    value = item["value"]
+                elif "val" in item:
+                    value = item["val"]
+                else:
+                    raise ValueError(
+                        "AI response field 'parameters' list entry is missing a "
+                        f"value at index {idx}."
+                    )
+                out[key] = value
+            return out
+        raise ValueError(
+            "AI response field 'parameters' must be an object or a coercible "
+            f"string/list, got {type(raw_params).__name__}."
+        )
 
     def rewrite_parameterize(self, question: Question) -> RewriteResult:
         bundle = self.compose_prompt(action="rewrite_parameterize", question=question)
@@ -272,9 +323,7 @@ class AIService:
         payload = self._parse_json_object(result.text)
         template = str(payload.get("question_template_md", "")).strip()
         title = str(payload.get("title", "")).strip()
-        params = payload.get("parameters") or {}
-        if not isinstance(params, dict):
-            raise ValueError("AI response field 'parameters' must be an object.")
+        params = self._coerce_parameters_object(payload.get("parameters"))
         if not template:
             raise ValueError("AI response field 'question_template_md' is required.")
         return AIService.RewriteResult(
@@ -334,4 +383,3 @@ class AIService:
         if not text:
             raise ValueError("AI response field 'typed_solution_md' is required.")
         return AIService.AIResult(text=text, usage=result.usage)
-
