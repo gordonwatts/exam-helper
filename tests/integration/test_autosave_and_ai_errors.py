@@ -298,3 +298,41 @@ def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> Non
     assert data["ok"] is True
     assert "final_answer" in data["answer_python_code"]
     assert fake.calls == 2
+
+
+def test_harness_run_preserves_latex_backslashes_in_answer_output(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    _seed_question(client, "q_latex")
+
+    client.post(
+        "/questions/q_latex/autosave",
+        json={
+            "title": "T",
+            "question_type": "free_response",
+            "question_template_md": r"Use \\(\\theta\\)",
+            "solution_parameters_yaml": "{}",
+            "answer_guidance": "",
+            "answer_python_code": (
+                "def solve(params):\n"
+                "    return {'answer_md': '$\\theta$', 'final_answer': '$\\lambda$'}\n"
+            ),
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    resp = client.post("/questions/q_latex/harness/run")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["computed_answer_md"] == r"$\theta$"
+    assert data["final_answer_text"] == r"$\lambda$"
+
+    saved = repo.get_question("q_latex")
+    assert saved.solution.last_computed_answer_md == r"$\theta$"

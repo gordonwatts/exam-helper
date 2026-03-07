@@ -24,6 +24,7 @@ from exam_helper.models import (
     Question,
     QuestionType,
 )
+from exam_helper.normalization import normalize_markdown_math_delimiters
 from exam_helper.repository import ProjectRepository
 from exam_helper.solution_runtime import (
     run_answer_function,
@@ -364,15 +365,23 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "question_type": QuestionType(question_type),
                 "choices": choices,
                 "solution": {
-                    "question_template_md": question_template_md,
+                    "question_template_md": normalize_markdown_math_delimiters(
+                        question_template_md
+                    ),
                     "parameters": solution_parameters,
                     "answer_guidance": answer_guidance,
                     "answer_python_code": answer_python_code,
                     "distractor_python_code": distractor_funcs,
-                    "typed_solution_md": typed_solution_md,
+                    "typed_solution_md": normalize_markdown_math_delimiters(
+                        typed_solution_md
+                    ),
                     "typed_solution_status": typed_solution_status,
                     "last_computed_answer_md": (
-                        existing.solution.last_computed_answer_md if existing else ""
+                        normalize_markdown_math_delimiters(
+                            existing.solution.last_computed_answer_md
+                        )
+                        if existing
+                        else ""
                     ),
                 },
                 "figures": figures,
@@ -407,15 +416,21 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "question_type": QuestionType(payload.question_type),
                     "choices": choices,
                     "solution": {
-                        "question_template_md": payload.question_template_md,
+                        "question_template_md": normalize_markdown_math_delimiters(
+                            payload.question_template_md
+                        ),
                         "parameters": solution_parameters,
                         "answer_guidance": payload.answer_guidance,
                         "answer_python_code": payload.answer_python_code,
                         "distractor_python_code": distractor_funcs,
-                        "typed_solution_md": payload.typed_solution_md,
+                        "typed_solution_md": normalize_markdown_math_delimiters(
+                            payload.typed_solution_md
+                        ),
                         "typed_solution_status": payload.typed_solution_status,
                         "last_computed_answer_md": (
-                            existing.solution.last_computed_answer_md
+                            normalize_markdown_math_delimiters(
+                                existing.solution.last_computed_answer_md
+                            )
                             if existing
                             else ""
                         ),
@@ -466,14 +481,19 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             q = repo.get_question(question_id)
             result = app.state.ai.rewrite_parameterize(q)
             repo.add_ai_usage(result.usage)
+            normalized_template = normalize_markdown_math_delimiters(
+                result.question_template_md
+            )
             rendered_prompt = _render_template_from_parameters(
-                result.question_template_md, result.parameters
+                normalized_template, result.parameters
             )
             title = q.title.strip() or result.title.strip()
             return {
                 "ok": True,
-                "question_template_md": result.question_template_md,
-                "rendered_prompt_md": rendered_prompt,
+                "question_template_md": normalized_template,
+                "rendered_prompt_md": normalize_markdown_math_delimiters(
+                    rendered_prompt
+                ),
                 "solution_parameters_yaml": dump_parameters_yaml(result.parameters),
                 "title": title,
             }
@@ -528,7 +548,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             )
             payload: dict[str, Any] = {
                 "ok": True,
-                "computed_answer_md": answer_result.answer_md,
+                "computed_answer_md": normalize_markdown_math_delimiters(
+                    answer_result.answer_md
+                ),
                 "final_answer_text": answer_result.final_answer,
             }
             if q.question_type == QuestionType.multiple_choice:
@@ -546,7 +568,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     payload["ok"] = False
                     payload["error"] = "MC options are not unique."
                     return JSONResponse(payload, status_code=422)
-            q.solution.last_computed_answer_md = answer_result.answer_md
+            q.solution.last_computed_answer_md = normalize_markdown_math_delimiters(
+                answer_result.answer_md
+            )
             repo.save_question(q)
             return payload
         except Exception as ex:
@@ -627,7 +651,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             repo.add_ai_usage(result.usage)
             return {
                 "ok": True,
-                "typed_solution_md": result.text,
+                "typed_solution_md": normalize_markdown_math_delimiters(result.text),
                 "typed_solution_status": "fresh",
             }
         except Exception as ex:
