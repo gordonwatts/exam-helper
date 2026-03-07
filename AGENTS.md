@@ -101,6 +101,8 @@ Core requirements:
    - `uv run --extra dev pytest -q`
    - `uv run --extra dev black --check .`
    - If `black` reports formatting changes, run `uv run --extra dev black .` and re-run the check command.
+8. After creating or updating a commit/PR, verify GitHub Actions CI is passing before considering the work complete.
+   - If CI fails, inspect failures, fix them on the same issue branch, and push updates until CI passes.
 
 ## Packaging and Distribution
 
@@ -174,3 +176,8 @@ GitHub Actions workflow is at:
 - `.github/workflows/ci.yml`
 
 If you add checks (lint/type/etc.), keep runtime practical and avoid breaking fast feedback from `pytest`.
+
+When creating commits or PRs, treat green CI as a required completion gate.
+
+
+
