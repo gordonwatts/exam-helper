@@ -95,9 +95,6 @@ def test_harness_sorts_numeric_then_text_tiebreak_by_source() -> None:
     ]
 
 
-import warnings
-
-
 def test_answer_function_latex_sequences_do_not_emit_invalid_escape_warnings() -> None:
     code = (
         "def solve(params):\n"
