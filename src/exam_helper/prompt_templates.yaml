@@ -29,6 +29,7 @@ actions:
 
       answer_md may include markdown and units, but must not use bold syntax.
       final_answer must be concise answer text used for multiple-choice option generation, and must not use bold syntax.
+      If LaTeX-style backslashes are needed inside Python string literals, escape them (for example \\theta, \\(x\\)).
       Do not include any prose before or after the JSON object.
     user_prompt_template: |
       Write or revise the deterministic Answer Function (Python).
@@ -51,6 +52,7 @@ actions:
       Distractors must be plausible, unique, and must not equal the correct answer.
       Do not use bold syntax in distractor_md or rationale.
       rationale must be short (roughly <= 8 words).
+      If LaTeX-style backslashes are needed inside Python string literals, escape them (for example \\theta, \\(x\\)).
       Do not include any prose before or after the JSON object.
     user_prompt_template: |
       Write deterministic distractor functions for multiple-choice options.
@@ -68,3 +70,5 @@ actions:
       Write or revise the worked Typed Solution (Markdown).
 
       {context_sections}
+
+

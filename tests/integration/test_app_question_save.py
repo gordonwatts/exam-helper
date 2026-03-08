@@ -224,3 +224,77 @@ def test_new_question_id_skips_soft_deleted_ids(tmp_path) -> None:
     new_page = client.get("/questions/new")
     assert new_page.status_code == 200
     assert 'id="question_id" value="q2"' in new_page.text
+
+
+def test_save_persists_dollar_math_delimiters(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    resp = client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_math",
+            "title": "Math",
+            "question_type": "free_response",
+            "question_template_md": r"Compute \\(x\\) and \\[x^2\\]",
+            "choices_yaml": "[]",
+            "distractor_functions_text": "",
+            "typed_solution_md": r"Use \\(x\\) first.",
+            "figures_json": "[]",
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303
+    saved = repo.get_question("q_math")
+    assert saved.solution.question_template_md == "Compute $x$ and $$x^2$$"
+    assert saved.solution.typed_solution_md == "Use $x$ first."
+
+
+def test_autosave_persists_dollar_math_delimiters(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_auto_math",
+            "title": "",
+            "question_type": "free_response",
+            "question_template_md": "",
+            "choices_yaml": "[]",
+            "distractor_functions_text": "",
+            "typed_solution_md": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+
+    resp = client.post(
+        "/questions/q_auto_math/autosave",
+        json={
+            "title": "T",
+            "question_type": "free_response",
+            "question_template_md": r"Given \\(v\\)",
+            "solution_parameters_yaml": "{}",
+            "answer_guidance": "",
+            "answer_python_code": "",
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": r"So \\(v=1\\).",
+            "typed_solution_status": "fresh",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    assert resp.status_code == 200
+    saved = repo.get_question("q_auto_math")
+    assert saved.solution.question_template_md == "Given $v$"
+    assert saved.solution.typed_solution_md == "So $v=1$."

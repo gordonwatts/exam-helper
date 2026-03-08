@@ -13,6 +13,7 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
 
 from exam_helper.models import Question, QuestionType
+from exam_helper.normalization import normalize_markdown_math_delimiters
 from exam_helper.repository import ProjectRepository
 
 _PANDOC_MISSING_WARNING = (
@@ -34,14 +35,8 @@ def _render_prompt(question: Question) -> str:
 
 def _normalize_for_docx(text: str) -> str:
     # Keep readable fallback by stripping latex delimiters for Word plain text runs.
-    return (
-        text.replace("$$", "")
-        .replace("$", "")
-        .replace("\\(", "")
-        .replace("\\)", "")
-        .replace("\\[", "")
-        .replace("\\]", "")
-    )
+    normalized = normalize_markdown_math_delimiters(text)
+    return normalized.replace("$$", "").replace("$", "")
 
 
 def _compact_lines(text: str) -> list[str]:
@@ -149,12 +144,6 @@ def _add_numbered_paragraph(doc: Document, text: str, num_id: int) -> None:
     _apply_numbering_to_paragraph(paragraph, num_id)
 
 
-def _normalize_math_delimiters(text: str) -> str:
-    text = re.sub(r"\\\((.*?)\\\)", r"$\1$", text, flags=re.DOTALL)
-    text = re.sub(r"\\\[(.*?)\\\]", r"$$\1$$", text, flags=re.DOTALL)
-    return text
-
-
 def _build_project_markdown(
     project_name: str,
     course: str,
@@ -166,7 +155,7 @@ def _build_project_markdown(
     lines: list[str] = [f"# {project_name or 'Exam'}", "", course, ""]
 
     for i, q in enumerate(questions, start=1):
-        prompt = _normalize_math_delimiters(_render_prompt(q))
+        prompt = normalize_markdown_math_delimiters(_render_prompt(q))
         lines.append(f"{i}. [{q.points} points] {prompt}")
 
         for figure in q.figures:
@@ -190,7 +179,7 @@ def _build_project_markdown(
 
         if q.question_type == QuestionType.multiple_choice and q.choices:
             for choice in sorted(q.choices, key=lambda c: c.label):
-                choice_text = _normalize_math_delimiters(choice.content_md)
+                choice_text = normalize_markdown_math_delimiters(choice.content_md)
                 lines.append(f"   {choice.label}) {choice_text}")
 
         if include_solutions:
@@ -199,7 +188,9 @@ def _build_project_markdown(
             cleaned_solution = _strip_problem_verbatim_lines(
                 q.solution.typed_solution_md
             )
-            for line in _compact_lines(_normalize_math_delimiters(cleaned_solution)):
+            for line in _compact_lines(
+                normalize_markdown_math_delimiters(cleaned_solution)
+            ):
                 if line:
                     lines.append(f"   {line}")
         lines.append("")

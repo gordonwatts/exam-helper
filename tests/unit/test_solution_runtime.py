@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
 from exam_helper.solution_runtime import (
@@ -91,3 +93,26 @@ def test_harness_sorts_numeric_then_text_tiebreak_by_source() -> None:
         "alpha",
         "beta",
     ]
+
+
+def test_answer_function_latex_sequences_do_not_emit_invalid_escape_warnings() -> None:
+    code = (
+        "def solve(params):\n"
+        "    return {'answer_md': '$\\theta$', 'final_answer': '$\\lambda$'}\n"
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = run_answer_function(code, {})
+    assert result.answer_md == r"$\theta$"
+    assert result.final_answer == r"$\lambda$"
+    assert not [w for w in caught if "invalid escape sequence" in str(w.message)]
+
+
+def test_answer_function_preserves_existing_double_escaped_latex() -> None:
+    code = (
+        "def solve(params):\n"
+        "    return {'answer_md': '$\\\\theta$', 'final_answer': '$\\\\lambda$'}\n"
+    )
+    out = run_answer_function(code, {})
+    assert out.answer_md == r"$\theta$"
+    assert out.final_answer == r"$\lambda$"

@@ -9,6 +9,7 @@ import sympy as sp
 from pint import UnitRegistry
 
 from exam_helper.models import MCChoice
+from exam_helper.normalization import normalize_python_code_string_literals
 
 ureg = UnitRegistry()
 
@@ -80,7 +81,8 @@ def _run_callable(
         raise SolutionRuntimeError("Python code is empty.")
     ns: dict[str, Any] = {}
     try:
-        exec(python_code, _safe_globals(), ns)
+        safe_code = normalize_python_code_string_literals(python_code)
+        exec(safe_code, _safe_globals(), ns)
     except Exception as ex:
         raise SolutionRuntimeError(f"Solution compile error: {ex}") from ex
     fn = ns.get(fn_name)
