@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import hashlib
@@ -250,7 +250,7 @@ def test_save_persists_dollar_math_delimiters(tmp_path) -> None:
 
     assert resp.status_code == 303
     saved = repo.get_question("q_math")
-    assert saved.solution.question_template_md == "Compute $x$ and $$x^2$$"
+    assert saved.solution.question_template_md == "Compute $x$ and $x^2$"
     assert saved.solution.typed_solution_md == "Use $x$ first."
 
 
@@ -298,3 +298,31 @@ def test_autosave_persists_dollar_math_delimiters(tmp_path) -> None:
     saved = repo.get_question("q_auto_math")
     assert saved.solution.question_template_md == "Given $v$"
     assert saved.solution.typed_solution_md == "So $v=1$."
+
+
+def test_save_persists_mc_options_guidance(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    resp = client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_mc_guidance",
+            "title": "MC Guidance",
+            "question_type": "multiple_choice",
+            "mc_options_guidance": "Focus on missed unit conversions.",
+            "question_template_md": "Prompt",
+            "choices_yaml": "[]",
+            "distractor_functions_text": "",
+            "typed_solution_md": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303
+    saved = repo.get_question("q_mc_guidance")
+    assert saved.mc_options_guidance == "Focus on missed unit conversions."

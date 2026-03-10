@@ -118,6 +118,8 @@
       </div>
 
       <div id="mc_block" class="card">
+        <label>MC Distractor Guidance (Prompt Addendum)</label>
+        <textarea name="mc_options_guidance" id="mc_options_guidance">{{ question.mc_options_guidance if question else '' }}</textarea>
         <label>Distractor Functions (text blocks, one per distractor)</label>
         <textarea name="distractor_functions_text" id="distractor_functions_text">{{ distractor_functions_text }}</textarea>
         <button type="button" class="btn ai-action" id="btn_generate_mc" {% if not ai_enabled %}disabled{% endif %}>Generate MC Distractors</button>
@@ -186,6 +188,7 @@
       const paramsEl = document.getElementById("solution_parameters_yaml");
       const answerGuidanceEl = document.getElementById("answer_guidance");
       const answerCodeEl = document.getElementById("answer_python_code");
+      const mcOptionsGuidanceEl = document.getElementById("mc_options_guidance");
       const distractorFnsEl = document.getElementById("distractor_functions_text");
       const choicesEl = document.getElementById("choices_yaml");
       const typedSolutionEl = document.getElementById("typed_solution_md");
@@ -216,6 +219,7 @@
         paramsEl,
         answerGuidanceEl,
         answerCodeEl,
+        mcOptionsGuidanceEl,
         distractorFnsEl,
         choicesEl,
         typedSolutionEl,
@@ -493,6 +497,7 @@
           solution_parameters_yaml: paramsEl.value,
           answer_guidance: answerGuidanceEl.value,
           answer_python_code: answerCodeEl.value,
+          mc_options_guidance: mcOptionsGuidanceEl.value,
           distractor_functions_text: distractorFnsEl.value,
           choices_yaml: choicesEl.value,
           typed_solution_md: typedSolutionEl.value,
@@ -754,7 +759,7 @@
         }
       });
 
-      [questionTypeEl, titleEl, templateEl, paramsEl, answerGuidanceEl, answerCodeEl, distractorFnsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, templateEl, paramsEl, answerGuidanceEl, answerCodeEl, mcOptionsGuidanceEl, distractorFnsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
           renderTemplate();
           renderMCPreview();

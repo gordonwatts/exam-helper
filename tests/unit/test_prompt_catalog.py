@@ -58,4 +58,17 @@ def test_prompt_catalog_omits_empty_old_code_sections() -> None:
     q.solution.distractor_python_code = []
     bundle = catalog.compose(action="generate_distractor_functions", question=q)
     assert "Distractor Functions (Python):" not in bundle.user_prompt
+    assert "MC Distractor Guidance (Markdown):" not in bundle.user_prompt
     assert "Answer Function (Python):" in bundle.user_prompt
+
+
+def test_prompt_catalog_includes_mc_distractor_guidance_when_present() -> None:
+    catalog = PromptCatalog.from_package_yaml()
+    q = Question(id="q1", title="T", prompt_md="P")
+    q.solution.answer_python_code = (
+        "def solve(params): return {'answer_md':'1','final_answer':'1'}"
+    )
+    q.mc_options_guidance = "Prefer unit-conversion mistakes over algebra mistakes."
+    bundle = catalog.compose(action="generate_distractor_functions", question=q)
+    assert "MC Distractor Guidance (Markdown):" in bundle.user_prompt
+    assert "Prefer unit-conversion mistakes" in bundle.user_prompt

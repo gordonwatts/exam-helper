@@ -43,9 +43,11 @@ def test_question_editor_has_new_workflow_hooks(tmp_path) -> None:
     assert resp.status_code == 200
     assert 'id="btn_rewrite"' in resp.text
     assert 'id="btn_generate_answer"' in resp.text
+    assert 'id="mc_options_guidance"' in resp.text
     assert 'id="btn_generate_typed_solution"' in resp.text
     assert "function setAiBusy(isBusy)" in resp.text
     assert "await autosaveNow({ allowWhenBusy: true });" in resp.text
+    assert "mc_options_guidance: mcOptionsGuidanceEl.value" in resp.text
     assert "AI request in progress; editing is temporarily disabled." in resp.text
 
 

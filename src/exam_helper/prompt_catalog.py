@@ -85,6 +85,7 @@ class PromptCatalog:
             ).strip(),
             "answer_guidance": question.solution.answer_guidance or "",
             "answer_python_code": question.solution.answer_python_code or "",
+            "mc_options_guidance": question.mc_options_guidance or "",
             "distractor_functions_text": (
                 "\n---\n".join(
                     [
@@ -153,6 +154,11 @@ class PromptCatalog:
                 ("Question Template (Markdown)", "question_template_md", "markdown"),
                 ("Template Parameters (YAML)", "solution_parameters_yaml", "yaml"),
                 ("Answer Function (Python)", "answer_python_code", "python"),
+                (
+                    "MC Distractor Guidance (Markdown)",
+                    "mc_options_guidance",
+                    "markdown",
+                ),
                 (
                     "Distractor Functions (Python)",
                     "distractor_functions_text",
