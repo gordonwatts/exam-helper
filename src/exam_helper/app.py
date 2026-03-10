@@ -36,6 +36,7 @@ from exam_helper.validation import validate_question
 class AutosavePayload(BaseModel):
     title: str = ""
     question_type: str = "free_response"
+    mc_options_guidance: str = ""
     question_template_md: str = ""
     solution_parameters_yaml: str = "{}"
     answer_guidance: str = ""
@@ -337,6 +338,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         title: str = Form(""),
         points: int = Form(5),
         question_type: str = Form("free_response"),
+        mc_options_guidance: str = Form(""),
         question_template_md: str = Form(""),
         choices_yaml: str = Form("[]"),
         solution_parameters_yaml: str = Form("{}"),
@@ -363,6 +365,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "points": points,
                 "is_deleted": (existing.is_deleted if existing else False),
                 "question_type": QuestionType(question_type),
+                "mc_options_guidance": mc_options_guidance,
                 "choices": choices,
                 "solution": {
                     "question_template_md": normalize_markdown_math_delimiters(
@@ -414,6 +417,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "id": question_id,
                     "title": payload.title,
                     "question_type": QuestionType(payload.question_type),
+                    "mc_options_guidance": payload.mc_options_guidance,
                     "choices": choices,
                     "solution": {
                         "question_template_md": normalize_markdown_math_delimiters(

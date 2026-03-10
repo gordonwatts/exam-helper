@@ -336,3 +336,33 @@ def test_harness_run_preserves_latex_backslashes_in_answer_output(tmp_path) -> N
 
     saved = repo.get_question("q_latex")
     assert saved.solution.last_computed_answer_md == r"$\theta$"
+
+
+def test_autosave_updates_mc_options_guidance(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    _seed_question(client, "q_mc_guidance", qtype="multiple_choice")
+
+    resp = client.post(
+        "/questions/q_mc_guidance/autosave",
+        json={
+            "title": "T",
+            "question_type": "multiple_choice",
+            "mc_options_guidance": "Use realistic sign mistakes only.",
+            "question_template_md": "P",
+            "solution_parameters_yaml": "{}",
+            "answer_python_code": "",
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    assert resp.status_code == 200
+    saved = repo.get_question("q_mc_guidance")
+    assert saved.mc_options_guidance == "Use realistic sign mistakes only."
