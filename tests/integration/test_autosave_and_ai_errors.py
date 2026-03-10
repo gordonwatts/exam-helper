@@ -317,7 +317,7 @@ def test_harness_run_preserves_latex_backslashes_in_answer_output(tmp_path) -> N
             "answer_guidance": "",
             "answer_python_code": (
                 "def solve(params):\n"
-                "    return {'answer_md': '$\\theta, 'final_answer': '$\\lambda}\n"
+                "    return {'answer_md': '$\\theta$', 'final_answer': '$\\lambda$'}\n"
             ),
             "distractor_functions_text": "",
             "choices_yaml": "[]",

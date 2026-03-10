@@ -250,7 +250,7 @@ def test_save_persists_dollar_math_delimiters(tmp_path) -> None:
 
     assert resp.status_code == 303
     saved = repo.get_question("q_math")
-    assert saved.solution.question_template_md == "Compute $x$ and $x^2$"
+    assert saved.solution.question_template_md == "Compute $x$ and $$x^2$$"
     assert saved.solution.typed_solution_md == "Use $x$ first."
 
 
