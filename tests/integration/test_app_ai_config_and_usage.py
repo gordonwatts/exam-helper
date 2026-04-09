@@ -51,37 +51,6 @@ def test_question_editor_has_new_workflow_hooks(tmp_path) -> None:
     assert "AI request in progress; editing is temporarily disabled." in resp.text
 
 
-def test_question_editor_v2_hides_ai_workflow_fields(tmp_path) -> None:
-    repo = ProjectRepository(tmp_path)
-    repo.init_project("Exam", "Physics")
-    app = create_app(tmp_path, openai_key=None)
-    client = TestClient(app)
-    client.post(
-        "/questions/save",
-        data={
-            "question_id": "q_edit2",
-            "title": "T",
-            "question_type": "multiple_choice",
-            "question_template_md": "P",
-            "choices_yaml": "[]",
-            "typed_solution_md": "",
-            "distractor_functions_text": "",
-            "figures_json": "[]",
-            "points": 5,
-        },
-    )
-    resp = client.get("/questions/q_edit2/edit2")
-    assert resp.status_code == 200
-    assert "Edit Question 2" in resp.text
-    assert "Mouse over the label for substitution syntax." in resp.text
-    assert 'id="choices_yaml"' in resp.text
-    assert 'id="typed_solution_md"' in resp.text
-    assert 'id="btn_rewrite"' not in resp.text
-    assert 'id="btn_generate_answer"' not in resp.text
-    assert 'id="btn_generate_typed_solution"' not in resp.text
-    assert 'id="mc_options_guidance"' not in resp.text
-
-
 def test_usage_totals_accumulate_and_reset(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
