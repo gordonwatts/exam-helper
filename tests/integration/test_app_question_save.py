@@ -119,6 +119,23 @@ def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
     assert 'id="figure_file_input"' in html
 
 
+def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    resp = client.get("/questions/new2")
+    assert resp.status_code == 200
+    html = resp.text
+    assert "New Question 2" in html
+    assert 'id="figures_json"' in html
+    assert 'id="choices_yaml"' in html
+    assert 'id="typed_solution_md"' in html
+    assert 'id="btn_rewrite"' not in html
+    assert 'id="btn_generate_answer"' not in html
+
+
 def test_save_clears_legacy_checker_data(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
@@ -190,6 +207,7 @@ def test_soft_delete_hides_question_but_keeps_yaml_on_disk(tmp_path) -> None:
     home = client.get("/")
     assert home.status_code == 200
     assert "/questions/q1/edit" not in home.text
+    assert "/questions/q1/edit2" not in home.text
 
     question_file = tmp_path / "questions" / "q1.yaml"
     assert question_file.exists()
@@ -224,6 +242,34 @@ def test_new_question_id_skips_soft_deleted_ids(tmp_path) -> None:
     new_page = client.get("/questions/new")
     assert new_page.status_code == 200
     assert 'id="question_id" value="q2"' in new_page.text
+
+
+def test_home_shows_edit2_and_new_question_2_links(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q1",
+            "title": "Title",
+            "question_type": "free_response",
+            "question_template_md": "Prompt",
+            "choices_yaml": "[]",
+            "distractor_functions_text": "",
+            "typed_solution_md": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+
+    home = client.get("/")
+    assert home.status_code == 200
+    assert 'href="/questions/new2"' in home.text
+    assert 'href="/questions/q1/edit2"' in home.text
 
 
 def test_save_persists_dollar_math_delimiters(tmp_path) -> None:

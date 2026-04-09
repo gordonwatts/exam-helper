@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Question Editor 2</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script>
+      window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+      :root {
+        --bg: #f5efe3;
+        --surface: #fffdf8;
+        --surface-strong: #fff8ed;
+        --text: #2f2418;
+        --muted: #6b5b49;
+        --line: #d8c5a8;
+        --accent: #0f766e;
+        --accent-soft: #d9f1ed;
+        --warn: #9a3412;
+        --good: #0f766e;
+      }
+      body {
+        font-family: Georgia, "Palatino Linotype", serif;
+        margin: 0;
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 28%),
+          linear-gradient(180deg, #fbf7ef 0%, var(--bg) 100%);
+        color: var(--text);
+      }
+      .shell {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 2.5rem;
+      }
+      .masthead {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3rem);
+        line-height: 1;
+      }
+      .subhead {
+        color: var(--muted);
+        margin: 0.4rem 0 0;
+      }
+      .back-link {
+        color: var(--accent);
+        font-weight: 700;
+        text-decoration: none;
+      }
+      form {
+        display: grid;
+        gap: 1rem;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      .row3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.8rem;
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 1rem;
+        box-shadow: 0 10px 30px rgba(72, 52, 24, 0.06);
+      }
+      .card h2,
+      .card strong {
+        color: var(--text);
+      }
+      label {
+        display: block;
+        margin-top: 0.75rem;
+        font-weight: 700;
+      }
+      input, textarea, select {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 0.3rem;
+        padding: 0.65rem 0.75rem;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--text);
+        font: inherit;
+      }
+      textarea {
+        min-height: 140px;
+        resize: vertical;
+      }
+      .template-input {
+        min-height: 280px;
+      }
+      .hint {
+        margin: 0.45rem 0 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      .preview {
+        background: var(--surface-strong);
+        min-height: 140px;
+        overflow: auto;
+      }
+      .status {
+        min-height: 1.2rem;
+        color: var(--muted);
+      }
+      .good { color: var(--good); }
+      .warn { color: var(--warn); }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        border: 0;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #fff;
+        padding: 0.7rem 1.1rem;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .btn-secondary {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+      }
+      .actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .figure-item {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 0.75rem;
+        margin-top: 0.6rem;
+        display: grid;
+        grid-template-columns: 120px 1fr auto;
+        gap: 0.75rem;
+        align-items: center;
+        background: #fff;
+      }
+      .figure-item img {
+        width: 120px;
+        max-height: 90px;
+        object-fit: contain;
+        background: #fff;
+        border-radius: 10px;
+        border: 1px solid #eee4d2;
+      }
+      .figure-meta {
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+      .mc-preview-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      @media (max-width: 900px) {
+        .row, .row3, .mc-preview-grid {
+          grid-template-columns: 1fr;
+        }
+        .masthead {
+          align-items: start;
+          flex-direction: column;
+        }
+        .figure-item {
+          grid-template-columns: 1fr;
+        }
+        .figure-item img {
+          width: 100%;
+          max-height: 220px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="masthead">
+        <div>
+          <h1>{{ "Edit Question 2" if question else "New Question 2" }}</h1>
+        </div>
+        <a class="back-link" href="/">Back to list</a>
+      </div>
+
+      <form method="post" action="/questions/save" id="question-form">
+        <div class="row3">
+          <div class="card">
+            <label>Question ID</label>
+            <input name="question_id" id="question_id" value="{{ question.id if question else question_id_default }}" required />
+          </div>
+          <div class="card">
+            <label>Type</label>
+            <select name="question_type" id="question_type">
+              <option value="free_response" {% if question and question.question_type.value=="free_response" %}selected{% endif %}>Free Response</option>
+              <option value="multiple_choice" {% if question and question.question_type.value=="multiple_choice" %}selected{% endif %}>Multiple Choice</option>
+            </select>
+          </div>
+          <div class="card">
+            <label>Points</label>
+            <input name="points" id="points" type="number" min="0" value="{{ question.points if question else 5 }}" />
+          </div>
+        </div>
+
+        <div class="card">
+          <label>Title (optional)</label>
+          <input name="title" id="title" value="{{ question.title if question else '' }}" />
+        </div>
+
+        <div class="row">
+          <div class="card">
+            <label for="question_template_md">Question Template (Markdown)</label>
+            <p class="hint">Use placeholders like <code>{{dummy}}</code> and define them in Parameters. Example: The length of the rod is {{dummy}} $m$. Keep figures inline with <code>&lt;figure fig_1&gt;</code> markers.</p>
+            <textarea class="template-input" name="question_template_md" id="question_template_md">{{ question.solution.question_template_md if question else 'The length of the rod is {{dummy}} $m$.' }}</textarea>
+          </div>
+          <div class="card preview">
+            <strong>Rendered Question</strong>
+            <div id="prompt_preview"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <label>Parameters (YAML mapping)</label>
+          <textarea name="solution_parameters_yaml" id="solution_parameters_yaml">{{ solution_parameters_yaml if question else 'dummy: 5' }}</textarea>
+        </div>
+
+        <div id="mc_block" class="card">
+          <label>MC Choices YAML (A-E)</label>
+          <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
+          <div class="mc-preview-grid" style="margin-top: 0.8rem;">
+            <div class="card preview">
+              <strong>MC Preview (Answers)</strong>
+              <div id="mc_preview_answers"></div>
+            </div>
+            <div class="card preview">
+              <strong>MC Preview (Answers + Explanations)</strong>
+              <div id="mc_preview_rationale"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="card">
+            <label>Typed Solution</label>
+            <textarea name="typed_solution_md" id="typed_solution_md">{{ question.solution.typed_solution_md if question else '' }}</textarea>
+          </div>
+          <div class="card preview">
+            <strong>Typed Solution Preview</strong>
+            <div id="typed_solution_preview"></div>
+          </div>
+        </div>
+
+        <div class="card" id="figures_section">
+          <label>Figures (embedded)</label>
+          <p class="hint">Paste into Question Template, drag/drop onto the page, or add image files here. The image data stays in the question YAML.</p>
+          <button type="button" class="btn btn-secondary" id="btn_add_figure">Add Image File</button>
+          <input type="file" id="figure_file_input" accept="image/*" multiple style="display:none;" />
+          <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
+          <div id="figures_preview"></div>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn">Save and Return</button>
+          <span id="save_status" class="status">Ready</span>
+        </div>
+      </form>
+    </div>
+
+    <script>
+      const form = document.getElementById("question-form");
+      const saveStatus = document.getElementById("save_status");
+      const questionIdEl = document.getElementById("question_id");
+      const questionTypeEl = document.getElementById("question_type");
+      const titleEl = document.getElementById("title");
+      const pointsEl = document.getElementById("points");
+      const templateEl = document.getElementById("question_template_md");
+      const paramsEl = document.getElementById("solution_parameters_yaml");
+      const choicesEl = document.getElementById("choices_yaml");
+      const typedSolutionEl = document.getElementById("typed_solution_md");
+      const figuresInput = document.getElementById("figures_json");
+      const figuresPreviewEl = document.getElementById("figures_preview");
+      const figuresSectionEl = document.getElementById("figures_section");
+      const addFigureBtn = document.getElementById("btn_add_figure");
+      const figureFileInput = document.getElementById("figure_file_input");
+      const promptPreview = document.getElementById("prompt_preview");
+      const mcBlock = document.getElementById("mc_block");
+      const mcPreviewAnswers = document.getElementById("mc_preview_answers");
+      const mcPreviewRationale = document.getElementById("mc_preview_rationale");
+      const typedPreview = document.getElementById("typed_solution_preview");
+
+      let autosaveTimer = null;
+
+      function setStatus(text, cls) {
+        saveStatus.textContent = text;
+        saveStatus.className = `status ${cls || ""}`;
+      }
+
+      function isMC() {
+        return questionTypeEl.value === "multiple_choice";
+      }
+
+      function escapeHtml(text) {
+        return String(text || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function normalizeMathDelimitersForPreview(text) {
+        return (text || "")
+          .replace(/\\\[(.*?)\\\]/gs, (_, inner) => `$$${inner}$$`)
+          .replace(/\\\((.*?)\\\)/gs, (_, inner) => `$${inner}$`);
+      }
+
+      function parseFigures() {
+        try {
+          const parsed = JSON.parse(figuresInput.value || "[]");
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function setFigures(figures) {
+        figuresInput.value = JSON.stringify(figures);
+        renderFiguresPreview();
+      }
+
+      function nextFigureId(figures) {
+        const used = new Set((figures || []).map((f) => String(f.id || "").trim()).filter(Boolean));
+        for (let i = 1; i < 10000; i += 1) {
+          const candidate = `fig_${i}`;
+          if (!used.has(candidate)) return candidate;
+        }
+        return `fig_${Date.now()}`;
+      }
+
+      function renderFiguresPreview() {
+        const figures = parseFigures();
+        if (!figures.length) {
+          figuresPreviewEl.innerHTML = "<em>No figures yet.</em>";
+          return;
+        }
+        figuresPreviewEl.innerHTML = figures.map((fig, idx) => {
+          const mime = String(fig.mime_type || "image/unknown");
+          const id = escapeHtml(String(fig.id || `fig_${idx + 1}`));
+          const sha = escapeHtml(String(fig.sha256 || "").slice(0, 12));
+          const src = `data:${mime};base64,${fig.data_base64 || ""}`;
+          return (
+            `<div class="figure-item">` +
+            `<img src="${src}" alt="${id}" />` +
+            `<div class="figure-meta"><div><strong>${id}</strong></div><div>${escapeHtml(mime)}</div><div>sha256: ${sha}...</div></div>` +
+            `<button type="button" class="btn btn-secondary" data-remove-figure="${idx}">Remove</button>` +
+            `</div>`
+          );
+        }).join("");
+      }
+
+      function insertTemplateAtCursor(text, fallbackAppend = true) {
+        const value = templateEl.value || "";
+        const insertion = String(text || "");
+        const start = Number.isInteger(templateEl.selectionStart) ? templateEl.selectionStart : value.length;
+        const end = Number.isInteger(templateEl.selectionEnd) ? templateEl.selectionEnd : start;
+        if (document.activeElement !== templateEl && fallbackAppend) {
+          const glue = value && !value.endsWith("\n") ? "\n" : "";
+          templateEl.value = value + glue + insertion;
+          return;
+        }
+        templateEl.focus();
+        templateEl.value = value.slice(0, start) + insertion + value.slice(end);
+        const cursor = start + insertion.length;
+        templateEl.selectionStart = cursor;
+        templateEl.selectionEnd = cursor;
+      }
+
+      function insertFigurePlaceholder(figureId, fallbackAppend = true) {
+        insertTemplateAtCursor(`<figure ${figureId}>`, fallbackAppend);
+      }
+
+      async function validateFigureData(dataBase64) {
+        const body = new FormData();
+        body.append("data_base64", dataBase64);
+        const res = await fetch("/figures/validate", { method: "POST", body });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText || "Figure validation failed.");
+        return data;
+      }
+
+      function arrayBufferToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+        }
+        return btoa(binary);
+      }
+
+      async function buildFigureFromFile(file) {
+        const mime = String(file.type || "").startsWith("image/") ? file.type : "image/png";
+        const buf = await file.arrayBuffer();
+        const dataBase64 = arrayBufferToBase64(buf);
+        const validated = await validateFigureData(dataBase64);
+        return {
+          mime_type: mime,
+          data_base64: dataBase64,
+          sha256: String(validated.sha256 || ""),
+          caption: "",
+        };
+      }
+
+      async function addFigureFromFile(file, fallbackAppend = true) {
+        if (!file || !String(file.type || "").startsWith("image/")) return false;
+        const figures = parseFigures();
+        const pendingId = nextFigureId(figures);
+        setStatus("Processing image...", "warn");
+        const figure = await buildFigureFromFile(file);
+        figure.id = pendingId;
+        figures.push(figure);
+        setFigures(figures);
+        insertFigurePlaceholder(pendingId, fallbackAppend);
+        renderTemplate();
+        scheduleAutosave();
+        setStatus(`Added ${pendingId}`, "good");
+        return true;
+      }
+
+      function extractImageFilesFromClipboard(event) {
+        const files = [];
+        const items = Array.from((event.clipboardData && event.clipboardData.items) || []);
+        for (const item of items) {
+          if (item.kind === "file" && String(item.type || "").startsWith("image/")) {
+            const file = item.getAsFile();
+            if (file) files.push(file);
+          }
+        }
+        return files;
+      }
+
+      function renderTemplate() {
+        let params = {};
+        try {
+          params = jsyaml.load(paramsEl.value || "{}") || {};
+        } catch {
+          params = {};
+        }
+        let out = templateEl.value || "";
+        for (const [k, v] of Object.entries(params)) {
+          const re = new RegExp("\\{\\{\\s*" + String(k).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\}\\}", "g");
+          out = out.replace(re, String(v));
+        }
+        promptPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(out || ""));
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([promptPreview]);
+        }
+      }
+
+      function stripDisallowedBold(text) {
+        return String(text || "")
+          .replace(/\*\*(.*?)\*\*/gs, "$1")
+          .replace(/__(.*?)__/gs, "$1")
+          .replace(/<\/?strong>/gi, "")
+          .replace(/<\/?b>/gi, "");
+      }
+
+      function renderMCPreview() {
+        if (!isMC()) {
+          mcPreviewAnswers.innerHTML = "";
+          mcPreviewRationale.innerHTML = "";
+          return;
+        }
+        let choices = [];
+        try {
+          choices = jsyaml.load(choicesEl.value || "[]") || [];
+        } catch {
+          mcPreviewAnswers.innerHTML = "<em>Invalid YAML</em>";
+          mcPreviewRationale.innerHTML = "<em>Invalid YAML</em>";
+          return;
+        }
+        choices = choices.slice().sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
+        mcPreviewAnswers.innerHTML = choices.map((c) => {
+          const content = stripDisallowedBold(String(c.content_md || "")).split("\n")[0];
+          const text = marked.parseInline(normalizeMathDelimitersForPreview(content));
+          const label = c.is_correct
+            ? `<strong>${String(c.label || "?")}.</strong>`
+            : `<span>${String(c.label || "?")}.</span>`;
+          return `<div>${label} <span>${text}</span></div>`;
+        }).join("");
+        mcPreviewRationale.innerHTML = choices.map((c) => {
+          const content = stripDisallowedBold(String(c.content_md || ""));
+          const text = marked.parseInline(normalizeMathDelimitersForPreview(content));
+          const label = c.is_correct
+            ? `<strong>${String(c.label || "?")}.</strong>`
+            : `<span>${String(c.label || "?")}.</span>`;
+          const rationaleText = stripDisallowedBold(String(c.rationale || ""));
+          const rationale = c.rationale ? `<div><em>${marked.parseInline(normalizeMathDelimitersForPreview(rationaleText))}</em></div>` : "";
+          return `<div>${label} <span>${text}</span>${rationale}</div>`;
+        }).join("");
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([mcPreviewAnswers, mcPreviewRationale]);
+        }
+      }
+
+      function renderTypedPreview() {
+        typedPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(typedSolutionEl.value || ""));
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([typedPreview]);
+        }
+      }
+
+      function updateMCVisibility() {
+        mcBlock.style.display = isMC() ? "block" : "none";
+      }
+
+      function serializePayload() {
+        return {
+          title: titleEl.value,
+          question_type: questionTypeEl.value,
+          question_template_md: templateEl.value,
+          solution_parameters_yaml: paramsEl.value,
+          answer_guidance: "",
+          answer_python_code: "",
+          mc_options_guidance: "",
+          distractor_functions_text: "",
+          choices_yaml: choicesEl.value,
+          typed_solution_md: typedSolutionEl.value,
+          typed_solution_status: "missing",
+          figures_json: figuresInput.value || "[]",
+          points: Number(pointsEl.value || 5),
+        };
+      }
+
+      async function autosaveNow() {
+        const qid = questionIdEl.value.trim();
+        if (!qid) return;
+        setStatus("Saving...", "warn");
+        const res = await fetch(`/questions/${qid}/autosave`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(serializePayload()),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          setStatus(`Save error: ${data.error || res.statusText}`, "warn");
+          throw new Error(data.error || res.statusText);
+        }
+        setStatus("Saved", "good");
+      }
+
+      function scheduleAutosave() {
+        setStatus("Unsaved changes", "warn");
+        if (autosaveTimer) clearTimeout(autosaveTimer);
+        autosaveTimer = setTimeout(() => {
+          autosaveNow().catch((err) => setStatus(`Save error: ${err.message}`, "warn"));
+        }, 1200);
+      }
+
+      [questionTypeEl, titleEl, templateEl, paramsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
+        el.addEventListener("input", () => {
+          renderTemplate();
+          renderMCPreview();
+          renderTypedPreview();
+          updateMCVisibility();
+          scheduleAutosave();
+        });
+      });
+
+      addFigureBtn.addEventListener("click", () => {
+        figureFileInput.click();
+      });
+
+      figureFileInput.addEventListener("change", async () => {
+        const files = Array.from(figureFileInput.files || []);
+        if (!files.length) return;
+        try {
+          for (const file of files) {
+            await addFigureFromFile(file, true);
+          }
+        } catch (err) {
+          setStatus(`Image error: ${err.message}`, "warn");
+        } finally {
+          figureFileInput.value = "";
+        }
+      });
+
+      figuresPreviewEl.addEventListener("click", (event) => {
+        const btn = event.target.closest("[data-remove-figure]");
+        if (!btn) return;
+        const idx = Number(btn.getAttribute("data-remove-figure"));
+        if (!Number.isInteger(idx)) return;
+        const figures = parseFigures();
+        if (idx < 0 || idx >= figures.length) return;
+        figures.splice(idx, 1);
+        setFigures(figures);
+        scheduleAutosave();
+      });
+
+      templateEl.addEventListener("paste", async (event) => {
+        const files = extractImageFilesFromClipboard(event);
+        if (!files.length) return;
+        event.preventDefault();
+        try {
+          for (const file of files) {
+            await addFigureFromFile(file, false);
+          }
+        } catch (err) {
+          setStatus(`Image paste error: ${err.message}`, "warn");
+        }
+      });
+
+      document.addEventListener("dragover", (event) => {
+        const hasImage = Array.from(event.dataTransfer?.items || []).some((item) => item.kind === "file" && String(item.type || "").startsWith("image/"));
+        if (hasImage) {
+          event.preventDefault();
+          figuresSectionEl.style.borderColor = "#0f766e";
+        }
+      });
+
+      document.addEventListener("dragleave", () => {
+        figuresSectionEl.style.borderColor = "";
+      });
+
+      document.addEventListener("drop", async (event) => {
+        figuresSectionEl.style.borderColor = "";
+        const files = Array.from(event.dataTransfer?.files || []).filter((f) => String(f.type || "").startsWith("image/"));
+        if (!files.length) return;
+        event.preventDefault();
+        try {
+          const appendFallback = document.activeElement !== templateEl;
+          for (const file of files) {
+            await addFigureFromFile(file, appendFallback);
+          }
+        } catch (err) {
+          setStatus(`Image drop error: ${err.message}`, "warn");
+        }
+      });
+
+      form.addEventListener("submit", () => {
+        setStatus("Saving...", "warn");
+      });
+
+      renderTemplate();
+      renderMCPreview();
+      renderTypedPreview();
+      updateMCVisibility();
+      renderFiguresPreview();
+    </script>
+  </body>
+</html>
