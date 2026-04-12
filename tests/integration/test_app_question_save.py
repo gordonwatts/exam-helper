@@ -136,6 +136,67 @@ def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
     assert 'id="btn_generate_answer"' not in html
 
 
+def test_edit2_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    question_path = tmp_path / "questions" / "legacy-edit2.yaml"
+    question_path.write_text(
+        yaml.safe_dump(
+            {
+                "id": "legacy-edit2",
+                "title": "Old title",
+                "question_type": "free_response",
+                "prompt_md": "Old prompt",
+                "choices": [],
+                "solution_md": "Old solution",
+                "typed_solution_md": "Typed solution",
+                "typed_solution_status": "draft",
+                "answer_function": "def answer(student_answer, context):\n    return True",
+                "distractors": ["wrong 1", "wrong 2"],
+                "checker": {
+                    "python_code": "def grade(student_answer, context): return {}"
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    edit_resp = client.get("/questions/legacy-edit2/edit2")
+    assert edit_resp.status_code == 200
+    edit_html = edit_resp.text
+    assert 'id="figures_json"' in edit_html
+    assert 'id="choices_yaml"' in edit_html
+    assert 'id="typed_solution_md"' in edit_html
+
+    save_resp = client.post(
+        "/questions/save",
+        data={
+            "question_id": "legacy-edit2",
+            "title": "Updated title",
+            "question_type": "free_response",
+            "prompt_md": "Updated prompt",
+            "choices_yaml": "[]",
+            "solution_md": "Updated solution",
+            "typed_solution_md": "Typed solution",
+            "figures_json": "[]",
+            "points": 5,
+        },
+        follow_redirects=False,
+    )
+    assert save_resp.status_code == 303
+
+    raw = yaml.safe_load(question_path.read_text(encoding="utf-8"))
+    assert raw["title"] == "Updated title"
+    assert raw["prompt_md"] == "Updated prompt"
+    assert raw["answer_function"] == (
+        "def answer(student_answer, context):\n    return True"
+    )
+    assert raw["distractors"] == ["wrong 1", "wrong 2"]
+    assert raw["typed_solution_status"] == "draft"
+    assert "checker" not in raw
 def test_save_clears_legacy_checker_data(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
