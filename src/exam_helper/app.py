@@ -245,6 +245,36 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 return candidate
         return "q_new"
 
+    def _question_form_context(
+        question: Question | None, *, edit_mode: str = "classic"
+    ) -> dict[str, Any]:
+        choices_yaml = (
+            dump_choices_yaml(question.choices)
+            if question and question.choices
+            else default_mc_choices_yaml()
+        )
+        figures_json = json.dumps(
+            [f.model_dump(mode="json") for f in question.figures] if question else []
+        )
+        solution_parameters_yaml = dump_parameters_yaml(
+            question.solution.parameters if question else {}
+        )
+        distractor_functions_text = dump_distractor_functions_text(
+            question.solution.distractor_python_code if question else []
+        )
+        return {
+            "question": question,
+            "choices_yaml": choices_yaml,
+            "figures_json": figures_json,
+            "solution_parameters_yaml": solution_parameters_yaml,
+            "distractor_functions_text": distractor_functions_text,
+            "ai_enabled": bool(openai_key),
+            "question_id_default": (
+                question.id if question else _suggest_next_question_id()
+            ),
+            "edit_mode": edit_mode,
+        }
+
     def _mark_typed_solution_stale_if_needed(
         existing: Question | None, candidate: Question
     ) -> None:
@@ -289,40 +319,33 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return templates.TemplateResponse(
             request,
             "question_form.html",
-            {
-                "question": None,
-                "choices_yaml": default_mc_choices_yaml(),
-                "figures_json": "[]",
-                "solution_parameters_yaml": dump_parameters_yaml({}),
-                "distractor_functions_text": "",
-                "question_id_default": _suggest_next_question_id(),
-                "ai_enabled": bool(openai_key),
-            },
+            _question_form_context(None, edit_mode="classic"),
+        )
+
+    @app.get("/questions/new2", response_class=HTMLResponse)
+    def new_question_v2(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "question_form_v2.html",
+            _question_form_context(None, edit_mode="edit2"),
         )
 
     @app.get("/questions/{question_id}/edit", response_class=HTMLResponse)
     def edit_question(request: Request, question_id: str) -> HTMLResponse:
         q = repo.get_question(question_id)
-        choices_yaml = (
-            dump_choices_yaml(q.choices) if q.choices else default_mc_choices_yaml()
-        )
-        figures_json = json.dumps([f.model_dump(mode="json") for f in q.figures])
-        solution_parameters_yaml = dump_parameters_yaml(q.solution.parameters)
-        distractor_functions_text = dump_distractor_functions_text(
-            q.solution.distractor_python_code
-        )
         return templates.TemplateResponse(
             request,
             "question_form.html",
-            {
-                "question": q,
-                "choices_yaml": choices_yaml,
-                "figures_json": figures_json,
-                "solution_parameters_yaml": solution_parameters_yaml,
-                "distractor_functions_text": distractor_functions_text,
-                "ai_enabled": bool(openai_key),
-                "question_id_default": q.id,
-            },
+            _question_form_context(q, edit_mode="classic"),
+        )
+
+    @app.get("/questions/{question_id}/edit2", response_class=HTMLResponse)
+    def edit_question_v2(request: Request, question_id: str) -> HTMLResponse:
+        q = repo.get_question(question_id)
+        return templates.TemplateResponse(
+            request,
+            "question_form_v2.html",
+            _question_form_context(q, edit_mode="edit2"),
         )
 
     @app.post("/questions/{question_id}/delete")
