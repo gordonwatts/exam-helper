@@ -39,16 +39,21 @@ def test_question_editor_has_new_workflow_hooks(tmp_path) -> None:
             "points": 5,
         },
     )
-    resp = client.get("/questions/q_edit/edit")
+    resp = client.get("/questions/q_edit/edit2")
     assert resp.status_code == 200
-    assert 'id="btn_rewrite"' in resp.text
-    assert 'id="btn_generate_answer"' in resp.text
-    assert 'id="mc_options_guidance"' in resp.text
-    assert 'id="btn_generate_typed_solution"' in resp.text
-    assert "function setAiBusy(isBusy)" in resp.text
-    assert "await autosaveNow({ allowWhenBusy: true });" in resp.text
-    assert "mc_options_guidance: mcOptionsGuidanceEl.value" in resp.text
-    assert "AI request in progress; editing is temporarily disabled." in resp.text
+    assert "Edit Question" in resp.text
+    assert 'id="btn_rewrite"' not in resp.text
+    assert 'id="btn_generate_answer"' not in resp.text
+    assert 'id="mc_options_guidance"' not in resp.text
+    assert 'id="btn_generate_typed_solution"' not in resp.text
+    assert "function setAiBusy(isBusy)" not in resp.text
+    assert "await autosaveNow({ allowWhenBusy: true });" not in resp.text
+    assert "mc_options_guidance: mcOptionsGuidanceEl.value" not in resp.text
+    assert "AI request in progress; editing is temporarily disabled." not in resp.text
+
+    redirect = client.get("/questions/q_edit/edit", follow_redirects=False)
+    assert redirect.status_code == 303
+    assert redirect.headers["location"] == "/questions/q_edit/edit2"
 
 
 def test_usage_totals_accumulate_and_reset(tmp_path) -> None:
