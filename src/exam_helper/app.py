@@ -245,9 +245,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 return candidate
         return "q_new"
 
-    def _question_form_context(
-        question: Question | None, *, edit_mode: str = "classic"
-    ) -> dict[str, Any]:
+    def _question_form_context(question: Question | None) -> dict[str, Any]:
         choices_yaml = (
             dump_choices_yaml(question.choices)
             if question and question.choices
@@ -268,11 +266,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             "figures_json": figures_json,
             "solution_parameters_yaml": solution_parameters_yaml,
             "distractor_functions_text": distractor_functions_text,
-            "ai_enabled": bool(openai_key),
             "question_id_default": (
                 question.id if question else _suggest_next_question_id()
             ),
-            "edit_mode": edit_mode,
         }
 
     def _mark_typed_solution_stale_if_needed(
@@ -280,12 +276,22 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     ) -> None:
         if existing is None:
             return
+
+        def _normalized_code(text: str) -> str:
+            return (text or "").replace("\r\n", "\n").replace("\r", "\n").rstrip()
+
         if (
             existing.solution.parameters != candidate.solution.parameters
-            or existing.solution.answer_python_code
-            != candidate.solution.answer_python_code
-            or [d.python_code for d in existing.solution.distractor_python_code]
-            != [d.python_code for d in candidate.solution.distractor_python_code]
+            or _normalized_code(existing.solution.answer_python_code)
+            != _normalized_code(candidate.solution.answer_python_code)
+            or [
+                _normalized_code(d.python_code)
+                for d in existing.solution.distractor_python_code
+            ]
+            != [
+                _normalized_code(d.python_code)
+                for d in candidate.solution.distractor_python_code
+            ]
         ):
             if candidate.solution.typed_solution_md.strip():
                 candidate.solution.typed_solution_status = "stale"
@@ -316,28 +322,19 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
     @app.get("/questions/new", response_class=HTMLResponse)
     def new_question(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request,
-            "question_form.html",
-            _question_form_context(None, edit_mode="classic"),
-        )
+        return RedirectResponse("/questions/new2", status_code=303)
 
     @app.get("/questions/new2", response_class=HTMLResponse)
     def new_question_v2(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
             request,
             "question_form_v2.html",
-            _question_form_context(None, edit_mode="edit2"),
+            _question_form_context(None),
         )
 
     @app.get("/questions/{question_id}/edit", response_class=HTMLResponse)
     def edit_question(request: Request, question_id: str) -> HTMLResponse:
-        q = repo.get_question(question_id)
-        return templates.TemplateResponse(
-            request,
-            "question_form.html",
-            _question_form_context(q, edit_mode="classic"),
-        )
+        return RedirectResponse(f"/questions/{question_id}/edit2", status_code=303)
 
     @app.get("/questions/{question_id}/edit2", response_class=HTMLResponse)
     def edit_question_v2(request: Request, question_id: str) -> HTMLResponse:
@@ -345,7 +342,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return templates.TemplateResponse(
             request,
             "question_form_v2.html",
-            _question_form_context(q, edit_mode="edit2"),
+            _question_form_context(q),
         )
 
     @app.post("/questions/{question_id}/delete")

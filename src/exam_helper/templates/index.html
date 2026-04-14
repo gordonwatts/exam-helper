@@ -66,8 +66,7 @@
     {% endif %}
 
     <div class="controls">
-      <a class="btn" href="/questions/new">New Question</a>
-      <a class="btn btn-secondary" href="/questions/new2">New Question 2</a>
+      <a class="btn" href="/questions/new2">New Question</a>
       <form class="export-form" method="post" action="/export/docx">
         <button class="btn" type="submit">Export DOCX</button>
         <label><input type="checkbox" name="include_solutions" value="1" /> Include solutions</label>
@@ -91,8 +90,7 @@
           <td>{{ q.question_type.value }}</td>
           <td>
             <div class="actions">
-              <a href="/questions/{{ q.id }}/edit">Edit</a>
-              <a href="/questions/{{ q.id }}/edit2">Edit2</a>
+              <a href="/questions/{{ q.id }}/edit2">Edit</a>
               <form method="post" action="/questions/{{ q.id }}/delete" onsubmit="return confirm('Delete question {{ q.id }} from listings? The YAML file will remain on disk.');">
                 <button class="btn-link-danger" type="submit">Delete</button>
               </form>

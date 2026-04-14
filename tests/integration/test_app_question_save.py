@@ -110,13 +110,17 @@ def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
     app = create_app(tmp_path, openai_key=None)
     client = TestClient(app)
 
-    resp = client.get("/questions/new")
+    resp = client.get("/questions/new2")
     assert resp.status_code == 200
     html = resp.text
     assert 'id="figures_json"' in html
     assert 'id="figures_preview"' in html
     assert 'id="btn_add_figure"' in html
     assert 'id="figure_file_input"' in html
+
+    redirect = client.get("/questions/new", follow_redirects=False)
+    assert redirect.status_code == 303
+    assert redirect.headers["location"] == "/questions/new2"
 
 
 def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
@@ -128,7 +132,7 @@ def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
     resp = client.get("/questions/new2")
     assert resp.status_code == 200
     html = resp.text
-    assert "New Question 2" in html
+    assert "New Question" in html
     assert 'id="figures_json"' in html
     assert 'id="choices_yaml"' in html
     assert 'id="typed_solution_md"' in html
@@ -333,6 +337,8 @@ def test_home_shows_edit2_and_new_question_2_links(tmp_path) -> None:
     assert home.status_code == 200
     assert 'href="/questions/new2"' in home.text
     assert 'href="/questions/q1/edit2"' in home.text
+    assert 'href="/questions/new"' not in home.text
+    assert 'href="/questions/q1/edit"' not in home.text
 
 
 def test_save_persists_dollar_math_delimiters(tmp_path) -> None:

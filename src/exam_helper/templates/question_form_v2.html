@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Question Editor 2</title>
+    <title>Question Editor</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <script>
@@ -198,12 +198,17 @@
     <div class="shell">
       <div class="masthead">
         <div>
-          <h1>{{ "Edit Question 2" if question else "New Question 2" }}</h1>
+          <h1>{{ "Edit Question" if question else "New Question" }}</h1>
         </div>
         <a class="back-link" href="/">Back to list</a>
       </div>
 
       <form method="post" action="/questions/save" id="question-form">
+        <textarea hidden name="answer_guidance" id="answer_guidance">{{ question.solution.answer_guidance if question else '' }}</textarea>
+        <textarea hidden name="answer_python_code" id="answer_python_code">{{ question.solution.answer_python_code if question else '' }}</textarea>
+        <textarea hidden name="mc_options_guidance" id="mc_options_guidance">{{ question.mc_options_guidance if question else '' }}</textarea>
+        <textarea hidden name="distractor_functions_text" id="distractor_functions_text">{{ distractor_functions_text }}</textarea>
+        <textarea hidden name="typed_solution_status" id="typed_solution_status">{{ question.solution.typed_solution_status if question else 'missing' }}</textarea>
         <div class="row3">
           <div class="card">
             <label>Question ID</label>
@@ -295,8 +300,13 @@
       const pointsEl = document.getElementById("points");
       const templateEl = document.getElementById("question_template_md");
       const paramsEl = document.getElementById("solution_parameters_yaml");
+      const answerGuidanceEl = document.getElementById("answer_guidance");
+      const answerCodeEl = document.getElementById("answer_python_code");
+      const mcOptionsGuidanceEl = document.getElementById("mc_options_guidance");
+      const distractorFnsEl = document.getElementById("distractor_functions_text");
       const choicesEl = document.getElementById("choices_yaml");
       const typedSolutionEl = document.getElementById("typed_solution_md");
+      const typedStatusEl = document.getElementById("typed_solution_status");
       const figuresInput = document.getElementById("figures_json");
       const figuresPreviewEl = document.getElementById("figures_preview");
       const figuresSectionEl = document.getElementById("figures_section");
@@ -534,51 +544,19 @@
         mcBlock.style.display = isMC() ? "block" : "none";
       }
 
-      function getPersistedFieldValue(fieldName, fallbackValue) {
-        const selectors = [
-          `[name="${fieldName}"]`,
-          `#${fieldName}`,
-          `[data-field="${fieldName}"]`,
-        ];
-        for (const selector of selectors) {
-          const el = document.querySelector(selector);
-          if (!el) continue;
-          if (Object.prototype.hasOwnProperty.call(el, "value")) {
-            return el.value;
-          }
-          const attrValue = el.getAttribute("value");
-          if (attrValue !== null) {
-            return attrValue;
-          }
-          const text = el.textContent;
-          if (text !== null && text !== undefined) {
-            return text;
-          }
-        }
-        return fallbackValue;
-      }
-
-      const initialAutosaveState = {
-        answer_guidance: getPersistedFieldValue("answer_guidance", ""),
-        answer_python_code: getPersistedFieldValue("answer_python_code", ""),
-        mc_options_guidance: getPersistedFieldValue("mc_options_guidance", ""),
-        distractor_functions_text: getPersistedFieldValue("distractor_functions_text", ""),
-        typed_solution_status: getPersistedFieldValue("typed_solution_status", "missing"),
-      };
-
       function serializePayload() {
         return {
           title: titleEl.value,
           question_type: questionTypeEl.value,
           question_template_md: templateEl.value,
           solution_parameters_yaml: paramsEl.value,
-          answer_guidance: initialAutosaveState.answer_guidance,
-          answer_python_code: initialAutosaveState.answer_python_code,
-          mc_options_guidance: initialAutosaveState.mc_options_guidance,
-          distractor_functions_text: initialAutosaveState.distractor_functions_text,
+          answer_guidance: answerGuidanceEl.value,
+          answer_python_code: answerCodeEl.value,
+          mc_options_guidance: mcOptionsGuidanceEl.value,
+          distractor_functions_text: distractorFnsEl.value,
           choices_yaml: choicesEl.value,
           typed_solution_md: typedSolutionEl.value,
-          typed_solution_status: initialAutosaveState.typed_solution_status,
+          typed_solution_status: typedStatusEl.value,
           figures_json: figuresInput.value || "[]",
           points: Number(pointsEl.value || 5),
         };
