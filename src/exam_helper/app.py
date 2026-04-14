@@ -278,6 +278,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         }
 
     def _compute_answer_preview(question: Question | None) -> dict[str, str]:
+        """Build the non-editable answer preview payload for the editor UI."""
         if question is None:
             return {
                 "calculated_variables_md": "",

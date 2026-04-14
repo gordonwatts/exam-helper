@@ -51,6 +51,11 @@ def units_compatible(value_expr: str, expected_units: str) -> bool:
 
 
 def render_template_from_values(template: str, values: dict[str, Any]) -> str:
+    """Replace `{{name}}` placeholders in a template using mapping values.
+
+    Keys are applied from longest to shortest so nested placeholder names do
+    not partially overwrite each other during substitution.
+    """
     rendered = template or ""
     items = sorted(
         (values or {}).items(), key=lambda item: len(str(item[0])), reverse=True
@@ -98,6 +103,7 @@ def _format_value(value: Any) -> str:
 
 
 def _line_targets(node: ast.AST) -> list[str]:
+    """Return assignment target names declared by a single AST statement."""
     targets: list[str] = []
 
     def visit(target: ast.AST) -> None:
@@ -120,6 +126,16 @@ def _line_targets(node: ast.AST) -> list[str]:
 def _evaluate_answer_formula(
     formula_md: str, params: dict[str, Any] | None = None
 ) -> tuple[dict[str, Any], list[str], list[str], str | None]:
+    """Evaluate a multiline answer formula and capture its computed state.
+
+    The formula is treated as a sequence of plain Python lines. Each line is
+    executed or evaluated in order with the question parameters exposed as
+    locals. The return value includes:
+    - the final local namespace
+    - a human-readable log of computed variables
+    - any warnings encountered while evaluating lines
+    - the first fatal error message, if evaluation stopped early
+    """
     source = normalize_python_code_string_literals(formula_md or "")
     if not source.strip():
         raise SolutionRuntimeError("Formula text is empty.")
@@ -201,6 +217,12 @@ def run_answer_formula(
     answer_text_md: str = "",
     strict: bool = True,
 ) -> AnswerRunResult:
+    """Run an answer formula and render the final answer text.
+
+    When `strict` is true, syntax/runtime failures or a missing final `answer`
+    value raise `SolutionRuntimeError`. When false, warnings and partial output
+    are returned so the editor can preview in-progress formulas.
+    """
     locals_ns, rendered_lines, warnings, fatal_error = _evaluate_answer_formula(
         formula_md, params
     )
