@@ -11,9 +11,6 @@ import pytest
 
 from exam_helper.repository import ProjectRepository
 
-pytest.importorskip("playwright.sync_api")
-from playwright.sync_api import Error as PlaywrightError, sync_playwright
-
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -44,6 +41,9 @@ def _wait_for_server(base_url: str, proc: subprocess.Popen[str]) -> None:
 
 
 def test_browser_question_roundtrip(tmp_path: Path) -> None:
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import Error as PlaywrightError, sync_playwright
+
     repo = ProjectRepository(tmp_path)
     repo.init_project("Smoke Exam", "Physics 1")
     port = _free_port()
