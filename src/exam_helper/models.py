@@ -53,10 +53,12 @@ class DistractorFunction(BaseModel):
 
 
 class Solution(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     question_template_md: str = ""
     parameters: dict[str, Any] = Field(default_factory=dict)
+    answer_formula_md: str = ""
     answer_guidance: str = ""
-    answer_python_code: str = ""
     distractor_python_code: list[DistractorFunction] = Field(default_factory=list)
     typed_solution_md: str = ""
     typed_solution_status: Literal["missing", "fresh", "stale"] = "missing"

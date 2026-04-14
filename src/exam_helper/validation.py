@@ -4,17 +4,17 @@ from exam_helper.models import Question
 from exam_helper.repository import ProjectRepository
 from exam_helper.solution_runtime import (
     SolutionRuntimeError,
-    run_answer_function,
+    run_answer_formula,
     run_distractor_function,
 )
 
 
 def validate_question(question: Question) -> list[str]:
     errors: list[str] = []
-    if question.solution.answer_python_code.strip():
+    if question.solution.answer_formula_md.strip():
         try:
-            run_answer_function(
-                question.solution.answer_python_code, question.solution.parameters
+            run_answer_formula(
+                question.solution.answer_formula_md, question.solution.parameters
             )
         except SolutionRuntimeError as ex:
             errors.append(f"{question.id}: {ex}")

@@ -6,26 +6,37 @@ import pytest
 
 from exam_helper.solution_runtime import (
     SolutionRuntimeError,
-    run_answer_function,
+    run_answer_formula,
     run_distractor_function,
     run_mc_harness,
 )
 
 
-def test_answer_function_success() -> None:
-    code = (
-        "def solve(params):\n"
-        "    v = float(params.get('v', 1.0))\n"
-        "    return {'answer_md': f'v={v:.1f} m/s', 'final_answer': f'{v:.1f} m/s'}\n"
+def test_answer_formula_success() -> None:
+    code = "v = float(params.get('v', 1.0))\nanswer = v"
+    result = run_answer_formula(
+        code, {"v": 2.5}, answer_text_md="v={{v}} m/s", strict=True
     )
-    result = run_answer_function(code, {"v": 2.5})
+    assert result.calculated_variables_md == "v = 2.5\nanswer = 2.5"
     assert result.answer_md == "v=2.5 m/s"
-    assert result.final_answer == "2.5 m/s"
+    assert result.final_answer == "2.5"
 
 
-def test_answer_function_requires_solve() -> None:
-    with pytest.raises(SolutionRuntimeError, match="must define callable solve"):
-        run_answer_function("x = 1", {})
+def test_answer_formula_requires_nonempty_formula() -> None:
+    with pytest.raises(SolutionRuntimeError, match="Formula text is empty"):
+        run_answer_formula("", {})
+
+
+def test_answer_formula_tracks_last_expression() -> None:
+    result = run_answer_formula("x = 1\nx + 2", {}, strict=True)
+    assert result.calculated_variables_md == "x = 1\nresult = 3\nanswer = 3"
+    assert result.final_answer == "3"
+
+
+def test_answer_formula_warns_when_answer_is_defined_directly() -> None:
+    result = run_answer_formula("answer = 5", {}, strict=True)
+    assert result.final_answer == "5"
+    assert result.warnings
 
 
 def test_distractor_function_success() -> None:
@@ -52,10 +63,7 @@ def test_distractor_function_repairs_swapped_answer_and_rationale() -> None:
 
 
 def test_harness_detects_collisions() -> None:
-    answer_code = (
-        "def solve(params):\n"
-        "    return {'answer_md': 'Answer is 2 m/s', 'final_answer': '2 m/s'}\n"
-    )
+    answer_code = "answer = '2 m/s'"
     distractor_code = (
         "def distractor(params):\n"
         "    return {'distractor_md': '2 m/s', 'rationale': 'duplicate'}\n"
@@ -74,10 +82,7 @@ def test_harness_detects_collisions() -> None:
 
 
 def test_harness_sorts_numeric_then_text_tiebreak_by_source() -> None:
-    answer_code = (
-        "def solve(params):\n"
-        "    return {'answer_md': 'Ans', 'final_answer': '10 m/s'}\n"
-    )
+    answer_code = "answer = '10 m/s'"
     d1 = "def distractor(params):\n    return {'distractor_md': '2 m/s', 'rationale': 'r'}\n"
     d2 = "def distractor(params):\n    return {'distractor_md': '20 m/s', 'rationale': 'r'}\n"
     d3 = "def distractor(params):\n    return {'distractor_md': 'alpha', 'rationale': 'r'}\n"
@@ -95,24 +100,17 @@ def test_harness_sorts_numeric_then_text_tiebreak_by_source() -> None:
     ]
 
 
-def test_answer_function_latex_sequences_do_not_emit_invalid_escape_warnings() -> None:
-    code = (
-        "def solve(params):\n"
-        "    return {'answer_md': '$\\theta$', 'final_answer': '$\\lambda$'}\n"
-    )
+def test_answer_formula_latex_sequences_do_not_emit_invalid_escape_warnings() -> None:
+    code = "answer = 1"
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        result = run_answer_function(code, {})
+        result = run_answer_formula(code, {}, answer_text_md=r"$\theta$")
     assert result.answer_md == r"$\theta$"
-    assert result.final_answer == r"$\lambda$"
+    assert result.final_answer == "1"
     assert not [w for w in caught if "invalid escape sequence" in str(w.message)]
 
 
-def test_answer_function_preserves_existing_double_escaped_latex() -> None:
-    code = (
-        "def solve(params):\n"
-        "    return {'answer_md': '$\\\\theta$', 'final_answer': '$\\\\lambda$'}\n"
-    )
-    out = run_answer_function(code, {})
-    assert out.answer_md == r"$\theta$"
-    assert out.final_answer == r"$\lambda$"
+def test_answer_formula_preserves_existing_double_escaped_latex() -> None:
+    out = run_answer_formula("answer = 1", {}, answer_text_md=r"$\\theta$")
+    assert out.answer_md == r"$\\theta$"
+    assert out.final_answer == "1"

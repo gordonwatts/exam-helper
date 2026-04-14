@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import ast
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import sympy as sp
@@ -20,8 +21,10 @@ class SolutionRuntimeError(RuntimeError):
 
 @dataclass
 class AnswerRunResult:
+    calculated_variables_md: str
     answer_md: str
     final_answer: str
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -45,6 +48,20 @@ def symbolic_equivalent(expr_a: str, expr_b: str) -> bool:
 def units_compatible(value_expr: str, expected_units: str) -> bool:
     value = ureg(value_expr)
     return value.check(expected_units)
+
+
+def render_template_from_values(template: str, values: dict[str, Any]) -> str:
+    rendered = template or ""
+    items = sorted(
+        (values or {}).items(), key=lambda item: len(str(item[0])), reverse=True
+    )
+    for key, value in items:
+        rendered = re.sub(
+            r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}",
+            str(value),
+            rendered,
+        )
+    return rendered
 
 
 def _safe_globals() -> dict[str, Any]:
@@ -74,6 +91,141 @@ def _safe_globals() -> dict[str, Any]:
     }
 
 
+def _format_value(value: Any) -> str:
+    if isinstance(value, sp.Basic):
+        return sp.sstr(value)
+    return str(value)
+
+
+def _line_targets(node: ast.AST) -> list[str]:
+    targets: list[str] = []
+
+    def visit(target: ast.AST) -> None:
+        if isinstance(target, ast.Name):
+            targets.append(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                visit(item)
+
+    if isinstance(node, ast.Assign):
+        for target in node.targets:
+            visit(target)
+    elif isinstance(node, ast.AnnAssign):
+        visit(node.target)
+    elif isinstance(node, ast.AugAssign):
+        visit(node.target)
+    return targets
+
+
+def _evaluate_answer_formula(
+    formula_md: str, params: dict[str, Any] | None = None
+) -> tuple[dict[str, Any], list[str], list[str], str | None]:
+    source = normalize_python_code_string_literals(formula_md or "")
+    if not source.strip():
+        raise SolutionRuntimeError("Formula text is empty.")
+    safe_params = params or {}
+    if not isinstance(safe_params, dict):
+        raise SolutionRuntimeError("Solution params must be a mapping.")
+
+    locals_ns: dict[str, Any] = dict(safe_params)
+    locals_ns["params"] = safe_params
+    warnings: list[str] = []
+    rendered_lines: list[str] = []
+    last_value: Any = None
+    explicit_answer_defined = False
+    fatal_error: str | None = None
+    globals_ns = _safe_globals()
+
+    for lineno, raw_line in enumerate(source.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        try:
+            expr = ast.parse(line, mode="eval")
+        except SyntaxError:
+            try:
+                stmt = ast.parse(line, mode="exec")
+            except SyntaxError as ex:
+                fatal_error = f"Line {lineno}: {ex.msg}"
+                warnings.append(fatal_error)
+                break
+
+            node = stmt.body[0] if stmt.body else None
+            try:
+                exec(compile(stmt, "<answer_formula>", "exec"), globals_ns, locals_ns)
+            except Exception as ex:
+                fatal_error = f"Line {lineno}: {ex}"
+                warnings.append(fatal_error)
+                break
+
+            targets = _line_targets(node) if node is not None else []
+            if targets:
+                for target in targets:
+                    value = locals_ns.get(target)
+                    rendered_lines.append(f"{target} = {_format_value(value)}")
+                    last_value = value
+                    if target == "answer":
+                        if not explicit_answer_defined:
+                            warnings.append(
+                                "Formula defines answer directly; it will not be overwritten."
+                            )
+                        explicit_answer_defined = True
+            else:
+                rendered_lines.append(line)
+            continue
+
+        try:
+            value = eval(
+                compile(expr, "<answer_formula>", "eval"), globals_ns, locals_ns
+            )
+        except Exception as ex:
+            fatal_error = f"Line {lineno}: {ex}"
+            warnings.append(fatal_error)
+            break
+
+        rendered_lines.append(f"result = {_format_value(value)}")
+        last_value = value
+
+    if "answer" not in locals_ns and last_value is not None:
+        locals_ns["answer"] = last_value
+        rendered_lines.append(f"answer = {_format_value(last_value)}")
+
+    return locals_ns, rendered_lines, warnings, fatal_error
+
+
+def run_answer_formula(
+    formula_md: str,
+    params: dict[str, Any] | None = None,
+    *,
+    answer_text_md: str = "",
+    strict: bool = True,
+) -> AnswerRunResult:
+    locals_ns, rendered_lines, warnings, fatal_error = _evaluate_answer_formula(
+        formula_md, params
+    )
+    answer_value = locals_ns.get("answer")
+    if answer_value is None and strict:
+        raise SolutionRuntimeError("Formula must produce an answer value.")
+    if fatal_error and strict:
+        raise SolutionRuntimeError(fatal_error)
+    answer_md = render_template_from_values(answer_text_md, locals_ns)
+    return AnswerRunResult(
+        calculated_variables_md="\n".join(rendered_lines).strip(),
+        answer_md=answer_md.strip(),
+        final_answer=(
+            _format_value(answer_value).strip() if answer_value is not None else ""
+        ),
+        warnings=warnings,
+    )
+
+
+def run_answer_function(
+    python_code: str, params: dict[str, Any] | None = None
+) -> AnswerRunResult:
+    return run_answer_formula(python_code, params, strict=True)
+
+
 def _run_callable(
     python_code: str, fn_name: str, params: dict[str, Any]
 ) -> tuple[Any, dict[str, Any]]:
@@ -98,27 +250,6 @@ def _run_callable(
     except Exception as ex:
         raise SolutionRuntimeError(f"Solution runtime error: {ex}") from ex
     return raw, ns
-
-
-def run_answer_function(
-    python_code: str, params: dict[str, Any] | None = None
-) -> AnswerRunResult:
-    raw, _ = _run_callable(python_code, "solve", params or {})
-    if not isinstance(raw, dict):
-        raise SolutionRuntimeError("solve(params) must return a dict.")
-    answer_md = raw.get("answer_md")
-    final_answer = raw.get("final_answer")
-    if not isinstance(answer_md, str) or not answer_md.strip():
-        raise SolutionRuntimeError(
-            "solve return must include non-empty string answer_md."
-        )
-    if not isinstance(final_answer, str) or not final_answer.strip():
-        raise SolutionRuntimeError(
-            "solve return must include non-empty string final_answer."
-        )
-    return AnswerRunResult(
-        answer_md=answer_md.strip(), final_answer=final_answer.strip()
-    )
 
 
 def run_distractor_function(
@@ -199,12 +330,12 @@ def _strip_disallowed_bold(text: str) -> str:
 
 
 def run_mc_harness(
-    answer_python_code: str,
+    answer_formula_md: str,
     distractor_python_codes: list[tuple[str, str]],
     params: dict[str, Any] | None = None,
 ) -> HarnessRunResult:
     params = params or {}
-    answer = run_answer_function(answer_python_code, params)
+    answer = run_answer_formula(answer_formula_md, params, strict=True)
     rows: list[dict[str, Any]] = [
         {
             "source_id": "answer",

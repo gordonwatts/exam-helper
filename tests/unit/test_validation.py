@@ -17,10 +17,7 @@ def test_validate_project_with_solution_code(tmp_path: Path) -> None:
         title="t",
         prompt_md="p",
         solution={
-            "python_code": (
-                "def solve(params, context):\n"
-                "    return {'final_answer_text': 'ok'}\n"
-            ),
+            "answer_formula_md": "answer = 'ok'",
             "parameters": {},
         },
     )
@@ -60,9 +57,7 @@ def test_validate_project_skips_soft_deleted_questions(tmp_path: Path) -> None:
             title="t",
             is_deleted=True,
             solution={
-                "answer_python_code": (
-                    "def solve(params, context):\n" "    raise RuntimeError('boom')\n"
-                ),
+                "answer_formula_md": "raise RuntimeError('boom')",
                 "parameters": {},
             },
         )

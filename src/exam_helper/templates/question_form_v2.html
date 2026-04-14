@@ -204,8 +204,6 @@
       </div>
 
       <form method="post" action="/questions/save" id="question-form">
-        <textarea hidden name="answer_guidance" id="answer_guidance">{{ question.solution.answer_guidance if question else '' }}</textarea>
-        <textarea hidden name="answer_python_code" id="answer_python_code">{{ question.solution.answer_python_code if question else '' }}</textarea>
         <textarea hidden name="mc_options_guidance" id="mc_options_guidance">{{ question.mc_options_guidance if question else '' }}</textarea>
         <textarea hidden name="distractor_functions_text" id="distractor_functions_text">{{ distractor_functions_text }}</textarea>
         <textarea hidden name="typed_solution_status" id="typed_solution_status">{{ question.solution.typed_solution_status if question else 'missing' }}</textarea>
@@ -249,6 +247,31 @@
           <textarea name="solution_parameters_yaml" id="solution_parameters_yaml">{{ solution_parameters_yaml if question else 'dummy: 5' }}</textarea>
         </div>
 
+        <div class="row">
+          <div class="card">
+            <label for="answer_formula_md">Answer Formula (SymPy)</label>
+            <p class="hint">Write one assignment or expression per line. Parameters can be referenced by name, and the final value should end up in <code>answer</code>.</p>
+            <textarea name="answer_formula_md" id="answer_formula_md">{{ answer_formula_md if question else '' }}</textarea>
+            <p class="hint" id="answer_formula_warning">{{ answer_formula_warning if question else '' }}</p>
+          </div>
+          <div class="card">
+            <label>Calculated Variables</label>
+            <textarea id="calculated_variables_md" readonly>{{ calculated_variables_md if question else '' }}</textarea>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="card">
+            <label for="answer_guidance">Answer Text (Markdown)</label>
+            <p class="hint">Use <code>{{ '{{variable}}' }}</code> placeholders for parameters or values defined in the formula box.</p>
+            <textarea name="answer_guidance" id="answer_guidance">{{ answer_guidance if question else '' }}</textarea>
+          </div>
+          <div class="card">
+            <label for="typed_solution_md">Markdown Answer</label>
+            <textarea name="typed_solution_md" id="typed_solution_md" readonly>{{ rendered_answer_md if question else '' }}</textarea>
+          </div>
+        </div>
+
         <div id="mc_block" class="card">
           <label>MC Choices YAML (A-E)</label>
           <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
@@ -264,15 +287,9 @@
           </div>
         </div>
 
-        <div class="row">
-          <div class="card">
-            <label>Typed Solution</label>
-            <textarea name="typed_solution_md" id="typed_solution_md">{{ question.solution.typed_solution_md if question else '' }}</textarea>
-          </div>
-          <div class="card preview">
-            <strong>Typed Solution Preview</strong>
-            <div id="typed_solution_preview"></div>
-          </div>
+        <div class="card preview">
+          <strong>Markdown Answer Preview</strong>
+          <div id="typed_solution_preview"></div>
         </div>
 
         <div class="card" id="figures_section">
@@ -300,12 +317,14 @@
       const pointsEl = document.getElementById("points");
       const templateEl = document.getElementById("question_template_md");
       const paramsEl = document.getElementById("solution_parameters_yaml");
+      const answerFormulaEl = document.getElementById("answer_formula_md");
       const answerGuidanceEl = document.getElementById("answer_guidance");
-      const answerCodeEl = document.getElementById("answer_python_code");
       const mcOptionsGuidanceEl = document.getElementById("mc_options_guidance");
       const distractorFnsEl = document.getElementById("distractor_functions_text");
       const choicesEl = document.getElementById("choices_yaml");
       const typedSolutionEl = document.getElementById("typed_solution_md");
+      const calculatedVariablesEl = document.getElementById("calculated_variables_md");
+      const answerFormulaWarningEl = document.getElementById("answer_formula_warning");
       const typedStatusEl = document.getElementById("typed_solution_status");
       const figuresInput = document.getElementById("figures_json");
       const figuresPreviewEl = document.getElementById("figures_preview");
@@ -550,8 +569,8 @@
           question_type: questionTypeEl.value,
           question_template_md: templateEl.value,
           solution_parameters_yaml: paramsEl.value,
+          answer_formula_md: answerFormulaEl.value,
           answer_guidance: answerGuidanceEl.value,
-          answer_python_code: answerCodeEl.value,
           mc_options_guidance: mcOptionsGuidanceEl.value,
           distractor_functions_text: distractorFnsEl.value,
           choices_yaml: choicesEl.value,
@@ -576,7 +595,17 @@
           setStatus(`Save error: ${data.error || res.statusText}`, "warn");
           throw new Error(data.error || res.statusText);
         }
-        setStatus("Saved", "good");
+        if (typeof data.calculated_variables_md === "string") {
+          calculatedVariablesEl.value = data.calculated_variables_md;
+        }
+        if (typeof data.rendered_answer_md === "string") {
+          if (data.rendered_answer_md || !data.warning) {
+            typedSolutionEl.value = data.rendered_answer_md;
+          }
+        }
+        answerFormulaWarningEl.textContent = data.warning ? `Warning: ${data.warning}` : "";
+        renderTypedPreview();
+        setStatus(data.warning ? "Saved with warning" : "Saved", data.warning ? "warn" : "good");
       }
 
       function scheduleAutosave() {
@@ -587,8 +616,11 @@
         }, 1200);
       }
 
-      [questionTypeEl, titleEl, templateEl, paramsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, templateEl, paramsEl, answerFormulaEl, answerGuidanceEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
+          if (el === answerFormulaEl) {
+            answerFormulaWarningEl.textContent = "";
+          }
           renderTemplate();
           renderMCPreview();
           renderTypedPreview();

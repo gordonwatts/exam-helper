@@ -18,7 +18,7 @@ def _seed_question(client: TestClient, qid: str, qtype: str = "free_response") -
             "prompt_md": "old prompt",
             "question_template_md": "old template",
             "solution_parameters_yaml": "{}",
-            "answer_python_code": "",
+            "answer_formula_md": "",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
@@ -44,7 +44,7 @@ def test_autosave_marks_typed_solution_stale_on_parameter_change(tmp_path) -> No
             "prompt_md": "P",
             "question_template_md": "v={{v}}",
             "solution_parameters_yaml": "{v: 10}",
-            "answer_python_code": "def solve(params):\n    return {'answer_md':'10','final_answer':'10'}\n",
+            "answer_formula_md": "answer = 10",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "Draft",
@@ -61,7 +61,7 @@ def test_autosave_marks_typed_solution_stale_on_parameter_change(tmp_path) -> No
             "prompt_md": "P",
             "question_template_md": "v={{v}}",
             "solution_parameters_yaml": "{v: 11}",
-            "answer_python_code": "def solve(params):\n    return {'answer_md':'11','final_answer':'11'}\n",
+            "answer_formula_md": "answer = 11",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "Draft",
@@ -138,7 +138,7 @@ def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
             "prompt_md": "P",
             "question_template_md": "P",
             "solution_parameters_yaml": "{}",
-            "answer_python_code": "def solve(params):\n    return {'answer_md':'2','final_answer':'2'}\n",
+            "answer_formula_md": "answer = 2",
             "distractor_functions_text": (
                 "# distractor: d1\n"
                 "def distractor(params):\n"
@@ -185,7 +185,7 @@ def test_generate_mc_distractors_retries_and_returns_partial_unique_set(
             "prompt_md": "P",
             "question_template_md": "P",
             "solution_parameters_yaml": "{}",
-            "answer_python_code": "def solve(params):\n    return {'answer_md':'2','final_answer':'2'}\n",
+            "answer_formula_md": "answer = 2",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
@@ -264,7 +264,7 @@ def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> Non
             "question_template_md": "P",
             "solution_parameters_yaml": "{v: 5}",
             "answer_guidance": "",
-            "answer_python_code": "",
+            "answer_formula_md": "",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
@@ -282,11 +282,11 @@ def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> Non
             self.calls += 1
             if self.calls == 1:
                 return AIService.AnswerFunctionResult(
-                    answer_python_code="def solve(params):\n    return {'answer_md':'x'}\n",
+                    answer_formula_md="answer = x",
                     usage=AIUsageTotals(),
                 )
             return AIService.AnswerFunctionResult(
-                answer_python_code="def solve(params):\n    return {'answer_md':'x','final_answer':'x'}\n",
+                answer_formula_md="x = 1\nanswer = x",
                 usage=AIUsageTotals(),
             )
 
@@ -296,7 +296,7 @@ def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> Non
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] is True
-    assert "final_answer" in data["answer_python_code"]
+    assert "answer" in data["answer_formula_md"]
     assert fake.calls == 2
 
 
@@ -314,11 +314,8 @@ def test_harness_run_preserves_latex_backslashes_in_answer_output(tmp_path) -> N
             "question_type": "free_response",
             "question_template_md": r"Use \\(\\theta\\)",
             "solution_parameters_yaml": "{}",
-            "answer_guidance": "",
-            "answer_python_code": (
-                "def solve(params):\n"
-                "    return {'answer_md': '$\\theta$', 'final_answer': '$\\lambda$'}\n"
-            ),
+            "answer_guidance": r"$\theta$",
+            "answer_formula_md": "answer = 1",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
@@ -332,7 +329,7 @@ def test_harness_run_preserves_latex_backslashes_in_answer_output(tmp_path) -> N
     assert resp.status_code == 200
     data = resp.json()
     assert data["computed_answer_md"] == r"$\theta$"
-    assert data["final_answer_text"] == r"$\lambda$"
+    assert data["final_answer_text"] == "1"
 
     saved = repo.get_question("q_latex")
     assert saved.solution.last_computed_answer_md == r"$\theta$"
@@ -353,7 +350,7 @@ def test_autosave_updates_mc_options_guidance(tmp_path) -> None:
             "mc_options_guidance": "Use realistic sign mistakes only.",
             "question_template_md": "P",
             "solution_parameters_yaml": "{}",
-            "answer_python_code": "",
+            "answer_formula_md": "",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",

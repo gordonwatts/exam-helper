@@ -27,7 +27,8 @@ from exam_helper.models import (
 from exam_helper.normalization import normalize_markdown_math_delimiters
 from exam_helper.repository import ProjectRepository
 from exam_helper.solution_runtime import (
-    run_answer_function,
+    render_template_from_values,
+    run_answer_formula,
     run_mc_harness,
 )
 from exam_helper.validation import validate_question
@@ -39,8 +40,9 @@ class AutosavePayload(BaseModel):
     mc_options_guidance: str = ""
     question_template_md: str = ""
     solution_parameters_yaml: str = "{}"
-    answer_guidance: str = ""
+    answer_formula_md: str = ""
     answer_python_code: str = ""
+    answer_guidance: str = ""
     distractor_functions_text: str = ""
     choices_yaml: str = "[]"
     typed_solution_md: str = ""
@@ -225,14 +227,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         ]
         return yaml.safe_dump(defaults, sort_keys=False)
 
-    def _render_template_from_parameters(template: str, params: dict[str, Any]) -> str:
-        rendered = template or ""
-        for key, value in (params or {}).items():
-            rendered = re.sub(
-                r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered
-            )
-        return rendered
-
     def _suggest_next_question_id() -> str:
         try:
             existing = [q.id for q in repo.list_questions(include_deleted=True)]
@@ -260,16 +254,58 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         distractor_functions_text = dump_distractor_functions_text(
             question.solution.distractor_python_code if question else []
         )
+        answer_preview = _compute_answer_preview(question)
         return {
             "question": question,
             "choices_yaml": choices_yaml,
             "figures_json": figures_json,
             "solution_parameters_yaml": solution_parameters_yaml,
             "distractor_functions_text": distractor_functions_text,
+            "answer_formula_md": (
+                question.solution.answer_formula_md if question else ""
+            ),
+            "answer_guidance": question.solution.answer_guidance if question else "",
+            "calculated_variables_md": answer_preview["calculated_variables_md"],
+            "answer_formula_warning": answer_preview["warning"],
+            "rendered_answer_md": (
+                question.solution.typed_solution_md
+                if question and question.solution.typed_solution_md.strip()
+                else answer_preview["rendered_answer_md"]
+            ),
             "question_id_default": (
                 question.id if question else _suggest_next_question_id()
             ),
         }
+
+    def _compute_answer_preview(question: Question | None) -> dict[str, str]:
+        if question is None:
+            return {
+                "calculated_variables_md": "",
+                "rendered_answer_md": "",
+                "warning": "",
+            }
+        try:
+            result = run_answer_formula(
+                question.solution.answer_formula_md,
+                question.solution.parameters,
+                answer_text_md=question.solution.answer_guidance,
+                strict=False,
+            )
+            return {
+                "calculated_variables_md": normalize_markdown_math_delimiters(
+                    result.calculated_variables_md
+                ),
+                "rendered_answer_md": normalize_markdown_math_delimiters(
+                    result.answer_md
+                ),
+                "warning": " | ".join(result.warnings),
+            }
+        except Exception as ex:
+            return {
+                "calculated_variables_md": "",
+                "rendered_answer_md": "",
+                "warning": str(ex),
+            }
 
     def _mark_typed_solution_stale_if_needed(
         existing: Question | None, candidate: Question
@@ -282,8 +318,10 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
         if (
             existing.solution.parameters != candidate.solution.parameters
-            or _normalized_code(existing.solution.answer_python_code)
-            != _normalized_code(candidate.solution.answer_python_code)
+            or _normalized_code(existing.solution.answer_formula_md)
+            != _normalized_code(candidate.solution.answer_formula_md)
+            or _normalized_code(existing.solution.answer_guidance)
+            != _normalized_code(candidate.solution.answer_guidance)
             or [
                 _normalized_code(d.python_code)
                 for d in existing.solution.distractor_python_code
@@ -362,8 +400,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         question_template_md: str = Form(""),
         choices_yaml: str = Form("[]"),
         solution_parameters_yaml: str = Form("{}"),
-        answer_guidance: str = Form(""),
+        answer_formula_md: str = Form(""),
         answer_python_code: str = Form(""),
+        answer_guidance: str = Form(""),
         distractor_functions_text: str = Form(""),
         typed_solution_md: str = Form(""),
         typed_solution_status: str = Form("missing"),
@@ -392,8 +431,8 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         question_template_md
                     ),
                     "parameters": solution_parameters,
+                    "answer_formula_md": answer_formula_md or answer_python_code,
                     "answer_guidance": answer_guidance,
-                    "answer_python_code": answer_python_code,
                     "distractor_python_code": distractor_funcs,
                     "typed_solution_md": normalize_markdown_math_delimiters(
                         typed_solution_md
@@ -410,6 +449,10 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "figures": figures,
             }
         )
+        preview = _compute_answer_preview(question)
+        if preview["rendered_answer_md"]:
+            question.solution.typed_solution_md = preview["rendered_answer_md"]
+        question.solution.last_computed_answer_md = preview["rendered_answer_md"]
         _mark_typed_solution_stale_if_needed(existing, question)
         repo.save_question(question)
         return RedirectResponse("/", status_code=303)
@@ -444,8 +487,10 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                             payload.question_template_md
                         ),
                         "parameters": solution_parameters,
+                        "answer_formula_md": (
+                            payload.answer_formula_md or payload.answer_python_code
+                        ),
                         "answer_guidance": payload.answer_guidance,
-                        "answer_python_code": payload.answer_python_code,
                         "distractor_python_code": distractor_funcs,
                         "typed_solution_md": normalize_markdown_math_delimiters(
                             payload.typed_solution_md
@@ -464,12 +509,19 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "is_deleted": (existing.is_deleted if existing else False),
                 }
             )
+            preview = _compute_answer_preview(question)
+            if preview["rendered_answer_md"]:
+                question.solution.typed_solution_md = preview["rendered_answer_md"]
+            question.solution.last_computed_answer_md = preview["rendered_answer_md"]
             _mark_typed_solution_stale_if_needed(existing, question)
             repo.save_question(question)
             return JSONResponse(
                 {
                     "ok": True,
                     "typed_solution_status": question.solution.typed_solution_status,
+                    "calculated_variables_md": preview["calculated_variables_md"],
+                    "rendered_answer_md": preview["rendered_answer_md"],
+                    "warning": preview["warning"],
                 }
             )
         except Exception as ex:
@@ -508,7 +560,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             normalized_template = normalize_markdown_math_delimiters(
                 result.question_template_md
             )
-            rendered_prompt = _render_template_from_parameters(
+            rendered_prompt = render_template_from_values(
                 normalized_template, result.parameters
             )
             title = q.title.strip() or result.title.strip()
@@ -546,18 +598,18 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 )
                 repo.add_ai_usage(result.usage)
                 try:
-                    run_answer_function(
-                        result.answer_python_code, q.solution.parameters
+                    run_answer_formula(
+                        result.answer_formula_md, q.solution.parameters, strict=True
                     )
                     return {
                         "ok": True,
-                        "answer_python_code": result.answer_python_code,
+                        "answer_formula_md": result.answer_formula_md,
                     }
                 except Exception as ex:
                     error_feedback = str(ex)
-                    q.solution.answer_python_code = result.answer_python_code
+                    q.solution.answer_formula_md = result.answer_formula_md
             raise ValueError(
-                "AI-generated answer function failed validation after 3 attempts. "
+                "AI-generated answer formula failed validation after 3 attempts. "
                 f"Last error: {error_feedback}"
             )
         except Exception as ex:
@@ -567,8 +619,10 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     def run_harness(question_id: str) -> dict:
         try:
             q = repo.get_question(question_id)
-            answer_result = run_answer_function(
-                q.solution.answer_python_code, q.solution.parameters
+            answer_result = run_answer_formula(
+                q.solution.answer_formula_md,
+                q.solution.parameters,
+                answer_text_md=q.solution.answer_guidance,
             )
             payload: dict[str, Any] = {
                 "ok": True,
@@ -576,13 +630,16 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     answer_result.answer_md
                 ),
                 "final_answer_text": answer_result.final_answer,
+                "calculated_variables_md": normalize_markdown_math_delimiters(
+                    answer_result.calculated_variables_md
+                ),
             }
             if q.question_type == QuestionType.multiple_choice:
                 funcs = [
                     (d.id, d.python_code) for d in q.solution.distractor_python_code
                 ]
                 harness = run_mc_harness(
-                    answer_python_code=q.solution.answer_python_code,
+                    answer_formula_md=q.solution.answer_formula_md,
                     distractor_python_codes=funcs,
                     params=q.solution.parameters,
                 )
@@ -618,7 +675,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 repo.add_ai_usage(result.usage)
                 last_funcs = result.distractors
                 harness = run_mc_harness(
-                    answer_python_code=q.solution.answer_python_code,
+                    answer_formula_md=q.solution.answer_formula_md,
                     distractor_python_codes=[
                         (d.id, d.python_code) for d in result.distractors
                     ],
