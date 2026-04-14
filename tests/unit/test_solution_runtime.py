@@ -6,10 +6,33 @@ import pytest
 
 from exam_helper.solution_runtime import (
     SolutionRuntimeError,
+    evaluate_answer_formula,
     run_answer_formula,
     run_distractor_function,
     run_mc_harness,
 )
+
+
+def test_evaluate_answer_formula_returns_raw_evaluation_state() -> None:
+    locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
+        "x = params['v']\ny = x + 2\nanswer = y", {"v": 5}
+    )
+    assert locals_ns["x"] == 5
+    assert locals_ns["y"] == 7
+    assert locals_ns["answer"] == 7
+    assert rendered_lines == ["x = 5", "y = 7", "answer = 7"]
+    assert warnings == ["Formula defines answer directly; it will not be overwritten."]
+    assert fatal_error is None
+
+
+def test_evaluate_answer_formula_reports_fatal_errors() -> None:
+    locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
+        "x = 1\nanswer = missing_name", {}
+    )
+    assert locals_ns["x"] == 1
+    assert rendered_lines == ["x = 1", "answer = 1"]
+    assert warnings
+    assert fatal_error is not None
 
 
 def test_answer_formula_success() -> None:

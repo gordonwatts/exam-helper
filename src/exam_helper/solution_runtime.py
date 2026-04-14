@@ -123,7 +123,7 @@ def _line_targets(node: ast.AST) -> list[str]:
     return targets
 
 
-def _evaluate_answer_formula(
+def evaluate_answer_formula(
     formula_md: str, params: dict[str, Any] | None = None
 ) -> tuple[dict[str, Any], list[str], list[str], str | None]:
     """Evaluate a multiline answer formula and capture its computed state.
@@ -246,6 +246,9 @@ def run_answer_function(
     python_code: str, params: dict[str, Any] | None = None
 ) -> AnswerRunResult:
     return run_answer_formula(python_code, params, strict=True)
+
+
+_evaluate_answer_formula = evaluate_answer_formula
 
 
 def _run_callable(
