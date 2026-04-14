@@ -204,6 +204,11 @@
       </div>
 
       <form method="post" action="/questions/save" id="question-form">
+        <textarea hidden name="answer_guidance" id="answer_guidance">{{ question.solution.answer_guidance if question else '' }}</textarea>
+        <textarea hidden name="answer_python_code" id="answer_python_code">{{ question.solution.answer_python_code if question else '' }}</textarea>
+        <textarea hidden name="mc_options_guidance" id="mc_options_guidance">{{ question.mc_options_guidance if question else '' }}</textarea>
+        <textarea hidden name="distractor_functions_text" id="distractor_functions_text">{{ distractor_functions_text }}</textarea>
+        <textarea hidden name="typed_solution_status" id="typed_solution_status">{{ question.solution.typed_solution_status if question else 'missing' }}</textarea>
         <div class="row3">
           <div class="card">
             <label>Question ID</label>
@@ -295,8 +300,13 @@
       const pointsEl = document.getElementById("points");
       const templateEl = document.getElementById("question_template_md");
       const paramsEl = document.getElementById("solution_parameters_yaml");
+      const answerGuidanceEl = document.getElementById("answer_guidance");
+      const answerCodeEl = document.getElementById("answer_python_code");
+      const mcOptionsGuidanceEl = document.getElementById("mc_options_guidance");
+      const distractorFnsEl = document.getElementById("distractor_functions_text");
       const choicesEl = document.getElementById("choices_yaml");
       const typedSolutionEl = document.getElementById("typed_solution_md");
+      const typedStatusEl = document.getElementById("typed_solution_status");
       const figuresInput = document.getElementById("figures_json");
       const figuresPreviewEl = document.getElementById("figures_preview");
       const figuresSectionEl = document.getElementById("figures_section");
@@ -540,8 +550,13 @@
           question_type: questionTypeEl.value,
           question_template_md: templateEl.value,
           solution_parameters_yaml: paramsEl.value,
+          answer_guidance: answerGuidanceEl.value,
+          answer_python_code: answerCodeEl.value,
+          mc_options_guidance: mcOptionsGuidanceEl.value,
+          distractor_functions_text: distractorFnsEl.value,
           choices_yaml: choicesEl.value,
           typed_solution_md: typedSolutionEl.value,
+          typed_solution_status: typedStatusEl.value,
           figures_json: figuresInput.value || "[]",
           points: Number(pointsEl.value || 5),
         };

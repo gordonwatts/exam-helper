@@ -257,11 +257,15 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         solution_parameters_yaml = dump_parameters_yaml(
             question.solution.parameters if question else {}
         )
+        distractor_functions_text = dump_distractor_functions_text(
+            question.solution.distractor_python_code if question else []
+        )
         return {
             "question": question,
             "choices_yaml": choices_yaml,
             "figures_json": figures_json,
             "solution_parameters_yaml": solution_parameters_yaml,
+            "distractor_functions_text": distractor_functions_text,
             "question_id_default": (
                 question.id if question else _suggest_next_question_id()
             ),
@@ -272,12 +276,22 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     ) -> None:
         if existing is None:
             return
+
+        def _normalized_code(text: str) -> str:
+            return (text or "").replace("\r\n", "\n").replace("\r", "\n").rstrip()
+
         if (
             existing.solution.parameters != candidate.solution.parameters
-            or existing.solution.answer_python_code
-            != candidate.solution.answer_python_code
-            or [d.python_code for d in existing.solution.distractor_python_code]
-            != [d.python_code for d in candidate.solution.distractor_python_code]
+            or _normalized_code(existing.solution.answer_python_code)
+            != _normalized_code(candidate.solution.answer_python_code)
+            or [
+                _normalized_code(d.python_code)
+                for d in existing.solution.distractor_python_code
+            ]
+            != [
+                _normalized_code(d.python_code)
+                for d in candidate.solution.distractor_python_code
+            ]
         ):
             if candidate.solution.typed_solution_md.strip():
                 candidate.solution.typed_solution_status = "stale"

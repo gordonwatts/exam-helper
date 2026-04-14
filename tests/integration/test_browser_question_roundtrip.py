@@ -67,6 +67,31 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
     )
     try:
         _wait_for_server(base_url + "/", proc)
+        seed = httpx.post(
+            base_url + "/questions/save",
+            data={
+                "question_id": "q_browser",
+                "title": "Browser Test",
+                "question_type": "free_response",
+                "question_template_md": "A block moves with speed {{v}} m/s.",
+                "solution_parameters_yaml": "v: 7.5",
+                "answer_guidance": "Use kinematics.",
+                "answer_python_code": (
+                    "def solve(params):\n"
+                    "    return {'answer_md':'7.5 m/s','final_answer':'7.5 m/s'}\n"
+                ),
+                "mc_options_guidance": "Avoid sign-error distractors.",
+                "distractor_functions_text": "",
+                "choices_yaml": "[]",
+                "typed_solution_md": "It moves at 7.5 m/s.",
+                "typed_solution_status": "fresh",
+                "figures_json": "[]",
+                "points": 8,
+            },
+            follow_redirects=False,
+            timeout=5.0,
+        )
+        assert seed.status_code == 303
         with sync_playwright() as p:
             try:
                 browser = p.chromium.launch(headless=True)
@@ -76,21 +101,6 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                 page = browser.new_page()
 
                 page.goto(base_url + "/")
-                page.get_by_role("link", name="New Question").click()
-                page.wait_for_url(base_url + "/questions/new2")
-
-                page.locator("#question_id").fill("q_browser")
-                page.locator("#title").fill("Browser Test")
-                page.locator("#question_template_md").fill(
-                    "A block moves with speed {{v}} m/s."
-                )
-                page.locator("#solution_parameters_yaml").fill("v: 7.5")
-                page.locator("#typed_solution_md").fill("It moves at 7.5 m/s.")
-                page.locator("#points").fill("8")
-
-                page.get_by_role("button", name="Save and Return").click()
-                page.wait_for_url(base_url + "/")
-
                 page.get_by_role("link", name="Edit").click()
                 page.wait_for_url(base_url + "/questions/q_browser/edit2")
 
@@ -104,11 +114,60 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                     page.locator("#solution_parameters_yaml").input_value().strip()
                     == "v: 7.5"
                 )
+                assert page.locator("#typed_solution_md").input_value() == (
+                    "It moves at 7.5 m/s."
+                )
+                assert page.locator("#points").input_value() == "8"
+                assert (
+                    page.locator("#answer_guidance").input_value() == "Use kinematics."
+                )
+                assert (
+                    page.locator("#answer_python_code").input_value()
+                    == "def solve(params):\n    return {'answer_md':'7.5 m/s','final_answer':'7.5 m/s'}\n"
+                )
+                assert (
+                    page.locator("#mc_options_guidance").input_value()
+                    == "Avoid sign-error distractors."
+                )
+                assert page.locator("#distractor_functions_text").input_value() == ""
+                assert page.locator("#typed_solution_status").input_value() == "fresh"
+
+                page.locator("#title").fill("Browser Test Updated")
+
+                page.get_by_role("button", name="Save and Return").click()
+                page.wait_for_url(base_url + "/")
+
+                page.get_by_role("link", name="Edit").click()
+                page.wait_for_url(base_url + "/questions/q_browser/edit2")
+
+                assert page.locator("#question_id").input_value() == "q_browser"
+                assert page.locator("#title").input_value() == "Browser Test Updated"
+                assert (
+                    page.locator("#question_template_md").input_value()
+                    == "A block moves with speed {{v}} m/s."
+                )
+                assert (
+                    page.locator("#solution_parameters_yaml").input_value().strip()
+                    == "v: 7.5"
+                )
                 assert (
                     page.locator("#typed_solution_md").input_value()
                     == "It moves at 7.5 m/s."
                 )
                 assert page.locator("#points").input_value() == "8"
+                assert (
+                    page.locator("#answer_guidance").input_value() == "Use kinematics."
+                )
+                assert (
+                    page.locator("#answer_python_code").input_value()
+                    == "def solve(params):\n    return {'answer_md':'7.5 m/s','final_answer':'7.5 m/s'}\n"
+                )
+                assert (
+                    page.locator("#mc_options_guidance").input_value()
+                    == "Avoid sign-error distractors."
+                )
+                assert page.locator("#distractor_functions_text").input_value() == ""
+                assert page.locator("#typed_solution_status").input_value() == "fresh"
             finally:
                 browser.close()
     finally:

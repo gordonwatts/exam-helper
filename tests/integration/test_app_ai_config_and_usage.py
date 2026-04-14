@@ -44,11 +44,11 @@ def test_question_editor_has_new_workflow_hooks(tmp_path) -> None:
     assert "Edit Question" in resp.text
     assert 'id="btn_rewrite"' not in resp.text
     assert 'id="btn_generate_answer"' not in resp.text
-    assert 'id="mc_options_guidance"' not in resp.text
+    assert 'id="mc_options_guidance"' in resp.text
     assert 'id="btn_generate_typed_solution"' not in resp.text
     assert "function setAiBusy(isBusy)" not in resp.text
     assert "await autosaveNow({ allowWhenBusy: true });" not in resp.text
-    assert "mc_options_guidance: mcOptionsGuidanceEl.value" not in resp.text
+    assert "mc_options_guidance: mcOptionsGuidanceEl.value" in resp.text
     assert "AI request in progress; editing is temporarily disabled." not in resp.text
 
     redirect = client.get("/questions/q_edit/edit", follow_redirects=False)
