@@ -114,7 +114,7 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                 assert page.locator("#answer_formula_md").input_value().strip() == (
                     "v = float(v)\nanswer = v"
                 )
-                assert page.locator("#rendered_answer_md").input_value() == (
+                assert page.locator("#rendered_answer_md").inner_text() == (
                     "Use kinematics: 7.5 m/s."
                 )
                 assert page.locator("#points").input_value() == "8"
@@ -124,7 +124,7 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                 )
                 assert page.locator(
                     "#calculated_variables_md"
-                ).input_value().strip() == ("v = 7.5\nanswer = 7.5")
+                ).inner_text().strip() == ("v = 7.5\nanswer = 7.5")
                 assert (
                     page.locator("#mc_options_guidance").input_value()
                     == "Avoid sign-error distractors."
@@ -153,7 +153,7 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                 assert page.locator("#answer_formula_md").input_value().strip() == (
                     "v = float(v)\nanswer = v"
                 )
-                assert page.locator("#rendered_answer_md").input_value() == (
+                assert page.locator("#rendered_answer_md").inner_text() == (
                     "Use kinematics: 7.5 m/s."
                 )
                 assert page.locator("#points").input_value() == "8"
@@ -163,7 +163,7 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                 )
                 assert page.locator(
                     "#calculated_variables_md"
-                ).input_value().strip() == ("v = 7.5\nanswer = 7.5")
+                ).inner_text().strip() == ("v = 7.5\nanswer = 7.5")
                 assert (
                     page.locator("#mc_options_guidance").input_value()
                     == "Avoid sign-error distractors."

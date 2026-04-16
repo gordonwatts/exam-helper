@@ -78,6 +78,9 @@
         padding: 1rem;
         box-shadow: 0 10px 30px rgba(72, 52, 24, 0.06);
       }
+      .card.readonly-card {
+        background: var(--surface-strong);
+      }
       .card h2,
       .card strong {
         color: var(--text);
@@ -114,6 +117,32 @@
         background: var(--surface-strong);
         min-height: 140px;
         overflow: auto;
+      }
+      .preview-surface {
+        background: #f5d889;
+        border: 1px solid rgba(154, 52, 18, 0.15);
+        border-radius: 12px;
+        min-height: 140px;
+        max-height: 220px;
+        overflow: auto;
+        padding: 0.75rem;
+      }
+      .preview-surface h1,
+      .preview-surface h2,
+      .preview-surface h3,
+      .preview-surface h4,
+      .preview-surface h5,
+      .preview-surface h6 {
+        margin-top: 0.4rem;
+      }
+      .preview-surface p:first-child,
+      .preview-surface ul:first-child,
+      .preview-surface ol:first-child {
+        margin-top: 0;
+      }
+      .formula-preview {
+        white-space: pre-wrap;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
       }
       .status {
         min-height: 1.2rem;
@@ -254,9 +283,9 @@
             <textarea name="answer_formula_md" id="answer_formula_md">{{ answer_formula_md if question else '' }}</textarea>
             <p class="hint" id="answer_formula_warning">{{ answer_formula_warning if question else '' }}</p>
           </div>
-          <div class="card">
+          <div class="card readonly-card">
             <label>Calculated Variables</label>
-            <textarea id="calculated_variables_md" readonly>{{ calculated_variables_md if question else '' }}</textarea>
+            <div id="calculated_variables_md" class="preview-surface formula-preview" aria-readonly="true">{{ calculated_variables_md if question else '' }}</div>
           </div>
         </div>
 
@@ -266,9 +295,9 @@
             <p class="hint">Use <code>{{ '{{variable}}' }}</code> placeholders for parameters or values defined in the formula box.</p>
             <textarea name="answer_guidance" id="answer_guidance">{{ answer_guidance if question else '' }}</textarea>
           </div>
-          <div class="card">
+          <div class="card readonly-card">
             <label for="rendered_answer_md">Markdown Answer</label>
-            <textarea id="rendered_answer_md" readonly>{{ rendered_answer_md if question else '' }}</textarea>
+            <div id="rendered_answer_md" class="preview-surface" aria-readonly="true">{{ rendered_answer_md if question else '' }}</div>
           </div>
         </div>
 
@@ -285,11 +314,6 @@
               <div id="mc_preview_rationale"></div>
             </div>
           </div>
-        </div>
-
-        <div class="card preview">
-          <strong>Markdown Answer Preview</strong>
-          <div id="rendered_answer_preview"></div>
         </div>
 
         <div class="card" id="figures_section">
@@ -335,8 +359,6 @@
       const mcBlock = document.getElementById("mc_block");
       const mcPreviewAnswers = document.getElementById("mc_preview_answers");
       const mcPreviewRationale = document.getElementById("mc_preview_rationale");
-      const renderedAnswerPreview = document.getElementById("rendered_answer_preview");
-
       let autosaveTimer = null;
 
       function setStatus(text, cls) {
@@ -552,12 +574,10 @@
         }
       }
 
-      function renderAnswerPreview() {
-        renderedAnswerPreview.innerHTML = marked.parse(
-          normalizeMathDelimitersForPreview(renderedAnswerEl.value || "")
-        );
+      function renderMarkdownSurface(el, markdown) {
+        el.innerHTML = marked.parse(normalizeMathDelimitersForPreview(markdown || ""));
         if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([renderedAnswerPreview]);
+          window.MathJax.typesetPromise([el]);
         }
       }
 
@@ -597,13 +617,12 @@
           throw new Error(data.error || res.statusText);
         }
         if (typeof data.calculated_variables_md === "string") {
-          calculatedVariablesEl.value = data.calculated_variables_md;
+          calculatedVariablesEl.textContent = data.calculated_variables_md;
         }
         if (typeof data.rendered_answer_md === "string") {
-          renderedAnswerEl.value = data.rendered_answer_md;
+          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
         }
         answerFormulaWarningEl.textContent = data.warning ? `Warning: ${data.warning}` : "";
-        renderAnswerPreview();
         setStatus(data.warning ? "Saved with warning" : "Saved", data.warning ? "warn" : "good");
       }
 
@@ -615,14 +634,13 @@
         }, 1200);
       }
 
-      [questionTypeEl, titleEl, templateEl, paramsEl, answerFormulaEl, answerGuidanceEl, choicesEl, renderedAnswerEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, templateEl, paramsEl, answerFormulaEl, answerGuidanceEl, choicesEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
           if (el === answerFormulaEl) {
             answerFormulaWarningEl.textContent = "";
           }
           renderTemplate();
           renderMCPreview();
-          renderAnswerPreview();
           updateMCVisibility();
           scheduleAutosave();
         });
@@ -704,7 +722,7 @@
 
       renderTemplate();
       renderMCPreview();
-      renderAnswerPreview();
+      renderMarkdownSurface(renderedAnswerEl, renderedAnswerEl.textContent || "");
       updateMCVisibility();
       renderFiguresPreview();
     </script>
