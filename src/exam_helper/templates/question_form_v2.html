@@ -267,8 +267,8 @@
             <textarea name="answer_guidance" id="answer_guidance">{{ answer_guidance if question else '' }}</textarea>
           </div>
           <div class="card">
-            <label for="typed_solution_md">Markdown Answer</label>
-            <textarea name="typed_solution_md" id="typed_solution_md" readonly>{{ rendered_answer_md if question else '' }}</textarea>
+            <label for="rendered_answer_md">Markdown Answer</label>
+            <textarea id="rendered_answer_md" readonly>{{ rendered_answer_md if question else '' }}</textarea>
           </div>
         </div>
 
@@ -289,7 +289,7 @@
 
         <div class="card preview">
           <strong>Markdown Answer Preview</strong>
-          <div id="typed_solution_preview"></div>
+          <div id="rendered_answer_preview"></div>
         </div>
 
         <div class="card" id="figures_section">
@@ -322,7 +322,7 @@
       const mcOptionsGuidanceEl = document.getElementById("mc_options_guidance");
       const distractorFnsEl = document.getElementById("distractor_functions_text");
       const choicesEl = document.getElementById("choices_yaml");
-      const typedSolutionEl = document.getElementById("typed_solution_md");
+      const renderedAnswerEl = document.getElementById("rendered_answer_md");
       const calculatedVariablesEl = document.getElementById("calculated_variables_md");
       const answerFormulaWarningEl = document.getElementById("answer_formula_warning");
       const typedStatusEl = document.getElementById("typed_solution_status");
@@ -335,7 +335,7 @@
       const mcBlock = document.getElementById("mc_block");
       const mcPreviewAnswers = document.getElementById("mc_preview_answers");
       const mcPreviewRationale = document.getElementById("mc_preview_rationale");
-      const typedPreview = document.getElementById("typed_solution_preview");
+      const renderedAnswerPreview = document.getElementById("rendered_answer_preview");
 
       let autosaveTimer = null;
 
@@ -552,10 +552,12 @@
         }
       }
 
-      function renderTypedPreview() {
-        typedPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(typedSolutionEl.value || ""));
+      function renderAnswerPreview() {
+        renderedAnswerPreview.innerHTML = marked.parse(
+          normalizeMathDelimitersForPreview(renderedAnswerEl.value || "")
+        );
         if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([typedPreview]);
+          window.MathJax.typesetPromise([renderedAnswerPreview]);
         }
       }
 
@@ -574,7 +576,6 @@
           mc_options_guidance: mcOptionsGuidanceEl.value,
           distractor_functions_text: distractorFnsEl.value,
           choices_yaml: choicesEl.value,
-          typed_solution_md: typedSolutionEl.value,
           typed_solution_status: typedStatusEl.value,
           figures_json: figuresInput.value || "[]",
           points: Number(pointsEl.value || 5),
@@ -599,12 +600,10 @@
           calculatedVariablesEl.value = data.calculated_variables_md;
         }
         if (typeof data.rendered_answer_md === "string") {
-          if (data.rendered_answer_md || !data.warning) {
-            typedSolutionEl.value = data.rendered_answer_md;
-          }
+          renderedAnswerEl.value = data.rendered_answer_md;
         }
         answerFormulaWarningEl.textContent = data.warning ? `Warning: ${data.warning}` : "";
-        renderTypedPreview();
+        renderAnswerPreview();
         setStatus(data.warning ? "Saved with warning" : "Saved", data.warning ? "warn" : "good");
       }
 
@@ -616,14 +615,14 @@
         }, 1200);
       }
 
-      [questionTypeEl, titleEl, templateEl, paramsEl, answerFormulaEl, answerGuidanceEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, templateEl, paramsEl, answerFormulaEl, answerGuidanceEl, choicesEl, renderedAnswerEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
           if (el === answerFormulaEl) {
             answerFormulaWarningEl.textContent = "";
           }
           renderTemplate();
           renderMCPreview();
-          renderTypedPreview();
+          renderAnswerPreview();
           updateMCVisibility();
           scheduleAutosave();
         });
@@ -705,7 +704,7 @@
 
       renderTemplate();
       renderMCPreview();
-      renderTypedPreview();
+      renderAnswerPreview();
       updateMCVisibility();
       renderFiguresPreview();
     </script>

@@ -70,6 +70,7 @@ def render_template_from_values(template: str, values: dict[str, Any]) -> str:
 
 
 def _safe_globals() -> dict[str, Any]:
+    """Return the names formulas may resolve without importing anything."""
     allowed_builtins = {
         "abs": abs,
         "min": min,
@@ -94,6 +95,51 @@ def _safe_globals() -> dict[str, Any]:
         "symbolic_equivalent": symbolic_equivalent,
         "units_compatible": units_compatible,
     }
+
+
+def _expression_name_ids(node: ast.AST) -> set[str]:
+    """Collect all loaded variable names used inside a parsed expression."""
+    return {
+        child.id
+        for child in ast.walk(node)
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)
+    }
+
+
+def _validate_formula_expression(expr: str, allowed_names: set[str]) -> None:
+    """Reject expressions that reference names outside the evaluation scope."""
+    expr_ast = ast.parse(expr, mode="eval")
+    unknown = _expression_name_ids(expr_ast) - allowed_names
+    if unknown:
+        raise SolutionRuntimeError(
+            "Unknown name(s) in formula: " + ", ".join(sorted(unknown))
+        )
+
+
+def _evaluate_formula_expression(
+    expr: str, locals_ns: dict[str, Any], globals_ns: dict[str, Any]
+) -> Any:
+    """Evaluate a single formula expression with SymPy-aware parsing."""
+    try:
+        return ast.literal_eval(expr)
+    except Exception:
+        pass
+
+    builtin_names = set()
+    builtins_obj = globals_ns.get("__builtins__")
+    if isinstance(builtins_obj, dict):
+        builtin_names = set(builtins_obj.keys())
+    allowed_names = builtin_names | {
+        name for name in {**globals_ns, **locals_ns}.keys() if not name.startswith("__")
+    }
+    _validate_formula_expression(expr, allowed_names)
+    namespace = {
+        key: value for key, value in globals_ns.items() if not key.startswith("__")
+    }
+    if isinstance(builtins_obj, dict):
+        namespace.update(builtins_obj)
+    namespace.update(locals_ns)
+    return sp.sympify(expr, locals=namespace, evaluate=True)
 
 
 def _format_value(value: Any) -> str:
@@ -144,13 +190,13 @@ def evaluate_answer_formula(
         raise SolutionRuntimeError("Solution params must be a mapping.")
 
     locals_ns: dict[str, Any] = dict(safe_params)
-    locals_ns["params"] = safe_params
     warnings: list[str] = []
     rendered_lines: list[str] = []
     last_value: Any = None
     explicit_answer_defined = False
     fatal_error: str | None = None
     globals_ns = _safe_globals()
+    steps: list[tuple[str, str | None, Any]] = []
 
     for lineno, raw_line in enumerate(source.splitlines(), start=1):
         line = raw_line.strip()
@@ -158,28 +204,70 @@ def evaluate_answer_formula(
             continue
 
         try:
-            expr = ast.parse(line, mode="eval")
-        except SyntaxError:
-            try:
-                stmt = ast.parse(line, mode="exec")
-            except SyntaxError as ex:
-                fatal_error = f"Line {lineno}: {ex.msg}"
-                warnings.append(fatal_error)
-                break
+            stmt = ast.parse(line, mode="exec")
+        except SyntaxError as ex:
+            fatal_error = f"Line {lineno}: {ex.msg}"
+            warnings.append(fatal_error)
+            break
 
-            node = stmt.body[0] if stmt.body else None
-            try:
-                exec(compile(stmt, "<answer_formula>", "exec"), globals_ns, locals_ns)
-            except Exception as ex:
-                fatal_error = f"Line {lineno}: {ex}"
-                warnings.append(fatal_error)
-                break
+        if len(stmt.body) != 1:
+            fatal_error = f"Line {lineno}: only one statement is allowed per line."
+            warnings.append(fatal_error)
+            break
 
-            targets = _line_targets(node) if node is not None else []
-            if targets:
-                for target in targets:
-                    value = locals_ns.get(target)
-                    rendered_lines.append(f"{target} = {_format_value(value)}")
+        node = stmt.body[0]
+        try:
+            if isinstance(node, ast.Expr):
+                value = _evaluate_formula_expression(
+                    ast.unparse(node.value), locals_ns, globals_ns
+                )
+                steps.append(("expr", None, value))
+                last_value = value
+                continue
+
+            if isinstance(node, ast.Assign):
+                value = _evaluate_formula_expression(
+                    ast.unparse(node.value), locals_ns, globals_ns
+                )
+                targets = _line_targets(node)
+                if not targets:
+                    steps.append(("text", None, line))
+                    continue
+                assigned_values = [value] * len(targets)
+                if len(targets) > 1 and isinstance(value, (tuple, list)):
+                    if len(value) != len(targets):
+                        raise SolutionRuntimeError(
+                            f"Line {lineno}: unpacking count does not match targets."
+                        )
+                    assigned_values = list(value)
+                for target, assigned_value in zip(targets, assigned_values):
+                    locals_ns[target] = assigned_value
+                    steps.append(("assign", target, assigned_value))
+                    last_value = assigned_value
+                    if target == "answer":
+                        if not explicit_answer_defined:
+                            warnings.append(
+                                "Formula defines answer directly; it will not be overwritten."
+                            )
+                        explicit_answer_defined = True
+                continue
+
+            if isinstance(node, ast.AnnAssign):
+                if node.value is None:
+                    raise SolutionRuntimeError(
+                        f"Line {lineno}: annotated assignments require a value."
+                    )
+                target_names = _line_targets(node)
+                if not target_names:
+                    raise SolutionRuntimeError(
+                        f"Line {lineno}: could not resolve assignment target."
+                    )
+                value = _evaluate_formula_expression(
+                    ast.unparse(node.value), locals_ns, globals_ns
+                )
+                for target in target_names:
+                    locals_ns[target] = value
+                    steps.append(("assign", target, value))
                     last_value = value
                     if target == "answer":
                         if not explicit_answer_defined:
@@ -187,25 +275,74 @@ def evaluate_answer_formula(
                                 "Formula defines answer directly; it will not be overwritten."
                             )
                         explicit_answer_defined = True
-            else:
-                rendered_lines.append(line)
-            continue
+                continue
 
-        try:
-            value = eval(
-                compile(expr, "<answer_formula>", "eval"), globals_ns, locals_ns
+            if isinstance(node, ast.AugAssign):
+                target_names = _line_targets(node)
+                if len(target_names) != 1:
+                    raise SolutionRuntimeError(
+                        f"Line {lineno}: augmented assignment must target one name."
+                    )
+                target = target_names[0]
+                if target not in locals_ns:
+                    raise SolutionRuntimeError(
+                        f"Line {lineno}: unknown name '{target}' in augmented assignment."
+                    )
+                rhs_value = _evaluate_formula_expression(
+                    ast.unparse(node.value), locals_ns, globals_ns
+                )
+                current = locals_ns[target]
+                if isinstance(node.op, ast.Add):
+                    value = current + rhs_value
+                elif isinstance(node.op, ast.Sub):
+                    value = current - rhs_value
+                elif isinstance(node.op, ast.Mult):
+                    value = current * rhs_value
+                elif isinstance(node.op, ast.Div):
+                    value = current / rhs_value
+                elif isinstance(node.op, ast.FloorDiv):
+                    value = current // rhs_value
+                elif isinstance(node.op, ast.Mod):
+                    value = current % rhs_value
+                elif isinstance(node.op, ast.Pow):
+                    value = current**rhs_value
+                else:
+                    raise SolutionRuntimeError(
+                        f"Line {lineno}: unsupported augmented assignment operator."
+                    )
+                locals_ns[target] = value
+                steps.append(("assign", target, value))
+                last_value = value
+                if target == "answer":
+                    if not explicit_answer_defined:
+                        warnings.append(
+                            "Formula defines answer directly; it will not be overwritten."
+                        )
+                    explicit_answer_defined = True
+                continue
+
+            raise SolutionRuntimeError(
+                f"Line {lineno}: unsupported statement type {type(node).__name__}."
             )
         except Exception as ex:
             fatal_error = f"Line {lineno}: {ex}"
             warnings.append(fatal_error)
             break
 
-        rendered_lines.append(f"result = {_format_value(value)}")
-        last_value = value
+    for kind, target, value in steps:
+        if kind == "expr":
+            rendered_lines.append(f"result = {_format_value(value)}")
+        elif kind == "assign" and target is not None:
+            rendered_lines.append(f"{target} = {_format_value(value)}")
+        elif kind == "text" and target is None:
+            rendered_lines.append(str(value))
 
-    if "answer" not in locals_ns and last_value is not None:
+    if fatal_error is None and "answer" not in locals_ns and last_value is not None:
         locals_ns["answer"] = last_value
-        rendered_lines.append(f"answer = {_format_value(last_value)}")
+        if steps and steps[-1][0] == "expr" and not explicit_answer_defined:
+            rendered_lines[-1] = f"answer = {_format_value(last_value)}"
+        else:
+            rendered_lines.append(f"answer = {_format_value(last_value)}")
 
     return locals_ns, rendered_lines, warnings, fatal_error
 
@@ -227,10 +364,10 @@ def run_answer_formula(
         formula_md, params
     )
     answer_value = locals_ns.get("answer")
-    if answer_value is None and strict:
-        raise SolutionRuntimeError("Formula must produce an answer value.")
     if fatal_error and strict:
         raise SolutionRuntimeError(fatal_error)
+    if answer_value is None and strict:
+        raise SolutionRuntimeError("Formula must produce an answer value.")
     answer_md = render_template_from_values(answer_text_md, locals_ns)
     return AnswerRunResult(
         calculated_variables_md="\n".join(rendered_lines).strip(),
@@ -240,12 +377,6 @@ def run_answer_formula(
         ),
         warnings=warnings,
     )
-
-
-def run_answer_function(
-    python_code: str, params: dict[str, Any] | None = None
-) -> AnswerRunResult:
-    return run_answer_formula(python_code, params, strict=True)
 
 
 _evaluate_answer_formula = evaluate_answer_formula

@@ -135,7 +135,7 @@ def test_prompt_preview_endpoint_returns_composed_payload(tmp_path) -> None:
             }
 
     app.state.ai = _PreviewAI()
-    resp = client.post("/questions/q2/ai/preview/generate-answer-function")
+    resp = client.post("/questions/q2/ai/preview/generate-answer-formula")
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["ok"] is True

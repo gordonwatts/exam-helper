@@ -250,7 +250,7 @@ def test_generate_typed_solution_sets_status_fresh(tmp_path) -> None:
     assert body["typed_solution_status"] == "fresh"
 
 
-def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> None:
+def test_generate_answer_formula_retries_with_runtime_feedback(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key="k")
@@ -278,26 +278,81 @@ def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> Non
         def __init__(self):
             self.calls = 0
 
-        def generate_answer_function(self, question, error_feedback=""):
+        def generate_answer_formula(self, question, error_feedback=""):
             self.calls += 1
             if self.calls == 1:
-                return AIService.AnswerFunctionResult(
+                return AIService.AnswerFormulaResult(
                     answer_formula_md="answer = x",
                     usage=AIUsageTotals(),
                 )
-            return AIService.AnswerFunctionResult(
+            return AIService.AnswerFormulaResult(
                 answer_formula_md="x = 1\nanswer = x",
                 usage=AIUsageTotals(),
             )
 
     fake = _AI()
     app.state.ai = fake
-    resp = client.post("/questions/q_answer_retry/ai/generate-answer-function")
+    resp = client.post("/questions/q_answer_retry/ai/generate-answer-formula")
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] is True
     assert "answer" in data["answer_formula_md"]
     assert fake.calls == 2
+
+
+def test_autosave_keeps_last_good_answer_preview_when_formula_has_warning(
+    tmp_path,
+) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    _seed_question(client, "q_warning")
+
+    first = client.post(
+        "/questions/q_warning/autosave",
+        json={
+            "title": "T",
+            "question_type": "free_response",
+            "question_template_md": "P",
+            "solution_parameters_yaml": "{v: 5}",
+            "answer_formula_md": "answer = v",
+            "answer_guidance": "{{answer}}",
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["rendered_answer_md"] == "5"
+
+    second = client.post(
+        "/questions/q_warning/autosave",
+        json={
+            "title": "T",
+            "question_type": "free_response",
+            "question_template_md": "P",
+            "solution_parameters_yaml": "{v: 5}",
+            "answer_formula_md": "answer = missing_name",
+            "answer_guidance": "{{answer}}",
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    assert second.status_code == 200
+    body = second.json()
+    assert body["ok"] is True
+    assert body["warning"]
+    assert body["rendered_answer_md"] == "5"
+    saved = repo.get_question("q_warning")
+    assert saved.solution.last_computed_answer_md == "5"
 
 
 def test_harness_run_preserves_latex_backslashes_in_answer_output(tmp_path) -> None:

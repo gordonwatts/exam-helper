@@ -110,14 +110,14 @@ def test_ai_service_rewrite_parameterize_normalizes_fraction_and_drops_figure_re
     assert "fig_1" in out.question_template_md
 
 
-def test_ai_service_generate_answer_function(monkeypatch) -> None:
+def test_ai_service_generate_answer_formula(monkeypatch) -> None:
     from exam_helper import ai_service as mod
 
     payload = """{"answer_formula_md":"x = 1\\nanswer = x"}"""
     monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
     svc = AIService(api_key="k")
     q = Question(id="q1", title="t", prompt_md="old")
-    out = svc.generate_answer_function(q)
+    out = svc.generate_answer_formula(q)
     assert "answer = x" in out.answer_formula_md
 
 

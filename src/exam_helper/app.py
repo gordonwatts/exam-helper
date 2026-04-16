@@ -27,6 +27,7 @@ from exam_helper.models import (
 from exam_helper.normalization import normalize_markdown_math_delimiters
 from exam_helper.repository import ProjectRepository
 from exam_helper.solution_runtime import (
+    evaluate_answer_formula,
     render_template_from_values,
     run_answer_formula,
     run_mc_harness,
@@ -41,7 +42,6 @@ class AutosavePayload(BaseModel):
     question_template_md: str = ""
     solution_parameters_yaml: str = "{}"
     answer_formula_md: str = ""
-    answer_python_code: str = ""
     answer_guidance: str = ""
     distractor_functions_text: str = ""
     choices_yaml: str = "[]"
@@ -268,8 +268,8 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             "calculated_variables_md": answer_preview["calculated_variables_md"],
             "answer_formula_warning": answer_preview["warning"],
             "rendered_answer_md": (
-                question.solution.typed_solution_md
-                if question and question.solution.typed_solution_md.strip()
+                question.solution.last_computed_answer_md
+                if question and question.solution.last_computed_answer_md.strip()
                 else answer_preview["rendered_answer_md"]
             ),
             "question_id_default": (
@@ -284,28 +284,31 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "calculated_variables_md": "",
                 "rendered_answer_md": "",
                 "warning": "",
+                "fatal_error": "",
             }
         try:
-            result = run_answer_formula(
+            locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
                 question.solution.answer_formula_md,
                 question.solution.parameters,
-                answer_text_md=question.solution.answer_guidance,
-                strict=False,
             )
             return {
                 "calculated_variables_md": normalize_markdown_math_delimiters(
-                    result.calculated_variables_md
+                    "\n".join(rendered_lines).strip()
                 ),
                 "rendered_answer_md": normalize_markdown_math_delimiters(
-                    result.answer_md
+                    render_template_from_values(
+                        question.solution.answer_guidance, locals_ns
+                    ).strip()
                 ),
-                "warning": " | ".join(result.warnings),
+                "warning": " | ".join(warnings),
+                "fatal_error": fatal_error or "",
             }
         except Exception as ex:
             return {
                 "calculated_variables_md": "",
                 "rendered_answer_md": "",
                 "warning": str(ex),
+                "fatal_error": str(ex),
             }
 
     def _mark_typed_solution_stale_if_needed(
@@ -402,7 +405,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         choices_yaml: str = Form("[]"),
         solution_parameters_yaml: str = Form("{}"),
         answer_formula_md: str = Form(""),
-        answer_python_code: str = Form(""),
         answer_guidance: str = Form(""),
         distractor_functions_text: str = Form(""),
         typed_solution_md: str = Form(""),
@@ -432,11 +434,13 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         question_template_md
                     ),
                     "parameters": solution_parameters,
-                    "answer_formula_md": answer_formula_md or answer_python_code,
+                    "answer_formula_md": answer_formula_md,
                     "answer_guidance": answer_guidance,
                     "distractor_python_code": distractor_funcs,
                     "typed_solution_md": normalize_markdown_math_delimiters(
                         typed_solution_md
+                        if typed_solution_md
+                        else (existing.solution.typed_solution_md if existing else "")
                     ),
                     "typed_solution_status": typed_solution_status,
                     "last_computed_answer_md": (
@@ -451,9 +455,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             }
         )
         preview = _compute_answer_preview(question)
-        if preview["rendered_answer_md"]:
-            question.solution.typed_solution_md = preview["rendered_answer_md"]
-        question.solution.last_computed_answer_md = preview["rendered_answer_md"]
+        if not preview["fatal_error"]:
+            question.solution.last_computed_answer_md = (
+                preview["rendered_answer_md"]
+                or question.solution.last_computed_answer_md
+            )
         _mark_typed_solution_stale_if_needed(existing, question)
         repo.save_question(question)
         return RedirectResponse("/", status_code=303)
@@ -488,13 +494,15 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                             payload.question_template_md
                         ),
                         "parameters": solution_parameters,
-                        "answer_formula_md": (
-                            payload.answer_formula_md or payload.answer_python_code
-                        ),
+                        "answer_formula_md": payload.answer_formula_md,
                         "answer_guidance": payload.answer_guidance,
                         "distractor_python_code": distractor_funcs,
                         "typed_solution_md": normalize_markdown_math_delimiters(
                             payload.typed_solution_md
+                            if payload.typed_solution_md
+                            else (
+                                existing.solution.typed_solution_md if existing else ""
+                            )
                         ),
                         "typed_solution_status": payload.typed_solution_status,
                         "last_computed_answer_md": (
@@ -511,9 +519,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 }
             )
             preview = _compute_answer_preview(question)
-            if preview["rendered_answer_md"]:
-                question.solution.typed_solution_md = preview["rendered_answer_md"]
-            question.solution.last_computed_answer_md = preview["rendered_answer_md"]
+            if not preview["fatal_error"]:
+                question.solution.last_computed_answer_md = (
+                    preview["rendered_answer_md"]
+                    or question.solution.last_computed_answer_md
+                )
             _mark_typed_solution_stale_if_needed(existing, question)
             repo.save_question(question)
             return JSONResponse(
@@ -521,7 +531,10 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "ok": True,
                     "typed_solution_status": question.solution.typed_solution_status,
                     "calculated_variables_md": preview["calculated_variables_md"],
-                    "rendered_answer_md": preview["rendered_answer_md"],
+                    "rendered_answer_md": (
+                        question.solution.last_computed_answer_md
+                        or preview["rendered_answer_md"]
+                    ),
                     "warning": preview["warning"],
                 }
             )
@@ -588,13 +601,13 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             )
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
-    @app.post("/questions/{question_id}/ai/generate-answer-function")
-    def ai_generate_answer_function(question_id: str) -> dict:
+    @app.post("/questions/{question_id}/ai/generate-answer-formula")
+    def ai_generate_answer_formula(question_id: str) -> dict:
         try:
             q = repo.get_question(question_id)
             error_feedback = ""
             for _ in range(3):
-                result = app.state.ai.generate_answer_function(
+                result = app.state.ai.generate_answer_formula(
                     q, error_feedback=error_feedback
                 )
                 repo.add_ai_usage(result.usage)
@@ -602,10 +615,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     run_answer_formula(
                         result.answer_formula_md, q.solution.parameters, strict=True
                     )
-                    return {
-                        "ok": True,
-                        "answer_formula_md": result.answer_formula_md,
-                    }
+                    return {"ok": True, "answer_formula_md": result.answer_formula_md}
                 except Exception as ex:
                     error_feedback = str(ex)
                     q.solution.answer_formula_md = result.answer_formula_md
@@ -755,7 +765,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             q = repo.get_question(question_id)
             valid_actions = {
                 "rewrite-and-parameterize": "rewrite_parameterize",
-                "generate-answer-function": "generate_answer_function",
+                "generate-answer-formula": "generate_answer_formula",
                 "generate-mc-distractors": "generate_distractor_functions",
                 "generate-typed-solution": "generate_typed_solution",
             }

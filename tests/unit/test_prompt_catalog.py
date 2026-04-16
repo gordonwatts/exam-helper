@@ -26,7 +26,7 @@ def test_prompt_catalog_builds_answer_formula_prompt() -> None:
     q = Question(id="q1", title="T", prompt_md="P")
     q.solution.answer_formula_md = "answer = 1"
     q.solution.answer_guidance = "Use the final value."
-    bundle = catalog.compose(action="generate_answer_function", question=q)
+    bundle = catalog.compose(action="generate_answer_formula", question=q)
     assert "Answer Formula (SymPy):" in bundle.user_prompt
     assert "Answer Text (Markdown):" in bundle.user_prompt
 
@@ -50,7 +50,7 @@ def test_prompt_catalog_applies_solution_and_mc_override_to_answer_generation() 
     catalog = PromptCatalog.from_package_yaml()
     q = Question(id="q1", title="T", prompt_md="P")
     bundle = catalog.compose(
-        action="generate_answer_function",
+        action="generate_answer_formula",
         question=q,
         prompts_override=AIPromptConfig(
             solution_and_mc="Keep units explicit in final_answer."

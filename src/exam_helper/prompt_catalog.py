@@ -33,7 +33,7 @@ class PromptCatalog:
             raise ValueError("prompt_templates.yaml must define 'actions' mapping")
         required = {
             "rewrite_parameterize",
-            "generate_answer_function",
+            "generate_answer_formula",
             "generate_distractor_functions",
             "generate_typed_solution",
         }
@@ -140,7 +140,7 @@ class PromptCatalog:
                 ("Question Template (Markdown)", "question_template_md", "markdown"),
                 ("Template Parameters (YAML)", "solution_parameters_yaml", "yaml"),
             ],
-            "generate_answer_function": [
+            "generate_answer_formula": [
                 ("Question Type", "question_type", None),
                 ("Title", "title", None),
                 ("Question Template (Markdown)", "question_template_md", "markdown"),

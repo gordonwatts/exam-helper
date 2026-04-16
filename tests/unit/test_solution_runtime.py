@@ -15,7 +15,7 @@ from exam_helper.solution_runtime import (
 
 def test_evaluate_answer_formula_returns_raw_evaluation_state() -> None:
     locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
-        "x = params['v']\ny = x + 2\nanswer = y", {"v": 5}
+        "x = v\ny = x + 2\nanswer = y", {"v": 5}
     )
     assert locals_ns["x"] == 5
     assert locals_ns["y"] == 7
@@ -30,13 +30,14 @@ def test_evaluate_answer_formula_reports_fatal_errors() -> None:
         "x = 1\nanswer = missing_name", {}
     )
     assert locals_ns["x"] == 1
-    assert rendered_lines == ["x = 1", "answer = 1"]
+    assert "answer" not in locals_ns
+    assert rendered_lines == ["x = 1"]
     assert warnings
     assert fatal_error is not None
 
 
 def test_answer_formula_success() -> None:
-    code = "v = float(params.get('v', 1.0))\nanswer = v"
+    code = "v = float(v)\nanswer = v"
     result = run_answer_formula(
         code, {"v": 2.5}, answer_text_md="v={{v}} m/s", strict=True
     )
@@ -52,8 +53,19 @@ def test_answer_formula_requires_nonempty_formula() -> None:
 
 def test_answer_formula_tracks_last_expression() -> None:
     result = run_answer_formula("x = 1\nx + 2", {}, strict=True)
-    assert result.calculated_variables_md == "x = 1\nresult = 3\nanswer = 3"
+    assert result.calculated_variables_md == "x = 1\nanswer = 3"
     assert result.final_answer == "3"
+
+
+def test_answer_formula_does_not_backfill_answer_after_a_fatal_error() -> None:
+    locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
+        "x = 1\nanswer = missing_name", {}
+    )
+    assert locals_ns["x"] == 1
+    assert "answer" not in locals_ns
+    assert rendered_lines == ["x = 1"]
+    assert warnings
+    assert fatal_error is not None
 
 
 def test_answer_formula_warns_when_answer_is_defined_directly() -> None:
