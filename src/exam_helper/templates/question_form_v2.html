@@ -78,9 +78,6 @@
         padding: 1rem;
         box-shadow: 0 10px 30px rgba(72, 52, 24, 0.06);
       }
-      .card.readonly-card {
-        background: var(--surface-strong);
-      }
       .card h2,
       .card strong {
         color: var(--text);
@@ -118,29 +115,9 @@
         min-height: 140px;
         overflow: auto;
       }
-      .preview-surface {
-        background: #f5d889;
-        border: 1px solid rgba(154, 52, 18, 0.15);
-        border-radius: 12px;
-        min-height: 140px;
-        max-height: 220px;
-        overflow: auto;
-        padding: 0.75rem;
-      }
-      .preview-surface h1,
-      .preview-surface h2,
-      .preview-surface h3,
-      .preview-surface h4,
-      .preview-surface h5,
-      .preview-surface h6 {
-        margin-top: 0.4rem;
-      }
-      .preview-surface p:first-child,
-      .preview-surface ul:first-child,
-      .preview-surface ol:first-child {
-        margin-top: 0;
-      }
       .formula-preview {
+        min-height: 140px;
+        overflow: auto;
         white-space: pre-wrap;
         font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
       }
@@ -283,9 +260,9 @@
             <textarea name="answer_formula_md" id="answer_formula_md">{{ answer_formula_md if question else '' }}</textarea>
             <p class="hint" id="answer_formula_warning">{{ answer_formula_warning if question else '' }}</p>
           </div>
-          <div class="card readonly-card">
+          <div class="card preview">
             <label>Calculated Variables</label>
-            <div id="calculated_variables_md" class="preview-surface formula-preview" aria-readonly="true">{{ calculated_variables_md if question else '' }}</div>
+            <div id="calculated_variables_md" class="formula-preview" aria-readonly="true">{{ calculated_variables_md if question else '' }}</div>
           </div>
         </div>
 
@@ -295,9 +272,9 @@
             <p class="hint">Use <code>{{ '{{variable}}' }}</code> placeholders for parameters or values defined in the formula box.</p>
             <textarea name="answer_guidance" id="answer_guidance">{{ answer_guidance if question else '' }}</textarea>
           </div>
-          <div class="card readonly-card">
+          <div class="card preview">
             <label for="rendered_answer_md">Markdown Answer</label>
-            <div id="rendered_answer_md" class="preview-surface" aria-readonly="true">{{ rendered_answer_md if question else '' }}</div>
+            <div id="rendered_answer_md" aria-readonly="true">{{ rendered_answer_md if question else '' }}</div>
           </div>
         </div>
 
