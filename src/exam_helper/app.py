@@ -834,9 +834,15 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         params=q.solution.parameters,
                         strict=True,
                     )
+                    mc_preview = _compute_mc_preview(
+                        answer_formula_md=q.solution.answer_formula_md,
+                        mc_answer_specs=q.solution.mc_answer_specs,
+                        params=q.solution.parameters,
+                    )
                     payload["mc_correct_answer_md"] = harness.correct_answer_md
-                    payload["mc_preview_rows"] = harness.row_previews
-                    payload["mc_preview_warning"] = " | ".join(harness.warnings)
+                    payload["mc_preview_rows"] = mc_preview["rows"]
+                    payload["mc_preview_warning"] = mc_preview["warning"]
+                    payload["mc_preview_choices"] = mc_preview["preview_choices"]
                     payload["choices_yaml"] = dump_choices_yaml(harness.choices)
                     payload["collisions"] = harness.collisions
                     if harness.collisions:

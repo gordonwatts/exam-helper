@@ -213,6 +213,55 @@ def test_autosave_updates_mc_formula_preview(tmp_path) -> None:
     assert [c.content_md for c in saved.choices][0] == "2"
 
 
+def test_harness_run_keeps_correct_answer_out_of_distractor_rows(tmp_path) -> None:
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    _seed_question(client, "q_mc_harness_rows", qtype="multiple_choice")
+    client.post(
+        "/questions/q_mc_harness_rows/autosave",
+        json={
+            "title": "T",
+            "question_type": "multiple_choice",
+            "question_template_md": "P",
+            "solution_parameters_yaml": '{"offset": 10}',
+            "answer_formula_md": "base = 2\nanswer = base + offset",
+            "mc_answer_specs_json": (
+                "["
+                '{"formula_md":"answer = base + 1","rationale_md":"r1"},'
+                '{"formula_md":"answer = base + 2","rationale_md":"r2"},'
+                '{"formula_md":"answer = base + 3","rationale_md":"r3"},'
+                '{"formula_md":"answer = base + 4","rationale_md":"r4"}'
+                "]"
+            ),
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    resp = client.post("/questions/q_mc_harness_rows/harness/run")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert [row["preview_md"] for row in body["mc_preview_rows"]] == [
+        "3",
+        "4",
+        "5",
+        "6",
+    ]
+    assert [choice["content_md"] for choice in body["mc_preview_choices"]] == [
+        "3",
+        "4",
+        "5",
+        "6",
+        "12",
+    ]
+
+
 def test_generate_mc_distractors_retries_and_returns_partial_unique_set(
     tmp_path,
 ) -> None:
