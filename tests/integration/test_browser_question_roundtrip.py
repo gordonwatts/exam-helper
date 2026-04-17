@@ -75,11 +75,8 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                 "question_type": "free_response",
                 "question_template_md": "A block moves with speed {{v}} m/s.",
                 "solution_parameters_yaml": "v: 7.5",
-                "answer_guidance": "Use kinematics.",
-                "answer_python_code": (
-                    "def solve(params):\n"
-                    "    return {'answer_md':'7.5 m/s','final_answer':'7.5 m/s'}\n"
-                ),
+                "answer_formula_md": "v = float(v)\nanswer = v",
+                "answer_guidance": "Use kinematics: {{v}} m/s.",
                 "mc_options_guidance": "Avoid sign-error distractors.",
                 "distractor_functions_text": "",
                 "choices_yaml": "[]",
@@ -114,17 +111,20 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                     page.locator("#solution_parameters_yaml").input_value().strip()
                     == "v: 7.5"
                 )
-                assert page.locator("#typed_solution_md").input_value() == (
-                    "It moves at 7.5 m/s."
+                assert page.locator("#answer_formula_md").input_value().strip() == (
+                    "v = float(v)\nanswer = v"
+                )
+                assert page.locator("#rendered_answer_md").inner_text() == (
+                    "Use kinematics: 7.5 m/s."
                 )
                 assert page.locator("#points").input_value() == "8"
                 assert (
-                    page.locator("#answer_guidance").input_value() == "Use kinematics."
+                    page.locator("#answer_guidance").input_value()
+                    == "Use kinematics: {{v}} m/s."
                 )
-                assert (
-                    page.locator("#answer_python_code").input_value()
-                    == "def solve(params):\n    return {'answer_md':'7.5 m/s','final_answer':'7.5 m/s'}\n"
-                )
+                assert page.locator(
+                    "#calculated_variables_md"
+                ).inner_text().strip() == ("v = 7.5\nanswer = 7.5")
                 assert (
                     page.locator("#mc_options_guidance").input_value()
                     == "Avoid sign-error distractors."
@@ -150,18 +150,20 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                     page.locator("#solution_parameters_yaml").input_value().strip()
                     == "v: 7.5"
                 )
-                assert (
-                    page.locator("#typed_solution_md").input_value()
-                    == "It moves at 7.5 m/s."
+                assert page.locator("#answer_formula_md").input_value().strip() == (
+                    "v = float(v)\nanswer = v"
+                )
+                assert page.locator("#rendered_answer_md").inner_text() == (
+                    "Use kinematics: 7.5 m/s."
                 )
                 assert page.locator("#points").input_value() == "8"
                 assert (
-                    page.locator("#answer_guidance").input_value() == "Use kinematics."
+                    page.locator("#answer_guidance").input_value()
+                    == "Use kinematics: {{v}} m/s."
                 )
-                assert (
-                    page.locator("#answer_python_code").input_value()
-                    == "def solve(params):\n    return {'answer_md':'7.5 m/s','final_answer':'7.5 m/s'}\n"
-                )
+                assert page.locator(
+                    "#calculated_variables_md"
+                ).inner_text().strip() == ("v = 7.5\nanswer = 7.5")
                 assert (
                     page.locator("#mc_options_guidance").input_value()
                     == "Avoid sign-error distractors."

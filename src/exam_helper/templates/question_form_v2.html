@@ -115,6 +115,12 @@
         min-height: 140px;
         overflow: auto;
       }
+      .formula-preview {
+        min-height: 140px;
+        overflow: auto;
+        white-space: pre-wrap;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      }
       .status {
         min-height: 1.2rem;
         color: var(--muted);
@@ -176,6 +182,27 @@
         grid-template-columns: 1fr 1fr;
         gap: 1rem;
       }
+      .mc-answer-list {
+        display: grid;
+        gap: 0.85rem;
+      }
+      .mc-answer-row {
+        display: grid;
+        gap: 0.65rem;
+      }
+      .mc-answer-row textarea {
+        min-height: 100px;
+      }
+      .mc-row-title {
+        margin: 0;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .mc-row-warning {
+        color: var(--warn);
+        font-size: 0.92rem;
+        min-height: 1.1rem;
+      }
       @media (max-width: 900px) {
         .row, .row3, .mc-preview-grid {
           grid-template-columns: 1fr;
@@ -204,10 +231,9 @@
       </div>
 
       <form method="post" action="/questions/save" id="question-form">
-        <textarea hidden name="answer_guidance" id="answer_guidance">{{ question.solution.answer_guidance if question else '' }}</textarea>
-        <textarea hidden name="answer_python_code" id="answer_python_code">{{ question.solution.answer_python_code if question else '' }}</textarea>
         <textarea hidden name="mc_options_guidance" id="mc_options_guidance">{{ question.mc_options_guidance if question else '' }}</textarea>
         <textarea hidden name="distractor_functions_text" id="distractor_functions_text">{{ distractor_functions_text }}</textarea>
+        <textarea hidden name="mc_answer_specs_json" id="mc_answer_specs_json">{{ mc_answer_specs_json }}</textarea>
         <textarea hidden name="typed_solution_status" id="typed_solution_status">{{ question.solution.typed_solution_status if question else 'missing' }}</textarea>
         <div class="row3">
           <div class="card">
@@ -249,30 +275,58 @@
           <textarea name="solution_parameters_yaml" id="solution_parameters_yaml">{{ solution_parameters_yaml if question else 'dummy: 5' }}</textarea>
         </div>
 
-        <div id="mc_block" class="card">
-          <label>MC Choices YAML (A-E)</label>
-          <textarea name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
-          <div class="mc-preview-grid" style="margin-top: 0.8rem;">
-            <div class="card preview">
-              <strong>MC Preview (Answers)</strong>
-              <div id="mc_preview_answers"></div>
-            </div>
-            <div class="card preview">
-              <strong>MC Preview (Answers + Explanations)</strong>
-              <div id="mc_preview_rationale"></div>
-            </div>
+        <div class="row">
+          <div class="card">
+            <label for="answer_formula_md">Answer Formula (SymPy)</label>
+            <p class="hint">Write one assignment or expression per line. Parameters can be referenced by name, and the final value should end up in <code>answer</code>.</p>
+            <textarea name="answer_formula_md" id="answer_formula_md">{{ answer_formula_md if question else '' }}</textarea>
+            <p class="hint" id="answer_formula_warning">{{ answer_formula_warning if question else '' }}</p>
+          </div>
+          <div class="card preview">
+            <label>Calculated Variables</label>
+            <div id="calculated_variables_md" class="formula-preview" aria-readonly="true">{{ calculated_variables_md if question else '' }}</div>
           </div>
         </div>
 
         <div class="row">
           <div class="card">
-            <label>Typed Solution</label>
-            <textarea name="typed_solution_md" id="typed_solution_md">{{ question.solution.typed_solution_md if question else '' }}</textarea>
+            <label for="answer_guidance">Answer Text (Markdown)</label>
+            <p class="hint">Use <code>{{ '{{variable}}' }}</code> placeholders for parameters or values defined in the formula box.</p>
+            <textarea name="answer_guidance" id="answer_guidance">{{ answer_guidance if question else '' }}</textarea>
           </div>
           <div class="card preview">
-            <strong>Typed Solution Preview</strong>
-            <div id="typed_solution_preview"></div>
+            <label for="rendered_answer_md">Markdown Answer</label>
+            <div id="rendered_answer_md" aria-readonly="true">{{ rendered_answer_md if question else '' }}</div>
           </div>
+        </div>
+
+        <div id="mc_block" class="card">
+          <label>Multiple Choice Distractors</label>
+          <p class="hint">The correct answer is pulled from the main answer formula. Fill in four distractor formulas and rationales below.</p>
+          <div class="mc-answer-list" style="margin-top: 0.75rem;">
+            {% for row in mc_answer_rows %}
+              <div class="card mc-answer-row" data-mc-row="{{ loop.index0 }}">
+                <p class="mc-row-title">Distractor {{ loop.index }}</p>
+                <label for="mc_answer_{{ loop.index }}_formula_md">SymPy Formula</label>
+                <textarea id="mc_answer_{{ loop.index }}_formula_md" data-mc-formula name="mc_answer_{{ loop.index }}_formula_md">{{ row.formula_md }}</textarea>
+                <label for="mc_answer_{{ loop.index }}_rationale_md">Rationale</label>
+                <textarea id="mc_answer_{{ loop.index }}_rationale_md" data-mc-rationale name="mc_answer_{{ loop.index }}_rationale_md">{{ row.rationale_md }}</textarea>
+                <div class="formula-preview" id="mc_answer_{{ loop.index }}_preview" aria-readonly="true">{{ row.preview_md }}</div>
+                <p class="mc-row-warning" id="mc_answer_{{ loop.index }}_warning">{{ row.warning }}</p>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="mc-preview-grid" style="margin-top: 0.8rem;">
+            <div class="card preview">
+              <strong>MC Preview (Answers)</strong>
+              <div id="mc_preview_answers">{{ mc_preview_answers if question else '' }}</div>
+            </div>
+            <div class="card preview">
+              <strong>MC Preview (Answers + Explanations)</strong>
+              <div id="mc_preview_rationale">{{ mc_preview_rationale if question else '' }}</div>
+            </div>
+          </div>
+          <p class="hint" id="mc_preview_warning">{{ mc_preview_warning if question else '' }}</p>
         </div>
 
         <div class="card" id="figures_section">
@@ -300,12 +354,14 @@
       const pointsEl = document.getElementById("points");
       const templateEl = document.getElementById("question_template_md");
       const paramsEl = document.getElementById("solution_parameters_yaml");
+      const answerFormulaEl = document.getElementById("answer_formula_md");
       const answerGuidanceEl = document.getElementById("answer_guidance");
-      const answerCodeEl = document.getElementById("answer_python_code");
       const mcOptionsGuidanceEl = document.getElementById("mc_options_guidance");
       const distractorFnsEl = document.getElementById("distractor_functions_text");
-      const choicesEl = document.getElementById("choices_yaml");
-      const typedSolutionEl = document.getElementById("typed_solution_md");
+      const mcAnswerSpecsEl = document.getElementById("mc_answer_specs_json");
+      const renderedAnswerEl = document.getElementById("rendered_answer_md");
+      const calculatedVariablesEl = document.getElementById("calculated_variables_md");
+      const answerFormulaWarningEl = document.getElementById("answer_formula_warning");
       const typedStatusEl = document.getElementById("typed_solution_status");
       const figuresInput = document.getElementById("figures_json");
       const figuresPreviewEl = document.getElementById("figures_preview");
@@ -316,8 +372,7 @@
       const mcBlock = document.getElementById("mc_block");
       const mcPreviewAnswers = document.getElementById("mc_preview_answers");
       const mcPreviewRationale = document.getElementById("mc_preview_rationale");
-      const typedPreview = document.getElementById("typed_solution_preview");
-
+      const mcPreviewWarning = document.getElementById("mc_preview_warning");
       let autosaveTimer = null;
 
       function setStatus(text, cls) {
@@ -495,48 +550,107 @@
           .replace(/<\/?b>/gi, "");
       }
 
-      function renderMCPreview() {
-        if (!isMC()) {
-          mcPreviewAnswers.innerHTML = "";
-          mcPreviewRationale.innerHTML = "";
-          return;
-        }
-        let choices = [];
+      function parseMCSpecs() {
         try {
-          choices = jsyaml.load(choicesEl.value || "[]") || [];
+          const parsed = JSON.parse(mcAnswerSpecsEl.value || "[]");
+          return Array.isArray(parsed) ? parsed : [];
         } catch {
-          mcPreviewAnswers.innerHTML = "<em>Invalid YAML</em>";
-          mcPreviewRationale.innerHTML = "<em>Invalid YAML</em>";
-          return;
-        }
-        choices = choices.slice().sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
-        mcPreviewAnswers.innerHTML = choices.map((c) => {
-          const content = stripDisallowedBold(String(c.content_md || "")).split("\n")[0];
-          const text = marked.parseInline(normalizeMathDelimitersForPreview(content));
-          const label = c.is_correct
-            ? `<strong>${String(c.label || "?")}.</strong>`
-            : `<span>${String(c.label || "?")}.</span>`;
-          return `<div>${label} <span>${text}</span></div>`;
-        }).join("");
-        mcPreviewRationale.innerHTML = choices.map((c) => {
-          const content = stripDisallowedBold(String(c.content_md || ""));
-          const text = marked.parseInline(normalizeMathDelimitersForPreview(content));
-          const label = c.is_correct
-            ? `<strong>${String(c.label || "?")}.</strong>`
-            : `<span>${String(c.label || "?")}.</span>`;
-          const rationaleText = stripDisallowedBold(String(c.rationale || ""));
-          const rationale = c.rationale ? `<div><em>${marked.parseInline(normalizeMathDelimitersForPreview(rationaleText))}</em></div>` : "";
-          return `<div>${label} <span>${text}</span>${rationale}</div>`;
-        }).join("");
-        if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([mcPreviewAnswers, mcPreviewRationale]);
+          return [];
         }
       }
 
-      function renderTypedPreview() {
-        typedPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(typedSolutionEl.value || ""));
+      function syncMCSpecsFromDOM() {
+        if (!isMC()) {
+          mcAnswerSpecsEl.value = "[]";
+          return [];
+        }
+        const specs = Array.from(document.querySelectorAll("[data-mc-row]")).map((row) => {
+          const formula = row.querySelector("[data-mc-formula]");
+          const rationale = row.querySelector("[data-mc-rationale]");
+          return {
+            formula_md: formula ? formula.value : "",
+            rationale_md: rationale ? rationale.value : "",
+          };
+        });
+        mcAnswerSpecsEl.value = JSON.stringify(specs);
+        return specs;
+      }
+
+      function renderMCPreviewFromData(data) {
+        if (!isMC()) {
+          mcPreviewAnswers.innerHTML = "";
+          mcPreviewRationale.innerHTML = "";
+          mcPreviewWarning.textContent = "";
+          Array.from(document.querySelectorAll("[id$='_preview']")).forEach((el) => {
+            if (el.id.startsWith("mc_answer_")) {
+              el.textContent = "";
+            }
+          });
+          return;
+        }
+        const rows = Array.isArray(data?.mc_preview_rows) ? data.mc_preview_rows : [];
+        const choices = Array.isArray(data?.mc_preview_choices) ? data.mc_preview_choices : [];
+        mcPreviewWarning.textContent = data?.mc_preview_warning ? `Warning: ${data.mc_preview_warning}` : "";
+        document.querySelectorAll("[data-mc-row]").forEach((row, idx) => {
+          const previewEl = document.getElementById(`mc_answer_${idx + 1}_preview`);
+          const warningEl = document.getElementById(`mc_answer_${idx + 1}_warning`);
+          if (previewEl) {
+            previewEl.innerHTML = "";
+          }
+          if (warningEl) {
+            warningEl.textContent = "";
+          }
+        });
+        rows.forEach((row, idx) => {
+          const previewEl = document.getElementById(`mc_answer_${idx + 1}_preview`);
+          const warningEl = document.getElementById(`mc_answer_${idx + 1}_warning`);
+          if (previewEl) {
+            const previewText = String(row?.preview_md || "");
+            previewEl.innerHTML = previewText ? marked.parse(normalizeMathDelimitersForPreview(previewText)) : "";
+          }
+          if (warningEl) {
+            warningEl.textContent = row?.warning ? `Warning: ${row.warning}` : "";
+          }
+        });
+        const previewAnswersHtml = choices.map((choice) => {
+          const label = escapeHtml(String(choice.label || "?"));
+          const content = marked.parseInline(
+            normalizeMathDelimitersForPreview(
+              stripDisallowedBold(String(choice.content_md || ""))
+            )
+          );
+          return `<div><strong>${label}.</strong> <span>${content}</span></div>`;
+        }).join("");
+        const previewRationaleHtml = choices.map((choice) => {
+          const label = escapeHtml(String(choice.label || "?"));
+          const content = marked.parseInline(
+            normalizeMathDelimitersForPreview(
+              stripDisallowedBold(String(choice.content_md || ""))
+            )
+          );
+          const rationaleText = stripDisallowedBold(String(choice.rationale || ""));
+          const rationale = rationaleText
+            ? ` - ${marked.parseInline(normalizeMathDelimitersForPreview(rationaleText))}`
+            : "";
+          return `<div><strong>${label}.</strong> <span>${content}${rationale}</span></div>`;
+        }).join("");
+        mcPreviewAnswers.innerHTML = previewAnswersHtml;
+        mcPreviewRationale.innerHTML = previewRationaleHtml;
         if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([typedPreview]);
+          window.MathJax.typesetPromise([mcPreviewAnswers, mcPreviewRationale]);
+          rows.forEach((_, idx) => {
+            const previewEl = document.getElementById(`mc_answer_${idx + 1}_preview`);
+            if (previewEl) {
+              window.MathJax.typesetPromise([previewEl]);
+            }
+          });
+        }
+      }
+
+      function renderMarkdownSurface(el, markdown) {
+        el.innerHTML = marked.parse(normalizeMathDelimitersForPreview(markdown || ""));
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([el]);
         }
       }
 
@@ -545,17 +659,17 @@
       }
 
       function serializePayload() {
+        syncMCSpecsFromDOM();
         return {
           title: titleEl.value,
           question_type: questionTypeEl.value,
           question_template_md: templateEl.value,
           solution_parameters_yaml: paramsEl.value,
+          answer_formula_md: answerFormulaEl.value,
           answer_guidance: answerGuidanceEl.value,
-          answer_python_code: answerCodeEl.value,
           mc_options_guidance: mcOptionsGuidanceEl.value,
           distractor_functions_text: distractorFnsEl.value,
-          choices_yaml: choicesEl.value,
-          typed_solution_md: typedSolutionEl.value,
+          mc_answer_specs_json: mcAnswerSpecsEl.value,
           typed_solution_status: typedStatusEl.value,
           figures_json: figuresInput.value || "[]",
           points: Number(pointsEl.value || 5),
@@ -576,7 +690,16 @@
           setStatus(`Save error: ${data.error || res.statusText}`, "warn");
           throw new Error(data.error || res.statusText);
         }
-        setStatus("Saved", "good");
+        if (typeof data.calculated_variables_md === "string") {
+          calculatedVariablesEl.textContent = data.calculated_variables_md;
+        }
+        if (typeof data.rendered_answer_md === "string") {
+          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
+        }
+        renderMCPreviewFromData(data);
+        answerFormulaWarningEl.textContent = data.warning ? `Warning: ${data.warning}` : "";
+        const statusWarning = [data.warning, data.mc_preview_warning].filter(Boolean).join(" | ");
+        setStatus(statusWarning ? "Saved with warning" : "Saved", statusWarning ? "warn" : "good");
       }
 
       function scheduleAutosave() {
@@ -587,12 +710,21 @@
         }, 1200);
       }
 
-      [questionTypeEl, titleEl, templateEl, paramsEl, choicesEl, typedSolutionEl, pointsEl].forEach((el) => {
+      [questionTypeEl, titleEl, templateEl, paramsEl, answerFormulaEl, answerGuidanceEl, pointsEl].forEach((el) => {
         el.addEventListener("input", () => {
+          if (el === answerFormulaEl) {
+            answerFormulaWarningEl.textContent = "";
+          }
           renderTemplate();
-          renderMCPreview();
-          renderTypedPreview();
+          syncMCSpecsFromDOM();
           updateMCVisibility();
+          scheduleAutosave();
+        });
+      });
+
+      document.querySelectorAll("[data-mc-row] textarea").forEach((el) => {
+        el.addEventListener("input", () => {
+          syncMCSpecsFromDOM();
           scheduleAutosave();
         });
       });
@@ -672,8 +804,19 @@
       });
 
       renderTemplate();
-      renderMCPreview();
-      renderTypedPreview();
+      syncMCSpecsFromDOM();
+      renderMCPreviewFromData({
+        mc_preview_choices: {{ mc_preview_choices | tojson }},
+        mc_preview_rows: Array.from(document.querySelectorAll("[data-mc-row]")).map((row, idx) => {
+          const preview = document.getElementById(`mc_answer_${idx + 1}_preview`);
+          const warning = document.getElementById(`mc_answer_${idx + 1}_warning`);
+          return {
+            preview_md: preview ? preview.textContent || "" : "",
+            warning: warning ? warning.textContent || "" : "",
+          };
+        }),
+      });
+      renderMarkdownSurface(renderedAnswerEl, renderedAnswerEl.textContent || "");
       updateMCVisibility();
       renderFiguresPreview();
     </script>

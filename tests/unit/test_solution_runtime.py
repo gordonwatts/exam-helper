@@ -6,26 +6,73 @@ import pytest
 
 from exam_helper.solution_runtime import (
     SolutionRuntimeError,
-    run_answer_function,
+    evaluate_answer_formula,
+    run_answer_formula,
+    run_mc_formula_harness,
     run_distractor_function,
     run_mc_harness,
 )
 
 
-def test_answer_function_success() -> None:
-    code = (
-        "def solve(params):\n"
-        "    v = float(params.get('v', 1.0))\n"
-        "    return {'answer_md': f'v={v:.1f} m/s', 'final_answer': f'{v:.1f} m/s'}\n"
+def test_evaluate_answer_formula_returns_raw_evaluation_state() -> None:
+    locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
+        "x = v\ny = x + 2\nanswer = y", {"v": 5}
     )
-    result = run_answer_function(code, {"v": 2.5})
+    assert locals_ns["x"] == 5
+    assert locals_ns["y"] == 7
+    assert locals_ns["answer"] == 7
+    assert rendered_lines == ["x = 5", "y = 7", "answer = 7"]
+    assert warnings == ["Formula defines answer directly; it will not be overwritten."]
+    assert fatal_error is None
+
+
+def test_evaluate_answer_formula_reports_fatal_errors() -> None:
+    locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
+        "x = 1\nanswer = missing_name", {}
+    )
+    assert locals_ns["x"] == 1
+    assert "answer" not in locals_ns
+    assert rendered_lines == ["x = 1"]
+    assert warnings
+    assert fatal_error is not None
+
+
+def test_answer_formula_success() -> None:
+    code = "v = float(v)\nanswer = v"
+    result = run_answer_formula(
+        code, {"v": 2.5}, answer_text_md="v={{v}} m/s", strict=True
+    )
+    assert result.calculated_variables_md == "v = 2.5\nanswer = 2.5"
     assert result.answer_md == "v=2.5 m/s"
-    assert result.final_answer == "2.5 m/s"
+    assert result.final_answer == "2.5"
 
 
-def test_answer_function_requires_solve() -> None:
-    with pytest.raises(SolutionRuntimeError, match="must define callable solve"):
-        run_answer_function("x = 1", {})
+def test_answer_formula_requires_nonempty_formula() -> None:
+    with pytest.raises(SolutionRuntimeError, match="Formula text is empty"):
+        run_answer_formula("", {})
+
+
+def test_answer_formula_tracks_last_expression() -> None:
+    result = run_answer_formula("x = 1\nx + 2", {}, strict=True)
+    assert result.calculated_variables_md == "x = 1\nanswer = 3"
+    assert result.final_answer == "3"
+
+
+def test_answer_formula_does_not_backfill_answer_after_a_fatal_error() -> None:
+    locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
+        "x = 1\nanswer = missing_name", {}
+    )
+    assert locals_ns["x"] == 1
+    assert "answer" not in locals_ns
+    assert rendered_lines == ["x = 1"]
+    assert warnings
+    assert fatal_error is not None
+
+
+def test_answer_formula_warns_when_answer_is_defined_directly() -> None:
+    result = run_answer_formula("answer = 5", {}, strict=True)
+    assert result.final_answer == "5"
+    assert result.warnings
 
 
 def test_distractor_function_success() -> None:
@@ -52,10 +99,7 @@ def test_distractor_function_repairs_swapped_answer_and_rationale() -> None:
 
 
 def test_harness_detects_collisions() -> None:
-    answer_code = (
-        "def solve(params):\n"
-        "    return {'answer_md': 'Answer is 2 m/s', 'final_answer': '2 m/s'}\n"
-    )
+    answer_code = "answer = '2 m/s'"
     distractor_code = (
         "def distractor(params):\n"
         "    return {'distractor_md': '2 m/s', 'rationale': 'duplicate'}\n"
@@ -74,10 +118,7 @@ def test_harness_detects_collisions() -> None:
 
 
 def test_harness_sorts_numeric_then_text_tiebreak_by_source() -> None:
-    answer_code = (
-        "def solve(params):\n"
-        "    return {'answer_md': 'Ans', 'final_answer': '10 m/s'}\n"
-    )
+    answer_code = "answer = '10 m/s'"
     d1 = "def distractor(params):\n    return {'distractor_md': '2 m/s', 'rationale': 'r'}\n"
     d2 = "def distractor(params):\n    return {'distractor_md': '20 m/s', 'rationale': 'r'}\n"
     d3 = "def distractor(params):\n    return {'distractor_md': 'alpha', 'rationale': 'r'}\n"
@@ -95,24 +136,75 @@ def test_harness_sorts_numeric_then_text_tiebreak_by_source() -> None:
     ]
 
 
-def test_answer_function_latex_sequences_do_not_emit_invalid_escape_warnings() -> None:
-    code = (
-        "def solve(params):\n"
-        "    return {'answer_md': '$\\theta$', 'final_answer': '$\\lambda$'}\n"
+def test_mc_formula_harness_uses_answer_formula_for_the_correct_choice() -> None:
+    out = run_mc_formula_harness(
+        "answer = 2",
+        [
+            {"formula_md": "answer = 3", "rationale_md": "off by one"},
+            {"formula_md": "answer = 4", "rationale_md": "off by two"},
+            {"formula_md": "answer = 5", "rationale_md": "off by three"},
+            {"formula_md": "answer = 6", "rationale_md": "off by four"},
+        ],
+        {},
+        strict=True,
     )
+    assert out.correct_answer_md == "2"
+    assert [c.content_md for c in out.choices] == ["2", "3", "4", "5", "6"]
+    assert out.row_previews[0]["content_md"] == "2"
+    assert out.row_previews[1]["content_md"] == "3"
+
+
+def test_mc_formula_harness_allows_distractors_to_use_answer_locals() -> None:
+    out = run_mc_formula_harness(
+        "base = 2\nanswer = base + scale",
+        [
+            {"formula_md": "answer = base + 1", "rationale_md": "uses answer locals"},
+            {"formula_md": "answer = base + 2", "rationale_md": "uses answer locals"},
+            {"formula_md": "answer = base + 3", "rationale_md": "uses answer locals"},
+            {"formula_md": "answer = base + 4", "rationale_md": "uses answer locals"},
+        ],
+        {"scale": 5},
+        strict=True,
+    )
+    assert out.correct_answer_md == "7"
+    assert [c.content_md for c in out.choices] == ["3", "4", "5", "6", "7"]
+
+
+def test_mc_formula_harness_bare_distractor_expression_overrides_seed_answer() -> None:
+    out = run_mc_formula_harness(
+        "answer = 55",
+        [
+            {"formula_md": "33", "rationale_md": "constant distractor"},
+        ],
+        {},
+        strict=True,
+    )
+    assert out.row_previews[1]["content_md"] == "33"
+    assert [c.content_md for c in out.choices] == ["33", "55"]
+
+
+def test_evaluate_answer_formula_bare_expression_overrides_inherited_answer() -> None:
+    locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
+        "33",
+        {"answer": 55, "base": 2},
+    )
+    assert fatal_error is None
+    assert warnings == []
+    assert locals_ns["answer"] == 33
+    assert rendered_lines == ["answer = 33"]
+
+
+def test_answer_formula_latex_sequences_do_not_emit_invalid_escape_warnings() -> None:
+    code = "answer = 1"
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        result = run_answer_function(code, {})
+        result = run_answer_formula(code, {}, answer_text_md=r"$\theta$")
     assert result.answer_md == r"$\theta$"
-    assert result.final_answer == r"$\lambda$"
+    assert result.final_answer == "1"
     assert not [w for w in caught if "invalid escape sequence" in str(w.message)]
 
 
-def test_answer_function_preserves_existing_double_escaped_latex() -> None:
-    code = (
-        "def solve(params):\n"
-        "    return {'answer_md': '$\\\\theta$', 'final_answer': '$\\\\lambda$'}\n"
-    )
-    out = run_answer_function(code, {})
-    assert out.answer_md == r"$\theta$"
-    assert out.final_answer == r"$\lambda$"
+def test_answer_formula_preserves_existing_double_escaped_latex() -> None:
+    out = run_answer_formula("answer = 1", {}, answer_text_md=r"$\\theta$")
+    assert out.answer_md == r"$\\theta$"
+    assert out.final_answer == "1"

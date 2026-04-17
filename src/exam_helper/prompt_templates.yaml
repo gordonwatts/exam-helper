@@ -19,20 +19,22 @@ actions:
       Rewrite this question and extract parameters.
 
       {context_sections}
-  generate_answer_function:
+  generate_answer_formula:
     system_prompt: |
       Return exactly one strict JSON object with one key:
-      - answer_python_code
+      - answer_formula_md
 
-      answer_python_code must be Python code and must define:
-      - solve(params) -> dict with keys answer_md and final_answer
-
-      answer_md may include markdown and units, but must not use bold syntax.
-      final_answer must be concise answer text used for multiple-choice option generation, and must not use bold syntax.
+      answer_formula_md must be multiline SymPy expressions.
+      Use one expression or assignment per line.
+      Expressions may use any question parameter by name.
+      Intermediate variables may be defined and reused on later lines.
+      If the final line assigns a new variable, set answer to that same value.
+      If you create an answer variable, do not overwrite it.
+      Do not wrap the expressions in a solve() function.
       If LaTeX-style backslashes are needed inside Python string literals, escape them (for example \\theta, \\(x\\)).
       Do not include any prose before or after the JSON object.
     user_prompt_template: |
-      Write or revise the deterministic Answer Function (Python).
+      Write or revise the deterministic Answer Formula (SymPy expressions).
 
       {context_sections}
   generate_distractor_functions:
@@ -70,5 +72,3 @@ actions:
       Write or revise the worked Typed Solution (Markdown).
 
       {context_sections}
-
-

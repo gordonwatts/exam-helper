@@ -134,8 +134,14 @@ def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
     html = resp.text
     assert "New Question" in html
     assert 'id="figures_json"' in html
-    assert 'id="choices_yaml"' in html
-    assert 'id="typed_solution_md"' in html
+    assert 'id="mc_answer_specs_json"' in html
+    assert 'id="mc_answer_1_formula_md"' in html
+    assert "Multiple Choice Distractors" in html
+    assert "Correct Answer (auto-fed)" not in html
+    assert 'id="answer_formula_md"' in html
+    assert 'id="calculated_variables_md"' in html
+    assert 'id="answer_guidance"' in html
+    assert 'id="rendered_answer_md"' in html
     assert 'id="btn_rewrite"' not in html
     assert 'id="btn_generate_answer"' not in html
 
@@ -172,8 +178,13 @@ def test_edit2_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     assert edit_resp.status_code == 200
     edit_html = edit_resp.text
     assert 'id="figures_json"' in edit_html
-    assert 'id="choices_yaml"' in edit_html
-    assert 'id="typed_solution_md"' in edit_html
+    assert 'id="mc_answer_specs_json"' in edit_html
+    assert 'id="mc_answer_1_formula_md"' in edit_html
+    assert "Multiple Choice Distractors" in edit_html
+    assert "Correct Answer (auto-fed)" not in edit_html
+    assert 'id="answer_formula_md"' in edit_html
+    assert 'id="calculated_variables_md"' in edit_html
+    assert 'id="rendered_answer_md"' in edit_html
 
     save_resp = client.post(
         "/questions/save",
@@ -399,7 +410,7 @@ def test_autosave_persists_dollar_math_delimiters(tmp_path) -> None:
             "question_template_md": r"Given \\(v\\)",
             "solution_parameters_yaml": "{}",
             "answer_guidance": "",
-            "answer_python_code": "",
+            "answer_formula_md": "",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": r"So \\(v=1\\).",

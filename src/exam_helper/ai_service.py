@@ -40,8 +40,8 @@ class AIService:
         usage: AIUsageTotals
 
     @dataclass
-    class AnswerFunctionResult:
-        answer_python_code: str
+    class AnswerFormulaResult:
+        answer_formula_md: str
         usage: AIUsageTotals
 
     @dataclass
@@ -444,13 +444,13 @@ class AIService:
             usage=result.usage,
         )
 
-    def generate_answer_function(
+    def generate_answer_formula(
         self,
         question: Question,
         error_feedback: str = "",
-    ) -> AnswerFunctionResult:
+    ) -> AnswerFormulaResult:
         bundle = self.compose_prompt(
-            action="generate_answer_function", question=question
+            action="generate_answer_formula", question=question
         )
         if error_feedback.strip():
             bundle = PromptBundle(
@@ -459,11 +459,11 @@ class AIService:
             )
         result = self._text_with_question_context(bundle, question)
         payload = self._parse_json_object(result.text)
-        answer_python_code = str(payload.get("answer_python_code", "")).strip()
-        if not answer_python_code:
-            raise ValueError("AI response field 'answer_python_code' is required.")
-        return AIService.AnswerFunctionResult(
-            answer_python_code=answer_python_code,
+        answer_formula_md = str(payload.get("answer_formula_md", "")).strip()
+        if not answer_formula_md:
+            raise ValueError("AI response field 'answer_formula_md' is required.")
+        return AIService.AnswerFormulaResult(
+            answer_formula_md=answer_formula_md,
             usage=result.usage,
         )
 

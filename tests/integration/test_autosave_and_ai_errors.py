@@ -18,7 +18,7 @@ def _seed_question(client: TestClient, qid: str, qtype: str = "free_response") -
             "prompt_md": "old prompt",
             "question_template_md": "old template",
             "solution_parameters_yaml": "{}",
-            "answer_python_code": "",
+            "answer_formula_md": "",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
@@ -44,7 +44,7 @@ def test_autosave_marks_typed_solution_stale_on_parameter_change(tmp_path) -> No
             "prompt_md": "P",
             "question_template_md": "v={{v}}",
             "solution_parameters_yaml": "{v: 10}",
-            "answer_python_code": "def solve(params):\n    return {'answer_md':'10','final_answer':'10'}\n",
+            "answer_formula_md": "answer = 10",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "Draft",
@@ -61,7 +61,7 @@ def test_autosave_marks_typed_solution_stale_on_parameter_change(tmp_path) -> No
             "prompt_md": "P",
             "question_template_md": "v={{v}}",
             "solution_parameters_yaml": "{v: 11}",
-            "answer_python_code": "def solve(params):\n    return {'answer_md':'11','final_answer':'11'}\n",
+            "answer_formula_md": "answer = 11",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "Draft",
@@ -138,24 +138,16 @@ def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
             "prompt_md": "P",
             "question_template_md": "P",
             "solution_parameters_yaml": "{}",
-            "answer_python_code": "def solve(params):\n    return {'answer_md':'2','final_answer':'2'}\n",
-            "distractor_functions_text": (
-                "# distractor: d1\n"
-                "def distractor(params):\n"
-                "    return {'distractor_md':'2','rationale':'dup'}\n"
-                "---\n"
-                "# distractor: d2\n"
-                "def distractor(params):\n"
-                "    return {'distractor_md':'3','rationale':'r'}\n"
-                "---\n"
-                "# distractor: d3\n"
-                "def distractor(params):\n"
-                "    return {'distractor_md':'4','rationale':'r'}\n"
-                "---\n"
-                "# distractor: d4\n"
-                "def distractor(params):\n"
-                "    return {'distractor_md':'5','rationale':'r'}\n"
+            "answer_formula_md": "answer = 2",
+            "mc_answer_specs_json": (
+                "["
+                '{"formula_md":"answer = 2","rationale_md":"dup"},'
+                '{"formula_md":"answer = 3","rationale_md":"r"},'
+                '{"formula_md":"answer = 4","rationale_md":"r"},'
+                '{"formula_md":"answer = 5","rationale_md":"r"}'
+                "]"
             ),
+            "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
             "typed_solution_status": "missing",
@@ -167,6 +159,108 @@ def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
     assert resp.status_code == 422
     assert resp.json()["ok"] is False
     assert resp.json()["collisions"]
+
+
+def test_autosave_updates_mc_formula_preview(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    _seed_question(client, "q_mc_formula", qtype="multiple_choice")
+
+    resp = client.post(
+        "/questions/q_mc_formula/autosave",
+        json={
+            "title": "T",
+            "question_type": "multiple_choice",
+            "question_template_md": "P",
+            "solution_parameters_yaml": "{}",
+            "answer_formula_md": "answer = 2",
+            "answer_guidance": "Use the result {{answer}}.",
+            "mc_options_guidance": "",
+            "mc_answer_specs_json": (
+                "["
+                '{"formula_md":"answer = 3","rationale_md":"off by one"},'
+                '{"formula_md":"answer = 4","rationale_md":"off by two"},'
+                '{"formula_md":"answer = 5","rationale_md":"off by three"},'
+                '{"formula_md":"","rationale_md":"off by four"}'
+                "]"
+            ),
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert [choice["label"] for choice in body["mc_preview_choices"]] == [
+        "A",
+        "B",
+        "C",
+        "D",
+    ]
+    assert body["mc_preview_choices"][0]["content_md"] == "2"
+    assert "Formula defines answer directly" in body["warning"]
+    assert "choice_4" not in body["warning"]
+    assert "choice_4" in body["mc_preview_warning"]
+    assert body["mc_preview_rationale"].startswith("A. 2 -")
+    assert body["mc_preview_rows"]
+    saved = repo.get_question("q_mc_formula")
+    assert saved.solution.mc_answer_specs[0].formula_md == "answer = 3"
+    assert [c.content_md for c in saved.choices][0] == "2"
+
+
+def test_harness_run_keeps_correct_answer_out_of_distractor_rows(tmp_path) -> None:
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    _seed_question(client, "q_mc_harness_rows", qtype="multiple_choice")
+    client.post(
+        "/questions/q_mc_harness_rows/autosave",
+        json={
+            "title": "T",
+            "question_type": "multiple_choice",
+            "question_template_md": "P",
+            "solution_parameters_yaml": '{"offset": 10}',
+            "answer_formula_md": "base = 2\nanswer = base + offset",
+            "mc_answer_specs_json": (
+                "["
+                '{"formula_md":"answer = base + 1","rationale_md":"r1"},'
+                '{"formula_md":"answer = base + 2","rationale_md":"r2"},'
+                '{"formula_md":"answer = base + 3","rationale_md":"r3"},'
+                '{"formula_md":"answer = base + 4","rationale_md":"r4"}'
+                "]"
+            ),
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    resp = client.post("/questions/q_mc_harness_rows/harness/run")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert [row["preview_md"] for row in body["mc_preview_rows"]] == [
+        "3",
+        "4",
+        "5",
+        "6",
+    ]
+    assert [choice["content_md"] for choice in body["mc_preview_choices"]] == [
+        "3",
+        "4",
+        "5",
+        "6",
+        "12",
+    ]
 
 
 def test_generate_mc_distractors_retries_and_returns_partial_unique_set(
@@ -185,7 +279,7 @@ def test_generate_mc_distractors_retries_and_returns_partial_unique_set(
             "prompt_md": "P",
             "question_template_md": "P",
             "solution_parameters_yaml": "{}",
-            "answer_python_code": "def solve(params):\n    return {'answer_md':'2','final_answer':'2'}\n",
+            "answer_formula_md": "answer = 2",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
@@ -250,7 +344,7 @@ def test_generate_typed_solution_sets_status_fresh(tmp_path) -> None:
     assert body["typed_solution_status"] == "fresh"
 
 
-def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> None:
+def test_generate_answer_formula_retries_with_runtime_feedback(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key="k")
@@ -264,7 +358,7 @@ def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> Non
             "question_template_md": "P",
             "solution_parameters_yaml": "{v: 5}",
             "answer_guidance": "",
-            "answer_python_code": "",
+            "answer_formula_md": "",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
@@ -278,26 +372,81 @@ def test_generate_answer_function_retries_with_runtime_feedback(tmp_path) -> Non
         def __init__(self):
             self.calls = 0
 
-        def generate_answer_function(self, question, error_feedback=""):
+        def generate_answer_formula(self, question, error_feedback=""):
             self.calls += 1
             if self.calls == 1:
-                return AIService.AnswerFunctionResult(
-                    answer_python_code="def solve(params):\n    return {'answer_md':'x'}\n",
+                return AIService.AnswerFormulaResult(
+                    answer_formula_md="answer = x",
                     usage=AIUsageTotals(),
                 )
-            return AIService.AnswerFunctionResult(
-                answer_python_code="def solve(params):\n    return {'answer_md':'x','final_answer':'x'}\n",
+            return AIService.AnswerFormulaResult(
+                answer_formula_md="x = 1\nanswer = x",
                 usage=AIUsageTotals(),
             )
 
     fake = _AI()
     app.state.ai = fake
-    resp = client.post("/questions/q_answer_retry/ai/generate-answer-function")
+    resp = client.post("/questions/q_answer_retry/ai/generate-answer-formula")
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] is True
-    assert "final_answer" in data["answer_python_code"]
+    assert "answer" in data["answer_formula_md"]
     assert fake.calls == 2
+
+
+def test_autosave_keeps_last_good_answer_preview_when_formula_has_warning(
+    tmp_path,
+) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    _seed_question(client, "q_warning")
+
+    first = client.post(
+        "/questions/q_warning/autosave",
+        json={
+            "title": "T",
+            "question_type": "free_response",
+            "question_template_md": "P",
+            "solution_parameters_yaml": "{v: 5}",
+            "answer_formula_md": "answer = v",
+            "answer_guidance": "{{answer}}",
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["rendered_answer_md"] == "5"
+
+    second = client.post(
+        "/questions/q_warning/autosave",
+        json={
+            "title": "T",
+            "question_type": "free_response",
+            "question_template_md": "P",
+            "solution_parameters_yaml": "{v: 5}",
+            "answer_formula_md": "answer = missing_name",
+            "answer_guidance": "{{answer}}",
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    assert second.status_code == 200
+    body = second.json()
+    assert body["ok"] is True
+    assert body["warning"]
+    assert body["rendered_answer_md"] == "5"
+    saved = repo.get_question("q_warning")
+    assert saved.solution.last_computed_answer_md == "5"
 
 
 def test_harness_run_preserves_latex_backslashes_in_answer_output(tmp_path) -> None:
@@ -314,11 +463,8 @@ def test_harness_run_preserves_latex_backslashes_in_answer_output(tmp_path) -> N
             "question_type": "free_response",
             "question_template_md": r"Use \\(\\theta\\)",
             "solution_parameters_yaml": "{}",
-            "answer_guidance": "",
-            "answer_python_code": (
-                "def solve(params):\n"
-                "    return {'answer_md': '$\\theta$', 'final_answer': '$\\lambda$'}\n"
-            ),
+            "answer_guidance": r"$\theta$",
+            "answer_formula_md": "answer = 1",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
@@ -332,7 +478,7 @@ def test_harness_run_preserves_latex_backslashes_in_answer_output(tmp_path) -> N
     assert resp.status_code == 200
     data = resp.json()
     assert data["computed_answer_md"] == r"$\theta$"
-    assert data["final_answer_text"] == r"$\lambda$"
+    assert data["final_answer_text"] == "1"
 
     saved = repo.get_question("q_latex")
     assert saved.solution.last_computed_answer_md == r"$\theta$"
@@ -353,7 +499,7 @@ def test_autosave_updates_mc_options_guidance(tmp_path) -> None:
             "mc_options_guidance": "Use realistic sign mistakes only.",
             "question_template_md": "P",
             "solution_parameters_yaml": "{}",
-            "answer_python_code": "",
+            "answer_formula_md": "",
             "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",

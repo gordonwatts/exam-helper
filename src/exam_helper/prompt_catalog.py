@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib.resources import files
 from string import Formatter
-import re
 
 import yaml
 
 from exam_helper.models import AIPromptConfig, Question
+from exam_helper.solution_runtime import render_template_from_values
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class PromptCatalog:
             raise ValueError("prompt_templates.yaml must define 'actions' mapping")
         required = {
             "rewrite_parameterize",
-            "generate_answer_function",
+            "generate_answer_formula",
             "generate_distractor_functions",
             "generate_typed_solution",
         }
@@ -71,7 +71,7 @@ class PromptCatalog:
             if action_override:
                 system_parts.append(action_override)
         system_prompt = "\n\n".join(p for p in system_parts if p)
-        rendered_question_md = self._render_template_from_parameters(
+        rendered_question_md = render_template_from_values(
             question.solution.question_template_md or "",
             question.solution.parameters or {},
         )
@@ -83,8 +83,8 @@ class PromptCatalog:
             "solution_parameters_yaml": yaml.safe_dump(
                 question.solution.parameters or {}, sort_keys=False
             ).strip(),
+            "answer_formula_md": question.solution.answer_formula_md or "",
             "answer_guidance": question.solution.answer_guidance or "",
-            "answer_python_code": question.solution.answer_python_code or "",
             "mc_options_guidance": question.mc_options_guidance or "",
             "distractor_functions_text": (
                 "\n---\n".join(
@@ -140,20 +140,20 @@ class PromptCatalog:
                 ("Question Template (Markdown)", "question_template_md", "markdown"),
                 ("Template Parameters (YAML)", "solution_parameters_yaml", "yaml"),
             ],
-            "generate_answer_function": [
+            "generate_answer_formula": [
                 ("Question Type", "question_type", None),
                 ("Title", "title", None),
                 ("Question Template (Markdown)", "question_template_md", "markdown"),
                 ("Template Parameters (YAML)", "solution_parameters_yaml", "yaml"),
-                ("Answer Guidance (Markdown)", "answer_guidance", "markdown"),
-                ("Answer Function (Python)", "answer_python_code", "python"),
+                ("Answer Formula (SymPy)", "answer_formula_md", "python"),
+                ("Answer Text (Markdown)", "answer_guidance", "markdown"),
             ],
             "generate_distractor_functions": [
                 ("Question Type", "question_type", None),
                 ("Title", "title", None),
                 ("Question Template (Markdown)", "question_template_md", "markdown"),
                 ("Template Parameters (YAML)", "solution_parameters_yaml", "yaml"),
-                ("Answer Function (Python)", "answer_python_code", "python"),
+                ("Answer Formula (SymPy)", "answer_formula_md", "python"),
                 (
                     "MC Distractor Guidance (Markdown)",
                     "mc_options_guidance",
@@ -170,7 +170,8 @@ class PromptCatalog:
                 ("Title", "title", None),
                 ("Question Template (Markdown)", "question_template_md", "markdown"),
                 ("Template Parameters (YAML)", "solution_parameters_yaml", "yaml"),
-                ("Answer Function (Python)", "answer_python_code", "python"),
+                ("Answer Formula (SymPy)", "answer_formula_md", "python"),
+                ("Answer Text (Markdown)", "answer_guidance", "markdown"),
                 ("Typed Solution (Markdown)", "typed_solution_md", "markdown"),
                 (
                     "Latest Computed Answer (Markdown)",
@@ -204,14 +205,3 @@ class PromptCatalog:
         else:
             body = text
         return f"{heading}:\n{body}"
-
-    @staticmethod
-    def _render_template_from_parameters(
-        template: str, params: dict[str, object]
-    ) -> str:
-        rendered = template or ""
-        for key, value in (params or {}).items():
-            rendered = re.sub(
-                r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}", str(value), rendered
-            )
-        return rendered
