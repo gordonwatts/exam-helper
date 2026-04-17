@@ -60,6 +60,37 @@ def test_question_editor_has_new_workflow_hooks(tmp_path) -> None:
     assert redirect.headers["location"] == "/questions/q_edit/edit2"
 
 
+def test_question_editor_v2_has_chat_hooks(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_edit2",
+            "title": "T",
+            "question_type": "free_response",
+            "prompt_md": "P",
+            "question_template_md": "P",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "distractor_functions_text": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    resp = client.get("/questions/q_edit2/edit2")
+    assert resp.status_code == 200
+    assert 'id="chat_thread"' in resp.text
+    assert 'id="chat_message"' in resp.text
+    assert 'id="btn_send_chat"' in resp.text
+    assert (
+        "OpenAI chat is enabled." in resp.text
+        or "Configure an OpenAI key to use chat." in resp.text
+    )
+
+
 def test_usage_totals_accumulate_and_reset(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")

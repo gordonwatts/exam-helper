@@ -5,8 +5,9 @@ from exam_helper.models import Question
 
 
 class _FakeResponses:
-    def __init__(self, output_text: str):
-        self._output_text = output_text
+    def __init__(self, output_text: str | None = None, outputs: list | None = None):
+        self._output_text = output_text or ""
+        self._outputs = outputs or []
 
     def create(self, **kwargs):
         class R:
@@ -14,12 +15,46 @@ class _FakeResponses:
 
         r = R()
         r.output_text = self._output_text
+        r.output = self._outputs
+        r.id = "resp_1"
         return r
 
 
 class _FakeClient:
-    def __init__(self, output_text: str):
-        self.responses = _FakeResponses(output_text)
+    def __init__(self, output_text: str | None = None, outputs: list | None = None):
+        self.responses = _FakeResponses(output_text, outputs)
+
+
+class _SequencedResponses:
+    def __init__(self, steps: list[dict]):
+        self._steps = list(steps)
+
+    def create(self, **kwargs):
+        class R:
+            pass
+
+        if not self._steps:
+            raise AssertionError("Unexpected extra responses.create() call")
+        step = self._steps.pop(0)
+        r = R()
+        r.output_text = step.get("output_text", "")
+        r.output = step.get("output", [])
+        r.id = step.get("id", "resp_seq")
+        return r
+
+
+class _FakeToolCall:
+    type = "function_call"
+
+    def __init__(self, name: str, arguments: str, call_id: str = "call_1"):
+        self.name = name
+        self.arguments = arguments
+        self.call_id = call_id
+
+
+class _SequencedClient:
+    def __init__(self, steps: list[dict]):
+        self.responses = _SequencedResponses(steps)
 
 
 def test_ai_service_rewrite_parameterize(monkeypatch) -> None:
@@ -176,3 +211,53 @@ def test_generate_typed_solution_extracts_typed_solution_md_from_yaml_like_paylo
     out = svc.generate_typed_solution(q)
     assert "Step 1" in out.text
     assert "Final: 2.0 m/s" in out.text
+
+
+def test_ai_service_chat_edit_question_uses_tool_calls(monkeypatch) -> None:
+    from exam_helper import ai_service as mod
+
+    monkeypatch.setattr(
+        mod,
+        "OpenAI",
+        lambda api_key: _SequencedClient(
+            [
+                {
+                    "id": "resp_1",
+                    "output": [
+                        _FakeToolCall(
+                            "set_question_text",
+                            '{"question_template_md":"A cleaner prompt."}',
+                            call_id="call_q",
+                        ),
+                        _FakeToolCall(
+                            "set_answer_formula",
+                            '{"answer_formula_md":"x = 6\\nanswer = x"}',
+                            call_id="call_a",
+                        ),
+                        _FakeToolCall("compute_answer", "{}", call_id="call_c"),
+                    ],
+                },
+                {
+                    "output_text": (
+                        '{"assistant_message":"Updated the prompt and answer formula.",'
+                        '"warnings":["Validated the deterministic answer formula."]}'
+                    )
+                },
+            ]
+        ),
+    )
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="Original")
+    q.solution.parameters = {"x": 6}
+    q.solution.answer_guidance = "{{answer}}"
+    out = svc.chat_edit_question(q, "rewrite this")
+    assert out.assistant_message == "Updated the prompt and answer formula."
+    assert out.question.solution.question_template_md == "A cleaner prompt."
+    assert "answer = x" in out.question.solution.answer_formula_md
+    assert out.question.solution.last_computed_answer_md == "6"
+    assert out.changed_fields == [
+        "answer_formula_md",
+        "last_computed_answer_md",
+        "question_template_md",
+    ]
+    assert out.warnings == ["Validated the deterministic answer formula."]
