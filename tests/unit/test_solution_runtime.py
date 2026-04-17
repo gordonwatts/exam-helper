@@ -170,6 +170,30 @@ def test_mc_formula_harness_allows_distractors_to_use_answer_locals() -> None:
     assert [c.content_md for c in out.choices] == ["3", "4", "5", "6", "7"]
 
 
+def test_mc_formula_harness_bare_distractor_expression_overrides_seed_answer() -> None:
+    out = run_mc_formula_harness(
+        "answer = 55",
+        [
+            {"formula_md": "33", "rationale_md": "constant distractor"},
+        ],
+        {},
+        strict=True,
+    )
+    assert out.row_previews[1]["content_md"] == "33"
+    assert [c.content_md for c in out.choices] == ["33", "55"]
+
+
+def test_evaluate_answer_formula_bare_expression_overrides_inherited_answer() -> None:
+    locals_ns, rendered_lines, warnings, fatal_error = evaluate_answer_formula(
+        "33",
+        {"answer": 55, "base": 2},
+    )
+    assert fatal_error is None
+    assert warnings == []
+    assert locals_ns["answer"] == 33
+    assert rendered_lines == ["answer = 33"]
+
+
 def test_answer_formula_latex_sequences_do_not_emit_invalid_escape_warnings() -> None:
     code = "answer = 1"
     with warnings.catch_warnings(record=True) as caught:

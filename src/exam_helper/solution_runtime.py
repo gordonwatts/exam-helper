@@ -340,10 +340,12 @@ def evaluate_answer_formula(
         elif kind == "text" and target is None:
             rendered_lines.append(str(value))
 
-    if fatal_error is None and "answer" not in locals_ns and last_value is not None:
+    if fatal_error is None and last_value is not None and not explicit_answer_defined:
         locals_ns["answer"] = last_value
-        if steps and steps[-1][0] == "expr" and not explicit_answer_defined:
+        if steps and steps[-1][0] == "expr":
             rendered_lines[-1] = f"answer = {_format_value(last_value)}"
+        elif rendered_lines:
+            rendered_lines.append(f"answer = {_format_value(last_value)}")
         else:
             rendered_lines.append(f"answer = {_format_value(last_value)}")
 
