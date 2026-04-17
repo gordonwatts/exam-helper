@@ -207,6 +207,7 @@ def test_autosave_updates_mc_formula_preview(tmp_path) -> None:
     assert "Formula defines answer directly" in body["warning"]
     assert "choice_4" not in body["warning"]
     assert "choice_4" in body["mc_preview_warning"]
+    assert body["mc_preview_rationale"].startswith("A. 2 -")
     assert body["mc_preview_rows"]
     saved = repo.get_question("q_mc_formula")
     assert saved.solution.mc_answer_specs[0].formula_md == "answer = 3"

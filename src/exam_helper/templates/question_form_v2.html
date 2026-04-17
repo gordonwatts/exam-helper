@@ -630,9 +630,9 @@
           );
           const rationaleText = stripDisallowedBold(String(choice.rationale || ""));
           const rationale = rationaleText
-            ? `<div><em>${marked.parseInline(normalizeMathDelimitersForPreview(rationaleText))}</em></div>`
+            ? ` - ${marked.parseInline(normalizeMathDelimitersForPreview(rationaleText))}`
             : "";
-          return `<div><strong>${label}.</strong> <span>${content}</span>${rationale}</div>`;
+          return `<div><strong>${label}.</strong> <span>${content}${rationale}</span></div>`;
         }).join("");
         mcPreviewAnswers.innerHTML = previewAnswersHtml;
         mcPreviewRationale.innerHTML = previewRationaleHtml;
