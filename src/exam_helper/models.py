@@ -37,6 +37,11 @@ class MCChoice(BaseModel):
     rationale: str | None = None
 
 
+class MCAnswerSpec(BaseModel):
+    formula_md: str = ""
+    rationale_md: str = ""
+
+
 class DistractorFunction(BaseModel):
     id: str
     python_code: str = ""
@@ -59,6 +64,7 @@ class Solution(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     answer_formula_md: str = ""
     answer_guidance: str = ""
+    mc_answer_specs: list[MCAnswerSpec] = Field(default_factory=list)
     distractor_python_code: list[DistractorFunction] = Field(default_factory=list)
     typed_solution_md: str = ""
     typed_solution_status: Literal["missing", "fresh", "stale"] = "missing"

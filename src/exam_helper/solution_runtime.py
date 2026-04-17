@@ -37,6 +37,9 @@ class DistractorRunResult:
 class HarnessRunResult:
     choices: list[MCChoice]
     collisions: list[str]
+    row_previews: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    correct_answer_md: str = ""
 
 
 def symbolic_equivalent(expr_a: str, expr_b: str) -> bool:
@@ -498,6 +501,7 @@ def run_mc_harness(
             "content_md": _strip_disallowed_bold(answer.final_answer),
             "is_correct": True,
             "rationale": "correct answer",
+            "warning": "",
         }
     ]
     for source_id, code in distractor_python_codes:
@@ -508,6 +512,7 @@ def run_mc_harness(
                 "content_md": _strip_disallowed_bold(d.distractor_md),
                 "is_correct": False,
                 "rationale": _strip_disallowed_bold(d.rationale),
+                "warning": "",
             }
         )
 
@@ -550,4 +555,177 @@ def run_mc_harness(
                 rationale=str(row["rationale"]),
             )
         )
-    return HarnessRunResult(choices=choices, collisions=collisions)
+    return HarnessRunResult(
+        choices=choices,
+        collisions=collisions,
+        row_previews=rows,
+        correct_answer_md=answer.final_answer,
+    )
+
+
+def run_mc_formula_harness(
+    answer_formula_md: str,
+    mc_answer_specs: list[Any],
+    params: dict[str, Any] | None = None,
+    *,
+    strict: bool = True,
+) -> HarnessRunResult:
+    """Evaluate formula-based MC rows and build preview choices.
+
+    The first choice is derived from the main answer formula. Remaining rows
+    are evaluated from `mc_answer_specs` in input order and are treated as
+    distractors. When `strict` is false, blank or invalid rows are skipped and
+    reported in the warnings list instead of aborting the whole preview.
+    """
+    params = params or {}
+    warnings: list[str] = []
+    row_previews: list[dict[str, Any]] = []
+
+    def _evaluate_row(
+        *, source_id: str, formula_md: str, rationale_md: str, is_correct: bool
+    ) -> MCChoice | None:
+        formula = (formula_md or "").strip()
+        if not formula:
+            message = f"{source_id}: formula is blank."
+            if strict:
+                raise SolutionRuntimeError(message)
+            warnings.append(message)
+            row_previews.append(
+                {
+                    "source_id": source_id,
+                    "content_md": "",
+                    "is_correct": is_correct,
+                    "rationale": rationale_md.strip(),
+                    "warning": message,
+                }
+            )
+            return None
+        try:
+            result = run_answer_formula(formula, params, strict=strict)
+        except SolutionRuntimeError as ex:
+            if strict:
+                raise
+            message = f"{source_id}: {ex}"
+            warnings.append(message)
+            row_previews.append(
+                {
+                    "source_id": source_id,
+                    "content_md": "",
+                    "is_correct": is_correct,
+                    "rationale": rationale_md.strip(),
+                    "warning": message,
+                }
+            )
+            return None
+        if not result.final_answer.strip():
+            message = f"{source_id}: formula did not produce an answer."
+            if strict:
+                raise SolutionRuntimeError(message)
+            warnings.append(message)
+            row_previews.append(
+                {
+                    "source_id": source_id,
+                    "content_md": "",
+                    "is_correct": is_correct,
+                    "rationale": rationale_md.strip(),
+                    "warning": message,
+                }
+            )
+            return None
+        rendered = _strip_disallowed_bold(result.final_answer)
+        row_previews.append(
+            {
+                "source_id": source_id,
+                "content_md": rendered,
+                "is_correct": is_correct,
+                "rationale": rationale_md.strip(),
+                "warning": " | ".join(result.warnings).strip(),
+            }
+        )
+        return MCChoice(
+            label="?",
+            content_md=rendered,
+            is_correct=is_correct,
+            rationale=rationale_md.strip() or ("correct answer" if is_correct else ""),
+        )
+
+    answer = _evaluate_row(
+        source_id="answer",
+        formula_md=answer_formula_md,
+        rationale_md="correct answer",
+        is_correct=True,
+    )
+    rows: list[MCChoice] = []
+    if answer is not None:
+        rows.append(answer)
+
+    for idx, spec in enumerate(mc_answer_specs, start=1):
+        formula_md = (
+            spec.get("formula_md", "")
+            if isinstance(spec, dict)
+            else getattr(spec, "formula_md", "")
+        )
+        rationale_md = (
+            spec.get("rationale_md", "")
+            if isinstance(spec, dict)
+            else getattr(spec, "rationale_md", "")
+        )
+        row = _evaluate_row(
+            source_id=f"choice_{idx}",
+            formula_md=formula_md,
+            rationale_md=rationale_md,
+            is_correct=False,
+        )
+        if row is not None:
+            rows.append(row)
+
+    seen: dict[str, str] = {}
+    collisions: list[str] = []
+    for row in row_previews:
+        content_md = str(row.get("content_md", ""))
+        if not content_md.strip():
+            continue
+        canonical = _normalize_choice_text(content_md)
+        source_id = str(row.get("source_id", ""))
+        if canonical in seen:
+            collisions.append(
+                f"Duplicate MC option between '{seen[canonical]}' and '{source_id}': {content_md}"
+            )
+        else:
+            seen[canonical] = source_id
+
+    def _sort_tuple(row: MCChoice) -> tuple[int, float, str, str]:
+        numeric = _numeric_sort_key(str(row.content_md))
+        if numeric is None:
+            return (
+                1,
+                0.0,
+                _normalize_choice_text(str(row.content_md)),
+                "answer" if row.is_correct else str(row.content_md),
+            )
+        return (
+            0,
+            numeric,
+            _normalize_choice_text(str(row.content_md)),
+            "answer" if row.is_correct else str(row.content_md),
+        )
+
+    rows.sort(key=_sort_tuple)
+    labels = ["A", "B", "C", "D", "E"]
+    choices: list[MCChoice] = []
+    for idx, row in enumerate(rows):
+        choices.append(
+            MCChoice(
+                label=labels[idx] if idx < len(labels) else "?",
+                content_md=row.content_md,
+                is_correct=row.is_correct,
+                rationale=row.rationale,
+            )
+        )
+    return HarnessRunResult(
+        choices=choices,
+        collisions=collisions,
+        row_previews=row_previews,
+        warnings=warnings,
+        correct_answer_md=answer.content_md if answer is not None else "",
+    )

@@ -139,23 +139,15 @@ def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
             "question_template_md": "P",
             "solution_parameters_yaml": "{}",
             "answer_formula_md": "answer = 2",
-            "distractor_functions_text": (
-                "# distractor: d1\n"
-                "def distractor(params):\n"
-                "    return {'distractor_md':'2','rationale':'dup'}\n"
-                "---\n"
-                "# distractor: d2\n"
-                "def distractor(params):\n"
-                "    return {'distractor_md':'3','rationale':'r'}\n"
-                "---\n"
-                "# distractor: d3\n"
-                "def distractor(params):\n"
-                "    return {'distractor_md':'4','rationale':'r'}\n"
-                "---\n"
-                "# distractor: d4\n"
-                "def distractor(params):\n"
-                "    return {'distractor_md':'5','rationale':'r'}\n"
+            "mc_answer_specs_json": (
+                "["
+                '{"formula_md":"answer = 2","rationale_md":"dup"},'
+                '{"formula_md":"answer = 3","rationale_md":"r"},'
+                '{"formula_md":"answer = 4","rationale_md":"r"},'
+                '{"formula_md":"answer = 5","rationale_md":"r"}'
+                "]"
             ),
+            "distractor_functions_text": "",
             "choices_yaml": "[]",
             "typed_solution_md": "",
             "typed_solution_status": "missing",
@@ -167,6 +159,49 @@ def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
     assert resp.status_code == 422
     assert resp.json()["ok"] is False
     assert resp.json()["collisions"]
+
+
+def test_autosave_updates_mc_formula_preview(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    _seed_question(client, "q_mc_formula", qtype="multiple_choice")
+
+    resp = client.post(
+        "/questions/q_mc_formula/autosave",
+        json={
+            "title": "T",
+            "question_type": "multiple_choice",
+            "question_template_md": "P",
+            "solution_parameters_yaml": "{}",
+            "answer_formula_md": "answer = 2",
+            "answer_guidance": "Use the result {{answer}}.",
+            "mc_options_guidance": "",
+            "mc_answer_specs_json": (
+                "["
+                '{"formula_md":"answer = 3","rationale_md":"off by one"},'
+                '{"formula_md":"answer = 4","rationale_md":"off by two"},'
+                '{"formula_md":"answer = 5","rationale_md":"off by three"},'
+                '{"formula_md":"answer = 6","rationale_md":"off by four"}'
+                "]"
+            ),
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["mc_correct_answer_md"] == "2"
+    assert body["mc_preview_rows"]
+    saved = repo.get_question("q_mc_formula")
+    assert saved.solution.mc_answer_specs[0].formula_md == "answer = 3"
+    assert [c.content_md for c in saved.choices][0] == "2"
 
 
 def test_generate_mc_distractors_retries_and_returns_partial_unique_set(

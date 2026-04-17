@@ -134,7 +134,9 @@ def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
     html = resp.text
     assert "New Question" in html
     assert 'id="figures_json"' in html
-    assert 'id="choices_yaml"' in html
+    assert 'id="mc_answer_specs_json"' in html
+    assert 'id="mc_answer_1_formula_md"' in html
+    assert "MC Choices YAML" not in html
     assert 'id="answer_formula_md"' in html
     assert 'id="calculated_variables_md"' in html
     assert 'id="answer_guidance"' in html
@@ -175,7 +177,9 @@ def test_edit2_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     assert edit_resp.status_code == 200
     edit_html = edit_resp.text
     assert 'id="figures_json"' in edit_html
-    assert 'id="choices_yaml"' in edit_html
+    assert 'id="mc_answer_specs_json"' in edit_html
+    assert 'id="mc_answer_1_formula_md"' in edit_html
+    assert "MC Choices YAML" not in edit_html
     assert 'id="answer_formula_md"' in edit_html
     assert 'id="calculated_variables_md"' in edit_html
     assert 'id="rendered_answer_md"' in edit_html

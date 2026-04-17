@@ -19,6 +19,7 @@ from exam_helper.export_docx import render_project_docx_bytes
 from exam_helper.models import (
     AIUsageTotals,
     DistractorFunction,
+    MCAnswerSpec,
     MCChoice,
     ProjectConfig,
     Question,
@@ -30,6 +31,7 @@ from exam_helper.solution_runtime import (
     evaluate_answer_formula,
     render_template_from_values,
     run_answer_formula,
+    run_mc_formula_harness,
     run_mc_harness,
 )
 from exam_helper.validation import validate_question
@@ -44,6 +46,7 @@ class AutosavePayload(BaseModel):
     answer_formula_md: str = ""
     answer_guidance: str = ""
     distractor_functions_text: str = ""
+    mc_answer_specs_json: str = "[]"
     choices_yaml: str = "[]"
     typed_solution_md: str = ""
     typed_solution_status: str = "missing"
@@ -131,6 +134,19 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         for f in funcs:
             chunks.append(f"# distractor: {f.id}\n{(f.python_code or '').strip()}")
         return "\n---\n".join(chunks).strip() + "\n"
+
+    def parse_mc_answer_specs_json(raw_json: str) -> list[MCAnswerSpec]:
+        raw = json.loads(raw_json or "[]")
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            raise ValueError("MC answer specs must parse to a list.")
+        return [MCAnswerSpec.model_validate(item) for item in raw]
+
+    def dump_mc_answer_specs_json(specs: list[MCAnswerSpec]) -> str:
+        return json.dumps(
+            [spec.model_dump(mode="json") for spec in specs], ensure_ascii=False
+        )
 
     def parse_choices_yaml(choices_yaml: str) -> list[MCChoice]:
         def _strip_disallowed_bold(text: str) -> str:
@@ -227,6 +243,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         ]
         return yaml.safe_dump(defaults, sort_keys=False)
 
+    def default_mc_answer_specs() -> list[MCAnswerSpec]:
+        return [MCAnswerSpec() for _ in range(4)]
+
     def _suggest_next_question_id() -> str:
         try:
             existing = [q.id for q in repo.list_questions(include_deleted=True)]
@@ -239,11 +258,114 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 return candidate
         return "q_new"
 
+    def _compute_mc_preview(
+        answer_formula_md: str,
+        mc_answer_specs: list[MCAnswerSpec],
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not answer_formula_md.strip():
+            return {
+                "correct_answer_md": "",
+                "choices": [],
+                "rows": [
+                    {
+                        "label": f"Distractor {idx}",
+                        "formula_md": spec.formula_md,
+                        "rationale_md": spec.rationale_md,
+                        "preview_md": "",
+                        "warning": "",
+                    }
+                    for idx, spec in enumerate(mc_answer_specs, start=1)
+                ],
+                "preview_answers": "",
+                "preview_rationale": "",
+                "warning": "",
+            }
+        try:
+            result = run_mc_formula_harness(
+                answer_formula_md=answer_formula_md,
+                mc_answer_specs=mc_answer_specs,
+                params=params,
+                strict=False,
+            )
+            rows_by_source = {
+                str(row.get("source_id", "")): row for row in result.row_previews
+            }
+            rows: list[dict[str, Any]] = []
+            preview_answers_lines: list[str] = []
+            preview_rationale_lines: list[str] = []
+            if result.correct_answer_md.strip():
+                preview_answers_lines.append(f"Correct: {result.correct_answer_md}")
+            for idx, spec in enumerate(mc_answer_specs, start=1):
+                preview = rows_by_source.get(f"choice_{idx}", {})
+                content_md = normalize_markdown_math_delimiters(
+                    str(preview.get("content_md", ""))
+                )
+                rationale_md = normalize_markdown_math_delimiters(
+                    str(preview.get("rationale", spec.rationale_md or ""))
+                )
+                rows.append(
+                    {
+                        "label": f"Distractor {idx}",
+                        "formula_md": spec.formula_md,
+                        "rationale_md": spec.rationale_md,
+                        "preview_md": content_md,
+                        "warning": str(preview.get("warning", "")),
+                    }
+                )
+                if content_md.strip():
+                    preview_answers_lines.append(f"{idx}. {content_md}")
+                if content_md.strip() or rationale_md.strip():
+                    rationale_text = content_md
+                    if rationale_md.strip():
+                        rationale_text = f"{content_md} - {rationale_md}"
+                    preview_rationale_lines.append(f"{idx}. {rationale_text}".strip())
+            warning = " | ".join(
+                [item for item in [*result.warnings, *result.collisions] if item]
+            ).strip()
+            return {
+                "correct_answer_md": normalize_markdown_math_delimiters(
+                    result.correct_answer_md
+                ),
+                "choices": result.choices,
+                "rows": rows,
+                "preview_answers": normalize_markdown_math_delimiters(
+                    "\n".join(preview_answers_lines).strip()
+                ),
+                "preview_rationale": normalize_markdown_math_delimiters(
+                    "\n".join(preview_rationale_lines).strip()
+                ),
+                "warning": warning,
+            }
+        except Exception as ex:
+            return {
+                "correct_answer_md": "",
+                "choices": [],
+                "rows": [
+                    {
+                        "label": f"Distractor {idx}",
+                        "formula_md": spec.formula_md,
+                        "rationale_md": spec.rationale_md,
+                        "preview_md": "",
+                        "warning": str(ex),
+                    }
+                    for idx, spec in enumerate(mc_answer_specs, start=1)
+                ],
+                "preview_answers": "",
+                "preview_rationale": "",
+                "warning": str(ex),
+            }
+
     def _question_form_context(question: Question | None) -> dict[str, Any]:
-        choices_yaml = (
-            dump_choices_yaml(question.choices)
-            if question and question.choices
-            else default_mc_choices_yaml()
+        mc_answer_specs = (
+            question.solution.mc_answer_specs
+            if question and question.solution.mc_answer_specs
+            else default_mc_answer_specs()
+        )
+        mc_preview = _compute_mc_preview(
+            question.solution.answer_formula_md if question else "",
+            mc_answer_specs,
+            question.solution.parameters if question else {},
         )
         figures_json = json.dumps(
             [f.model_dump(mode="json") for f in question.figures] if question else []
@@ -257,10 +379,15 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         answer_preview = _compute_answer_preview(question)
         return {
             "question": question,
-            "choices_yaml": choices_yaml,
             "figures_json": figures_json,
             "solution_parameters_yaml": solution_parameters_yaml,
             "distractor_functions_text": distractor_functions_text,
+            "mc_answer_specs_json": dump_mc_answer_specs_json(mc_answer_specs),
+            "mc_answer_rows": mc_preview["rows"],
+            "mc_correct_answer_md": mc_preview["correct_answer_md"],
+            "mc_preview_answers": mc_preview["preview_answers"],
+            "mc_preview_rationale": mc_preview["preview_rationale"],
+            "mc_preview_warning": mc_preview["warning"],
             "answer_formula_md": (
                 question.solution.answer_formula_md if question else ""
             ),
@@ -326,6 +453,22 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             != _normalized_code(candidate.solution.answer_formula_md)
             or _normalized_code(existing.solution.answer_guidance)
             != _normalized_code(candidate.solution.answer_guidance)
+            or [
+                _normalized_code(spec.formula_md)
+                for spec in existing.solution.mc_answer_specs
+            ]
+            != [
+                _normalized_code(spec.formula_md)
+                for spec in candidate.solution.mc_answer_specs
+            ]
+            or [
+                _normalized_code(spec.rationale_md)
+                for spec in existing.solution.mc_answer_specs
+            ]
+            != [
+                _normalized_code(spec.rationale_md)
+                for spec in candidate.solution.mc_answer_specs
+            ]
             or [
                 _normalized_code(d.python_code)
                 for d in existing.solution.distractor_python_code
@@ -402,6 +545,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         question_type: str = Form("free_response"),
         mc_options_guidance: str = Form(""),
         question_template_md: str = Form(""),
+        mc_answer_specs_json: str = Form("[]"),
         choices_yaml: str = Form("[]"),
         solution_parameters_yaml: str = Form("{}"),
         answer_formula_md: str = Form(""),
@@ -416,10 +560,17 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             existing = repo.get_question(question_id)
         except Exception:
             existing = None
-        choices = parse_choices_yaml(choices_yaml)
         figures = json.loads(figures_json or "[]")
         solution_parameters = parse_parameters_yaml(solution_parameters_yaml)
         distractor_funcs = parse_distractor_functions_text(distractor_functions_text)
+        mc_answer_specs = parse_mc_answer_specs_json(mc_answer_specs_json)
+        mc_preview = _compute_mc_preview(
+            answer_formula_md, mc_answer_specs, solution_parameters
+        )
+        if question_type == QuestionType.multiple_choice.value and mc_answer_specs:
+            choices = mc_preview["choices"]
+        else:
+            choices = parse_choices_yaml(choices_yaml)
         question = Question.model_validate(
             {
                 "id": question_id,
@@ -436,6 +587,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "parameters": solution_parameters,
                     "answer_formula_md": answer_formula_md,
                     "answer_guidance": answer_guidance,
+                    "mc_answer_specs": mc_answer_specs,
                     "distractor_python_code": distractor_funcs,
                     "typed_solution_md": normalize_markdown_math_delimiters(
                         typed_solution_md
@@ -455,6 +607,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             }
         )
         preview = _compute_answer_preview(question)
+        mc_preview = _compute_mc_preview(
+            question.solution.answer_formula_md,
+            question.solution.mc_answer_specs,
+            question.solution.parameters,
+        )
         if not preview["fatal_error"]:
             question.solution.last_computed_answer_md = (
                 preview["rendered_answer_md"]
@@ -474,7 +631,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 existing = repo.get_question(question_id)
             except Exception:
                 existing = None
-            choices = parse_choices_yaml(payload.choices_yaml)
             figures = json.loads(payload.figures_json or "[]")
             solution_parameters = parse_parameters_yaml(
                 payload.solution_parameters_yaml
@@ -482,6 +638,17 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             distractor_funcs = parse_distractor_functions_text(
                 payload.distractor_functions_text
             )
+            mc_answer_specs = parse_mc_answer_specs_json(payload.mc_answer_specs_json)
+            mc_preview = _compute_mc_preview(
+                payload.answer_formula_md, mc_answer_specs, solution_parameters
+            )
+            if (
+                payload.question_type == QuestionType.multiple_choice.value
+                and mc_answer_specs
+            ):
+                choices = mc_preview["choices"]
+            else:
+                choices = parse_choices_yaml(payload.choices_yaml)
             question = Question.model_validate(
                 {
                     "id": question_id,
@@ -496,6 +663,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         "parameters": solution_parameters,
                         "answer_formula_md": payload.answer_formula_md,
                         "answer_guidance": payload.answer_guidance,
+                        "mc_answer_specs": mc_answer_specs,
                         "distractor_python_code": distractor_funcs,
                         "typed_solution_md": normalize_markdown_math_delimiters(
                             payload.typed_solution_md
@@ -535,6 +703,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         question.solution.last_computed_answer_md
                         or preview["rendered_answer_md"]
                     ),
+                    "mc_correct_answer_md": mc_preview["correct_answer_md"],
+                    "mc_preview_answers": mc_preview["preview_answers"],
+                    "mc_preview_rationale": mc_preview["preview_rationale"],
+                    "mc_preview_warning": mc_preview["warning"],
+                    "mc_preview_rows": mc_preview["rows"],
                     "warning": preview["warning"],
                 }
             )
@@ -646,20 +819,37 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 ),
             }
             if q.question_type == QuestionType.multiple_choice:
-                funcs = [
-                    (d.id, d.python_code) for d in q.solution.distractor_python_code
-                ]
-                harness = run_mc_harness(
-                    answer_formula_md=q.solution.answer_formula_md,
-                    distractor_python_codes=funcs,
-                    params=q.solution.parameters,
-                )
-                payload["choices_yaml"] = dump_choices_yaml(harness.choices)
-                payload["collisions"] = harness.collisions
-                if harness.collisions:
-                    payload["ok"] = False
-                    payload["error"] = "MC options are not unique."
-                    return JSONResponse(payload, status_code=422)
+                if q.solution.mc_answer_specs:
+                    harness = run_mc_formula_harness(
+                        answer_formula_md=q.solution.answer_formula_md,
+                        mc_answer_specs=q.solution.mc_answer_specs,
+                        params=q.solution.parameters,
+                        strict=True,
+                    )
+                    payload["mc_correct_answer_md"] = harness.correct_answer_md
+                    payload["mc_preview_rows"] = harness.row_previews
+                    payload["mc_preview_warning"] = " | ".join(harness.warnings)
+                    payload["choices_yaml"] = dump_choices_yaml(harness.choices)
+                    payload["collisions"] = harness.collisions
+                    if harness.collisions:
+                        payload["ok"] = False
+                        payload["error"] = "MC options are not unique."
+                        return JSONResponse(payload, status_code=422)
+                else:
+                    funcs = [
+                        (d.id, d.python_code) for d in q.solution.distractor_python_code
+                    ]
+                    harness = run_mc_harness(
+                        answer_formula_md=q.solution.answer_formula_md,
+                        distractor_python_codes=funcs,
+                        params=q.solution.parameters,
+                    )
+                    payload["choices_yaml"] = dump_choices_yaml(harness.choices)
+                    payload["collisions"] = harness.collisions
+                    if harness.collisions:
+                        payload["ok"] = False
+                        payload["error"] = "MC options are not unique."
+                        return JSONResponse(payload, status_code=422)
             q.solution.last_computed_answer_md = normalize_markdown_math_delimiters(
                 answer_result.answer_md
             )

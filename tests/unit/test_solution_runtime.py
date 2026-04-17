@@ -8,6 +8,7 @@ from exam_helper.solution_runtime import (
     SolutionRuntimeError,
     evaluate_answer_formula,
     run_answer_formula,
+    run_mc_formula_harness,
     run_distractor_function,
     run_mc_harness,
 )
@@ -133,6 +134,24 @@ def test_harness_sorts_numeric_then_text_tiebreak_by_source() -> None:
         "alpha",
         "beta",
     ]
+
+
+def test_mc_formula_harness_uses_answer_formula_for_the_correct_choice() -> None:
+    out = run_mc_formula_harness(
+        "answer = 2",
+        [
+            {"formula_md": "answer = 3", "rationale_md": "off by one"},
+            {"formula_md": "answer = 4", "rationale_md": "off by two"},
+            {"formula_md": "answer = 5", "rationale_md": "off by three"},
+            {"formula_md": "answer = 6", "rationale_md": "off by four"},
+        ],
+        {},
+        strict=True,
+    )
+    assert out.correct_answer_md == "2"
+    assert [c.content_md for c in out.choices] == ["2", "3", "4", "5", "6"]
+    assert out.row_previews[0]["content_md"] == "2"
+    assert out.row_previews[1]["content_md"] == "3"
 
 
 def test_answer_formula_latex_sequences_do_not_emit_invalid_escape_warnings() -> None:

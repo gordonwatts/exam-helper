@@ -5,6 +5,7 @@ from exam_helper.repository import ProjectRepository
 from exam_helper.solution_runtime import (
     SolutionRuntimeError,
     run_answer_formula,
+    run_mc_formula_harness,
     run_distractor_function,
 )
 
@@ -19,17 +20,35 @@ def validate_question(question: Question) -> list[str]:
         except SolutionRuntimeError as ex:
             errors.append(f"{question.id}: {ex}")
     if question.question_type.value == "multiple_choice":
-        if len(question.solution.distractor_python_code) != 4:
-            errors.append(
-                f"{question.id}: multiple_choice requires exactly four distractor functions."
-            )
-        for d in question.solution.distractor_python_code:
-            if not d.python_code.strip():
-                continue
-            try:
-                run_distractor_function(d.python_code, question.solution.parameters)
-            except SolutionRuntimeError as ex:
-                errors.append(f"{question.id}:{d.id}: {ex}")
+        if question.solution.mc_answer_specs:
+            if len(question.solution.mc_answer_specs) != 4:
+                errors.append(
+                    f"{question.id}: multiple_choice requires exactly four MC answer specs."
+                )
+            else:
+                try:
+                    harness = run_mc_formula_harness(
+                        question.solution.answer_formula_md,
+                        question.solution.mc_answer_specs,
+                        question.solution.parameters,
+                        strict=True,
+                    )
+                    for collision in harness.collisions:
+                        errors.append(f"{question.id}: {collision}")
+                except SolutionRuntimeError as ex:
+                    errors.append(f"{question.id}: {ex}")
+        else:
+            if len(question.solution.distractor_python_code) != 4:
+                errors.append(
+                    f"{question.id}: multiple_choice requires exactly four distractor functions."
+                )
+            for d in question.solution.distractor_python_code:
+                if not d.python_code.strip():
+                    continue
+                try:
+                    run_distractor_function(d.python_code, question.solution.parameters)
+                except SolutionRuntimeError as ex:
+                    errors.append(f"{question.id}:{d.id}: {ex}")
     return errors
 
 
