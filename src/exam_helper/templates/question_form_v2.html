@@ -683,6 +683,21 @@
         return specs;
       }
 
+      function syncMCRowsFromSpecs(specs) {
+        const rows = document.querySelectorAll("[data-mc-row]");
+        rows.forEach((row, idx) => {
+          const formula = row.querySelector("[data-mc-formula]");
+          const rationale = row.querySelector("[data-mc-rationale]");
+          const spec = Array.isArray(specs) ? specs[idx] || {} : {};
+          if (formula) {
+            formula.value = typeof spec.formula_md === "string" ? spec.formula_md : "";
+          }
+          if (rationale) {
+            rationale.value = typeof spec.rationale_md === "string" ? spec.rationale_md : "";
+          }
+        });
+      }
+
       function renderMCPreviewFromData(data) {
         if (!isMC()) {
           mcPreviewAnswers.innerHTML = "";
@@ -796,7 +811,10 @@
         if (typeof data.answer_guidance === "string") answerGuidanceEl.value = data.answer_guidance;
         if (typeof data.mc_options_guidance === "string") mcOptionsGuidanceEl.value = data.mc_options_guidance;
         if (typeof data.distractor_functions_text === "string") distractorFnsEl.value = data.distractor_functions_text;
-        if (typeof data.mc_answer_specs_json === "string") mcAnswerSpecsEl.value = data.mc_answer_specs_json;
+        if (typeof data.mc_answer_specs_json === "string") {
+          mcAnswerSpecsEl.value = data.mc_answer_specs_json;
+          syncMCRowsFromSpecs(parseMCSpecs());
+        }
         if (typeof data.chat_history_json === "string") chatHistoryEl.value = data.chat_history_json;
         if (typeof data.figures_json === "string") figuresInput.value = data.figures_json;
         if (typeof data.typed_solution_status === "string") typedStatusEl.value = data.typed_solution_status;
