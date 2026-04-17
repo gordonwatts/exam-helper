@@ -314,9 +314,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 content_md = normalize_markdown_math_delimiters(
                     str(preview.get("content_md", ""))
                 )
-                rationale_md = normalize_markdown_math_delimiters(
-                    str(preview.get("rationale", spec.rationale_md or ""))
-                )
                 rows.append(
                     {
                         "label": f"Distractor {idx}",
