@@ -230,11 +230,6 @@ class AIService:
                 chunks.append(f"# distractor: {f.id}\n{(f.python_code or '').strip()}")
             return "\n---\n".join(chunks).strip() + "\n"
 
-        def _dump_mc_answer_specs(specs: list) -> str:
-            return json.dumps(
-                [spec.model_dump(mode="json") for spec in specs], ensure_ascii=False
-            )
-
         def _dump_mc_answer_specs(specs: list[MCAnswerSpec]) -> str:
             return json.dumps(
                 [spec.model_dump(mode="json") for spec in specs], ensure_ascii=False
