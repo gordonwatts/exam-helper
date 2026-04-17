@@ -88,6 +88,18 @@ class AIService:
             ]
             return self
 
+    class ChatFinishArgs(BaseModel):
+        assistant_message: str
+        warnings: list[str] = Field(default_factory=list)
+
+        @model_validator(mode="after")
+        def _normalize(self) -> "AIService.ChatFinishArgs":
+            self.assistant_message = self.assistant_message.strip()
+            self.warnings = [
+                str(item).strip() for item in self.warnings if str(item).strip()
+            ]
+            return self
+
     @dataclass
     class QuestionEditorResult:
         assistant_message: str
@@ -354,6 +366,26 @@ class AIService:
     @staticmethod
     def _tool_schema() -> list[dict[str, Any]]:
         return [
+            {
+                "type": "function",
+                "name": "finish",
+                "description": (
+                    "Finish the editing task and return the final assistant message. "
+                    "Call this exactly once when you are done."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "assistant_message": {"type": "string"},
+                        "warnings": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["assistant_message"],
+                    "additionalProperties": False,
+                },
+            },
             {
                 "type": "function",
                 "name": "get_exam_item",
@@ -625,9 +657,10 @@ class AIService:
             "You are editing a single exam item for a physics-authoring app. "
             "Use the provided tools to inspect and update the item. "
             "Do not invent fields or return raw patches. "
-            "Use deterministic tools for answer and distractor code changes. "
-            "After you are done, return one JSON object only with keys assistant_message and warnings. "
-            "Keep the assistant_message short and factual."
+            "Use deterministic tools for answer and distractor changes. "
+            "For rewrite or parameter-extraction requests, call only the minimal tools needed. "
+            "Do not call compute_answer unless the author explicitly asks you to calculate, compute, or solve. "
+            "When you are done, call the finish tool exactly once with a short factual assistant_message."
         )
         user_content: list[dict[str, Any]] = [
             {
@@ -666,7 +699,7 @@ class AIService:
         loop_guard = 0
         while True:
             loop_guard += 1
-            if loop_guard > 12:
+            if loop_guard > 20:
                 raise ValueError("AI chat exceeded the tool-call limit.")
             tool_calls = self._response_tool_calls(response)
             if not tool_calls:
@@ -682,6 +715,19 @@ class AIService:
                 )
             outputs: list[dict[str, Any]] = []
             for call in tool_calls:
+                if str(getattr(call, "name", "")) == "finish":
+                    payload = self._parse_json_object(
+                        str(getattr(call, "arguments", "") or "{}")
+                    )
+                    parsed = AIService.ChatFinishArgs.model_validate(payload)
+                    final_warnings = warnings + parsed.warnings
+                    return AIService.QuestionEditorResult(
+                        assistant_message=parsed.assistant_message,
+                        question=working,
+                        warnings=final_warnings,
+                        usage=self._combine_usage(usage_parts),
+                        changed_fields=sorted(changed_fields),
+                    )
                 try:
                     result = self._execute_chat_tool(
                         working,

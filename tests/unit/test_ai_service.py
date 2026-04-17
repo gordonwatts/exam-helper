@@ -238,10 +238,13 @@ def test_ai_service_chat_edit_question_uses_tool_calls(monkeypatch) -> None:
                     ],
                 },
                 {
-                    "output_text": (
-                        '{"assistant_message":"Updated the prompt and answer formula.",'
-                        '"warnings":["Validated the deterministic answer formula."]}'
-                    )
+                    "output": [
+                        _FakeToolCall(
+                            "finish",
+                            '{"assistant_message":"Updated the prompt and answer formula.","warnings":["Validated the deterministic answer formula."]}',
+                            call_id="call_finish",
+                        )
+                    ]
                 },
             ]
         ),
