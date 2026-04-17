@@ -183,7 +183,7 @@ def test_autosave_updates_mc_formula_preview(tmp_path) -> None:
                 '{"formula_md":"answer = 3","rationale_md":"off by one"},'
                 '{"formula_md":"answer = 4","rationale_md":"off by two"},'
                 '{"formula_md":"answer = 5","rationale_md":"off by three"},'
-                '{"formula_md":"answer = 6","rationale_md":"off by four"}'
+                '{"formula_md":"","rationale_md":"off by four"}'
                 "]"
             ),
             "distractor_functions_text": "",
@@ -202,9 +202,11 @@ def test_autosave_updates_mc_formula_preview(tmp_path) -> None:
         "B",
         "C",
         "D",
-        "E",
     ]
     assert body["mc_preview_choices"][0]["content_md"] == "2"
+    assert "Formula defines answer directly" in body["warning"]
+    assert "choice_4" not in body["warning"]
+    assert "choice_4" in body["mc_preview_warning"]
     assert body["mc_preview_rows"]
     saved = repo.get_question("q_mc_formula")
     assert saved.solution.mc_answer_specs[0].formula_md == "answer = 3"

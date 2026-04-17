@@ -697,9 +697,9 @@
           renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
         }
         renderMCPreviewFromData(data);
-        const combinedWarning = [data.warning, data.mc_preview_warning].filter(Boolean).join(" | ");
-        answerFormulaWarningEl.textContent = combinedWarning ? `Warning: ${combinedWarning}` : "";
-        setStatus(combinedWarning ? "Saved with warning" : "Saved", combinedWarning ? "warn" : "good");
+        answerFormulaWarningEl.textContent = data.warning ? `Warning: ${data.warning}` : "";
+        const statusWarning = [data.warning, data.mc_preview_warning].filter(Boolean).join(" | ");
+        setStatus(statusWarning ? "Saved with warning" : "Saved", statusWarning ? "warn" : "good");
       }
 
       function scheduleAutosave() {
