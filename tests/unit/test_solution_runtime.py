@@ -154,6 +154,22 @@ def test_mc_formula_harness_uses_answer_formula_for_the_correct_choice() -> None
     assert out.row_previews[1]["content_md"] == "3"
 
 
+def test_mc_formula_harness_allows_distractors_to_use_answer_locals() -> None:
+    out = run_mc_formula_harness(
+        "base = 2\nanswer = base + scale",
+        [
+            {"formula_md": "answer = base + 1", "rationale_md": "uses answer locals"},
+            {"formula_md": "answer = base + 2", "rationale_md": "uses answer locals"},
+            {"formula_md": "answer = base + 3", "rationale_md": "uses answer locals"},
+            {"formula_md": "answer = base + 4", "rationale_md": "uses answer locals"},
+        ],
+        {"scale": 5},
+        strict=True,
+    )
+    assert out.correct_answer_md == "7"
+    assert [c.content_md for c in out.choices] == ["3", "4", "5", "6", "7"]
+
+
 def test_answer_formula_latex_sequences_do_not_emit_invalid_escape_warnings() -> None:
     code = "answer = 1"
     with warnings.catch_warnings(record=True) as caught:

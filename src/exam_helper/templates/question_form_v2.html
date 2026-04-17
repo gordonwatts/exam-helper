@@ -301,29 +301,20 @@
         </div>
 
         <div id="mc_block" class="card">
-          <label>Multiple Choice Answers</label>
+          <label>Multiple Choice Distractors</label>
           <p class="hint">The correct answer is pulled from the main answer formula. Fill in four distractor formulas and rationales below.</p>
-          <div class="row" style="align-items: start; margin-top: 0.5rem;">
-            <div class="card preview">
-              <strong>Correct Answer (auto-fed)</strong>
-              <div id="mc_correct_answer_md" aria-readonly="true">{{ mc_correct_answer_md if question else '' }}</div>
-            </div>
-            <div class="card">
-              <strong>Distractor Rows</strong>
-              <div class="mc-answer-list" style="margin-top: 0.75rem;">
-                {% for row in mc_answer_rows %}
-                  <div class="card mc-answer-row" data-mc-row="{{ loop.index0 }}">
-                    <p class="mc-row-title">{{ row.label }}</p>
-                    <label for="mc_answer_{{ loop.index }}_formula_md">SymPy Formula</label>
-                    <textarea id="mc_answer_{{ loop.index }}_formula_md" data-mc-formula name="mc_answer_{{ loop.index }}_formula_md">{{ row.formula_md }}</textarea>
-                    <label for="mc_answer_{{ loop.index }}_rationale_md">Rationale</label>
-                    <textarea id="mc_answer_{{ loop.index }}_rationale_md" data-mc-rationale name="mc_answer_{{ loop.index }}_rationale_md">{{ row.rationale_md }}</textarea>
-                    <div class="formula-preview" id="mc_answer_{{ loop.index }}_preview" aria-readonly="true">{{ row.preview_md }}</div>
-                    <p class="mc-row-warning" id="mc_answer_{{ loop.index }}_warning">{{ row.warning }}</p>
-                  </div>
-                {% endfor %}
+          <div class="mc-answer-list" style="margin-top: 0.75rem;">
+            {% for row in mc_answer_rows %}
+              <div class="card mc-answer-row" data-mc-row="{{ loop.index0 }}">
+                <p class="mc-row-title">Distractor {{ loop.index }}</p>
+                <label for="mc_answer_{{ loop.index }}_formula_md">SymPy Formula</label>
+                <textarea id="mc_answer_{{ loop.index }}_formula_md" data-mc-formula name="mc_answer_{{ loop.index }}_formula_md">{{ row.formula_md }}</textarea>
+                <label for="mc_answer_{{ loop.index }}_rationale_md">Rationale</label>
+                <textarea id="mc_answer_{{ loop.index }}_rationale_md" data-mc-rationale name="mc_answer_{{ loop.index }}_rationale_md">{{ row.rationale_md }}</textarea>
+                <div class="formula-preview" id="mc_answer_{{ loop.index }}_preview" aria-readonly="true">{{ row.preview_md }}</div>
+                <p class="mc-row-warning" id="mc_answer_{{ loop.index }}_warning">{{ row.warning }}</p>
               </div>
-            </div>
+            {% endfor %}
           </div>
           <div class="mc-preview-grid" style="margin-top: 0.8rem;">
             <div class="card preview">
@@ -379,7 +370,6 @@
       const figureFileInput = document.getElementById("figure_file_input");
       const promptPreview = document.getElementById("prompt_preview");
       const mcBlock = document.getElementById("mc_block");
-      const mcCorrectAnswerEl = document.getElementById("mc_correct_answer_md");
       const mcPreviewAnswers = document.getElementById("mc_preview_answers");
       const mcPreviewRationale = document.getElementById("mc_preview_rationale");
       const mcPreviewWarning = document.getElementById("mc_preview_warning");
@@ -591,7 +581,6 @@
           mcPreviewAnswers.innerHTML = "";
           mcPreviewRationale.innerHTML = "";
           mcPreviewWarning.textContent = "";
-          mcCorrectAnswerEl.textContent = "";
           Array.from(document.querySelectorAll("[id$='_preview']")).forEach((el) => {
             if (el.id.startsWith("mc_answer_")) {
               el.textContent = "";
@@ -600,12 +589,7 @@
           return;
         }
         const rows = Array.isArray(data?.mc_preview_rows) ? data.mc_preview_rows : [];
-        const correct = typeof data?.mc_correct_answer_md === "string" ? data.mc_correct_answer_md : "";
-        const answers = typeof data?.mc_preview_answers === "string" ? data.mc_preview_answers : "";
-        const rationale = typeof data?.mc_preview_rationale === "string" ? data.mc_preview_rationale : "";
-        mcCorrectAnswerEl.innerHTML = correct ? marked.parse(normalizeMathDelimitersForPreview(correct)) : "";
-        mcPreviewAnswers.innerHTML = answers ? marked.parse(normalizeMathDelimitersForPreview(answers)) : "";
-        mcPreviewRationale.innerHTML = rationale ? marked.parse(normalizeMathDelimitersForPreview(rationale)) : "";
+        const choices = Array.isArray(data?.mc_preview_choices) ? data.mc_preview_choices : [];
         mcPreviewWarning.textContent = data?.mc_preview_warning ? `Warning: ${data.mc_preview_warning}` : "";
         document.querySelectorAll("[data-mc-row]").forEach((row, idx) => {
           const previewEl = document.getElementById(`mc_answer_${idx + 1}_preview`);
@@ -628,8 +612,32 @@
             warningEl.textContent = row?.warning ? `Warning: ${row.warning}` : "";
           }
         });
+        const previewAnswersHtml = choices.map((choice) => {
+          const label = escapeHtml(String(choice.label || "?"));
+          const content = marked.parseInline(
+            normalizeMathDelimitersForPreview(
+              stripDisallowedBold(String(choice.content_md || ""))
+            )
+          );
+          return `<div><strong>${label}.</strong> <span>${content}</span></div>`;
+        }).join("");
+        const previewRationaleHtml = choices.map((choice) => {
+          const label = escapeHtml(String(choice.label || "?"));
+          const content = marked.parseInline(
+            normalizeMathDelimitersForPreview(
+              stripDisallowedBold(String(choice.content_md || ""))
+            )
+          );
+          const rationaleText = stripDisallowedBold(String(choice.rationale || ""));
+          const rationale = rationaleText
+            ? `<div><em>${marked.parseInline(normalizeMathDelimitersForPreview(rationaleText))}</em></div>`
+            : "";
+          return `<div><strong>${label}.</strong> <span>${content}</span>${rationale}</div>`;
+        }).join("");
+        mcPreviewAnswers.innerHTML = previewAnswersHtml;
+        mcPreviewRationale.innerHTML = previewRationaleHtml;
         if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([mcCorrectAnswerEl, mcPreviewAnswers, mcPreviewRationale]);
+          window.MathJax.typesetPromise([mcPreviewAnswers, mcPreviewRationale]);
           rows.forEach((_, idx) => {
             const previewEl = document.getElementById(`mc_answer_${idx + 1}_preview`);
             if (previewEl) {
@@ -798,10 +806,7 @@
       renderTemplate();
       syncMCSpecsFromDOM();
       renderMCPreviewFromData({
-        mc_correct_answer_md: mcCorrectAnswerEl.textContent || "",
-        mc_preview_answers: mcPreviewAnswers.textContent || "",
-        mc_preview_rationale: mcPreviewRationale.textContent || "",
-        mc_preview_warning: mcPreviewWarning.textContent || "",
+        mc_preview_choices: {{ mc_preview_choices | tojson }},
         mc_preview_rows: Array.from(document.querySelectorAll("[data-mc-row]")).map((row, idx) => {
           const preview = document.getElementById(`mc_answer_${idx + 1}_preview`);
           const warning = document.getElementById(`mc_answer_${idx + 1}_warning`);

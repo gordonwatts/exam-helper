@@ -197,7 +197,14 @@ def test_autosave_updates_mc_formula_preview(tmp_path) -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
-    assert body["mc_correct_answer_md"] == "2"
+    assert [choice["label"] for choice in body["mc_preview_choices"]] == [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+    ]
+    assert body["mc_preview_choices"][0]["content_md"] == "2"
     assert body["mc_preview_rows"]
     saved = repo.get_question("q_mc_formula")
     assert saved.solution.mc_answer_specs[0].formula_md == "answer = 3"

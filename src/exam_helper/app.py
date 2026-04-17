@@ -280,6 +280,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "preview_answers": "",
                 "preview_rationale": "",
                 "warning": "",
+                "preview_choices": [],
             }
         try:
             result = run_mc_formula_harness(
@@ -294,8 +295,20 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             rows: list[dict[str, Any]] = []
             preview_answers_lines: list[str] = []
             preview_rationale_lines: list[str] = []
-            if result.correct_answer_md.strip():
-                preview_answers_lines.append(f"Correct: {result.correct_answer_md}")
+            preview_choices = [
+                choice.model_dump(mode="json") for choice in result.choices
+            ]
+            for choice in result.choices:
+                label = str(choice.label or "?")
+                content = normalize_markdown_math_delimiters(choice.content_md or "")
+                preview_answers_lines.append(f"{label}. {content}")
+                rationale = normalize_markdown_math_delimiters(choice.rationale or "")
+                if rationale.strip():
+                    preview_rationale_lines.append(
+                        f"{label}. {content} - {rationale}".strip()
+                    )
+                else:
+                    preview_rationale_lines.append(f"{label}. {content}")
             for idx, spec in enumerate(mc_answer_specs, start=1):
                 preview = rows_by_source.get(f"choice_{idx}", {})
                 content_md = normalize_markdown_math_delimiters(
@@ -313,13 +326,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         "warning": str(preview.get("warning", "")),
                     }
                 )
-                if content_md.strip():
-                    preview_answers_lines.append(f"{idx}. {content_md}")
-                if content_md.strip() or rationale_md.strip():
-                    rationale_text = content_md
-                    if rationale_md.strip():
-                        rationale_text = f"{content_md} - {rationale_md}"
-                    preview_rationale_lines.append(f"{idx}. {rationale_text}".strip())
             warning = " | ".join(
                 [item for item in [*result.warnings, *result.collisions] if item]
             ).strip()
@@ -336,6 +342,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                     "\n".join(preview_rationale_lines).strip()
                 ),
                 "warning": warning,
+                "preview_choices": preview_choices,
             }
         except Exception as ex:
             return {
@@ -354,6 +361,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "preview_answers": "",
                 "preview_rationale": "",
                 "warning": str(ex),
+                "preview_choices": [],
             }
 
     def _question_form_context(question: Question | None) -> dict[str, Any]:
@@ -384,7 +392,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             "distractor_functions_text": distractor_functions_text,
             "mc_answer_specs_json": dump_mc_answer_specs_json(mc_answer_specs),
             "mc_answer_rows": mc_preview["rows"],
-            "mc_correct_answer_md": mc_preview["correct_answer_md"],
+            "mc_preview_choices": mc_preview["preview_choices"],
             "mc_preview_answers": mc_preview["preview_answers"],
             "mc_preview_rationale": mc_preview["preview_rationale"],
             "mc_preview_warning": mc_preview["warning"],
@@ -703,7 +711,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                         question.solution.last_computed_answer_md
                         or preview["rendered_answer_md"]
                     ),
-                    "mc_correct_answer_md": mc_preview["correct_answer_md"],
+                    "mc_preview_choices": mc_preview["preview_choices"],
                     "mc_preview_answers": mc_preview["preview_answers"],
                     "mc_preview_rationale": mc_preview["preview_rationale"],
                     "mc_preview_warning": mc_preview["warning"],

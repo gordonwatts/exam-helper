@@ -581,6 +581,45 @@ def run_mc_formula_harness(
     warnings: list[str] = []
     row_previews: list[dict[str, Any]] = []
 
+    answer_locals, _, answer_warnings, answer_fatal_error = evaluate_answer_formula(
+        answer_formula_md, params
+    )
+    answer_value = answer_locals.get("answer")
+    if answer_fatal_error:
+        message = f"answer: {answer_fatal_error}"
+        warnings.append(message)
+        if strict:
+            raise SolutionRuntimeError(message)
+    if answer_value is None:
+        message = "answer: formula did not produce an answer."
+        warnings.append(message)
+        if strict:
+            raise SolutionRuntimeError(message)
+
+    rows: list[MCChoice] = []
+    if answer_value is not None:
+        rendered_answer = _strip_disallowed_bold(_format_value(answer_value))
+        row_previews.append(
+            {
+                "source_id": "answer",
+                "content_md": rendered_answer,
+                "is_correct": True,
+                "rationale": "correct answer",
+                "warning": " | ".join(answer_warnings).strip(),
+            }
+        )
+        rows.append(
+            MCChoice(
+                label="?",
+                content_md=rendered_answer,
+                is_correct=True,
+                rationale="correct answer",
+            )
+        )
+
+    seed_locals = dict(params)
+    seed_locals.update(answer_locals)
+
     def _evaluate_row(
         *, source_id: str, formula_md: str, rationale_md: str, is_correct: bool
     ) -> MCChoice | None:
@@ -600,12 +639,15 @@ def run_mc_formula_harness(
                 }
             )
             return None
-        try:
-            result = run_answer_formula(formula, params, strict=strict)
-        except SolutionRuntimeError as ex:
+
+        locals_ns, _, row_warnings, fatal_error = evaluate_answer_formula(
+            formula, seed_locals
+        )
+        answer_md = _format_value(locals_ns.get("answer", "")).strip()
+        if fatal_error:
+            message = f"{source_id}: {fatal_error}"
             if strict:
-                raise
-            message = f"{source_id}: {ex}"
+                raise SolutionRuntimeError(message)
             warnings.append(message)
             row_previews.append(
                 {
@@ -617,7 +659,7 @@ def run_mc_formula_harness(
                 }
             )
             return None
-        if not result.final_answer.strip():
+        if not answer_md:
             message = f"{source_id}: formula did not produce an answer."
             if strict:
                 raise SolutionRuntimeError(message)
@@ -632,14 +674,14 @@ def run_mc_formula_harness(
                 }
             )
             return None
-        rendered = _strip_disallowed_bold(result.final_answer)
+        rendered = _strip_disallowed_bold(answer_md)
         row_previews.append(
             {
                 "source_id": source_id,
                 "content_md": rendered,
                 "is_correct": is_correct,
                 "rationale": rationale_md.strip(),
-                "warning": " | ".join(result.warnings).strip(),
+                "warning": " | ".join(row_warnings).strip(),
             }
         )
         return MCChoice(
@@ -648,16 +690,6 @@ def run_mc_formula_harness(
             is_correct=is_correct,
             rationale=rationale_md.strip() or ("correct answer" if is_correct else ""),
         )
-
-    answer = _evaluate_row(
-        source_id="answer",
-        formula_md=answer_formula_md,
-        rationale_md="correct answer",
-        is_correct=True,
-    )
-    rows: list[MCChoice] = []
-    if answer is not None:
-        rows.append(answer)
 
     for idx, spec in enumerate(mc_answer_specs, start=1):
         formula_md = (
@@ -727,5 +759,7 @@ def run_mc_formula_harness(
         collisions=collisions,
         row_previews=row_previews,
         warnings=warnings,
-        correct_answer_md=answer.content_md if answer is not None else "",
+        correct_answer_md=(
+            _format_value(answer_value).strip() if answer_value is not None else ""
+        ),
     )
