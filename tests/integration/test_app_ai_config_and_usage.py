@@ -19,7 +19,7 @@ def test_home_shows_model_and_usage(tmp_path) -> None:
     assert "gpt-5.2" in resp.text
 
 
-def test_question_editor_has_new_workflow_hooks(tmp_path) -> None:
+def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key=None)
@@ -39,28 +39,26 @@ def test_question_editor_has_new_workflow_hooks(tmp_path) -> None:
             "points": 5,
         },
     )
-    resp = client.get("/questions/q_edit/edit2")
+    resp = client.get("/questions/q_edit/edit")
     assert resp.status_code == 200
-    assert "Edit Question" in resp.text
-    assert 'id="btn_rewrite"' not in resp.text
-    assert 'id="btn_generate_answer"' not in resp.text
-    assert 'id="mc_options_guidance"' in resp.text
-    assert 'id="btn_generate_typed_solution"' not in resp.text
-    assert "function setAiBusy(isBusy)" not in resp.text
-    assert "await autosaveNow({ allowWhenBusy: true });" not in resp.text
-    assert "mc_options_guidance: mcOptionsGuidanceEl.value" in resp.text
-    assert 'id="mc_answer_specs_json"' in resp.text
-    assert 'id="mc_answer_1_formula_md"' in resp.text
-    assert "Multiple Choice Distractors" in resp.text
-    assert "Correct Answer (auto-fed)" not in resp.text
-    assert "AI request in progress; editing is temporarily disabled." not in resp.text
+    assert 'id="chat_thread"' in resp.text
+    assert 'id="chat_message"' in resp.text
+    assert 'id="btn_send_chat"' in resp.text
+    assert "formula-preview--compact" in resp.text
+    assert "OpenAI chat is enabled." not in resp.text
+    assert "Configure an OpenAI key to use chat." not in resp.text
+    assert "No API key configured" in resp.text
+    assert 'title="Shift+Enter to send"' in resp.text
+    assert 'title="No API key configured."' in resp.text
+    assert "setChatBusy(true)" in resp.text
+    assert 'event.key === "Enter" && event.shiftKey' in resp.text
 
-    redirect = client.get("/questions/q_edit/edit", follow_redirects=False)
+    redirect = client.get("/questions/q_edit/edit2", follow_redirects=False)
     assert redirect.status_code == 303
-    assert redirect.headers["location"] == "/questions/q_edit/edit2"
+    assert redirect.headers["location"] == "/questions/q_edit/edit"
 
 
-def test_question_editor_v2_has_chat_hooks(tmp_path) -> None:
+def test_question_editor_legacy_path_redirects_to_edit(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key=None)
@@ -80,19 +78,9 @@ def test_question_editor_v2_has_chat_hooks(tmp_path) -> None:
             "points": 5,
         },
     )
-    resp = client.get("/questions/q_edit2/edit2")
-    assert resp.status_code == 200
-    assert 'id="chat_thread"' in resp.text
-    assert 'id="chat_message"' in resp.text
-    assert 'id="btn_send_chat"' in resp.text
-    assert "formula-preview--compact" in resp.text
-    assert "OpenAI chat is enabled." not in resp.text
-    assert "Configure an OpenAI key to use chat." not in resp.text
-    assert "No API key configured" in resp.text
-    assert 'title="Shift+Enter to send"' in resp.text
-    assert 'title="No API key configured."' in resp.text
-    assert "setChatBusy(true)" in resp.text
-    assert 'event.key === "Enter" && event.shiftKey' in resp.text
+    resp = client.get("/questions/q_edit2/edit2", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/questions/q_edit2/edit"
 
 
 def test_usage_totals_accumulate_and_reset(tmp_path) -> None:
