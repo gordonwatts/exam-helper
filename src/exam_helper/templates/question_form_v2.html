@@ -121,6 +121,9 @@
         white-space: pre-wrap;
         font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
       }
+      .formula-preview--compact {
+        min-height: 0;
+      }
       .status {
         min-height: 1.2rem;
         color: var(--muted);
@@ -395,7 +398,7 @@
                 <textarea id="mc_answer_{{ loop.index }}_formula_md" data-mc-formula name="mc_answer_{{ loop.index }}_formula_md">{{ row.formula_md }}</textarea>
                 <label for="mc_answer_{{ loop.index }}_rationale_md">Rationale</label>
                 <textarea id="mc_answer_{{ loop.index }}_rationale_md" data-mc-rationale name="mc_answer_{{ loop.index }}_rationale_md">{{ row.rationale_md }}</textarea>
-                <div class="formula-preview" id="mc_answer_{{ loop.index }}_preview" aria-readonly="true">{{ row.preview_md }}</div>
+                <div class="formula-preview formula-preview--compact" id="mc_answer_{{ loop.index }}_preview" aria-readonly="true">{{ row.preview_md }}</div>
                 <p class="mc-row-warning" id="mc_answer_{{ loop.index }}_warning">{{ row.warning }}</p>
               </div>
             {% endfor %}

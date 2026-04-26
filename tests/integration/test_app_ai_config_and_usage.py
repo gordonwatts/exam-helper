@@ -85,6 +85,7 @@ def test_question_editor_v2_has_chat_hooks(tmp_path) -> None:
     assert 'id="chat_thread"' in resp.text
     assert 'id="chat_message"' in resp.text
     assert 'id="btn_send_chat"' in resp.text
+    assert "formula-preview--compact" in resp.text
     assert "OpenAI chat is enabled." not in resp.text
     assert "Configure an OpenAI key to use chat." not in resp.text
     assert "No API key configured" in resp.text
