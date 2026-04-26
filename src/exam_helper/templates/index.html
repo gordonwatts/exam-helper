@@ -31,6 +31,7 @@
       .settings-wrap { margin-top: 1.8rem; }
       .settings-status { font-size: 0.85rem; color: #666; margin-left: 0.6rem; }
       .actions { display: flex; gap: 0.75rem; align-items: center; }
+      .delete-form { margin-left: 0.5rem; }
       .btn-link-danger {
         border: 0;
         background: none;
@@ -91,7 +92,7 @@
           <td>
             <div class="actions">
               <a href="/questions/{{ q.id }}/edit">Edit</a>
-              <form method="post" action="/questions/{{ q.id }}/delete" onsubmit="return confirm('Delete question {{ q.id }} from listings? The YAML file will remain on disk.');">
+              <form class="delete-form" method="post" action="/questions/{{ q.id }}/delete" onsubmit="return confirm('Delete question {{ q.id }} from listings? The YAML file will remain on disk.');">
                 <button class="btn-link-danger" type="submit">Delete</button>
               </form>
             </div>
@@ -162,8 +163,8 @@
 
       function normalizeMathDelimitersForPreview(text) {
         return (text || "")
-          .replace(/\\\[(.*?)\\\]/gs, (_, inner) => `$$${inner}$$`)
-          .replace(/\\\((.*?)\\\)/gs, (_, inner) => `$${inner}$`);
+          .replace(/\\\\\[(.*?)\\\\\]/gs, (_, inner) => `$$${inner}$$`)
+          .replace(/\\\\\((.*?)\\\\\)/gs, (_, inner) => `$${inner}$`);
       }
 
       function renderTitleMarkdownCells() {
