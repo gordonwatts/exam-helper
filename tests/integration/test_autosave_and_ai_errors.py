@@ -612,6 +612,48 @@ def test_ai_chat_updates_question_and_returns_payload(tmp_path) -> None:
     assert saved.solution.chat_history[0].user_message == "Please clean this up."
 
 
+def test_ai_chat_refreshes_rendered_answer_when_guidance_changes(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_chat_answer")
+    seeded = repo.get_question("q_chat_answer")
+    seeded.solution.answer_formula_md = "answer = 9"
+    seeded.solution.answer_guidance = "Old answer: {{answer}}"
+    seeded.solution.last_computed_answer_md = "Old answer: 9"
+    repo.save_question(seeded)
+
+    class _AI:
+        def chat_edit_question(self, question, user_message, attached_figure_ids=None):
+            updated = question.model_copy(deep=True)
+            updated.solution.answer_guidance = "New answer: {{answer}}"
+            updated.solution.last_computed_answer_md = "Stale answer: 9"
+            return AIService.QuestionEditorResult(
+                assistant_message="Updated the answer text.",
+                question=updated,
+                warnings=[],
+                usage=AIUsageTotals(),
+                changed_fields=["answer_guidance"],
+            )
+
+    app.state.ai = _AI()
+    resp = client.post(
+        "/questions/q_chat_answer/ai/chat",
+        json={
+            "message": "Update the answer wording.",
+            "attached_figure_ids": [],
+            "editor_state": _editor_state_for_question(seeded),
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["rendered_answer_md"] == "New answer: 9"
+    saved = repo.get_question("q_chat_answer")
+    assert saved.solution.answer_guidance == "New answer: {{answer}}"
+    assert saved.solution.last_computed_answer_md == "New answer: 9"
+
+
 def test_ai_chat_uses_live_editor_state_and_persists_last_five_turns(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")

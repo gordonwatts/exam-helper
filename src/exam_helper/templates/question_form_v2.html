@@ -207,6 +207,9 @@
         display: grid;
         gap: 0.85rem;
       }
+      .chat-panel.is-busy {
+        opacity: 0.78;
+      }
       .chat-log {
         display: grid;
         gap: 0.7rem;
@@ -314,15 +317,26 @@
           <input name="title" id="title" value="{{ question.title if question else '' }}" />
         </div>
 
-        <div class="card chat-panel">
+        <div class="card chat-panel" aria-disabled="{{ 'false' if ai_enabled else 'true' }}" title="{{ 'No API key configured' if not ai_enabled else 'Chat Assistant' }}">
           <label for="chat_message">Chat Assistant</label>
-          <p class="hint">Ask for a rewrite, a cleanup pass, a distractor tweak, or a question-specific edit. Use Shift+Enter for a newline.</p>
+          <p class="hint">{{ 'Ask for a rewrite, a cleanup pass, a distractor tweak, or a question-specific edit. Enter adds a newline. Use Shift+Enter to send.' if ai_enabled else 'Chat is disabled until an OpenAI key is configured.' }}</p>
           <div id="chat_thread" class="chat-log" aria-live="polite"></div>
           <div class="chat-input-row">
-            <textarea id="chat_message" placeholder="e.g. Please turn this rough prompt into a cleaner exam question."></textarea>
+            <textarea
+              id="chat_message"
+              placeholder="e.g. Please turn this rough prompt into a cleaner exam question."
+              title="{{ 'Enter adds a newline. Use Shift+Enter to send.' if ai_enabled else 'No API key configured.' }}"
+              {% if not ai_enabled %}disabled{% endif %}
+            ></textarea>
             <div id="chat_attachments" class="chat-attachments"></div>
             <div class="actions">
-              <button type="button" class="btn" id="btn_send_chat">Send</button>
+              <button
+                type="button"
+                class="btn"
+                id="btn_send_chat"
+                title="Shift+Enter to send"
+                {% if not ai_enabled %}disabled{% endif %}
+              >Send</button>
               <span id="chat_status" class="status"></span>
             </div>
           </div>
@@ -449,6 +463,8 @@
       const chatSendBtn = document.getElementById("btn_send_chat");
       const chatStatusEl = document.getElementById("chat_status");
       const chatAttachmentsEl = document.getElementById("chat_attachments");
+      const chatPanelEl = document.querySelector(".chat-panel");
+      const chatEnabled = {{ 'true' if ai_enabled else 'false' }};
       let autosaveTimer = null;
       let pendingChatFigureIds = [];
 
@@ -460,6 +476,14 @@
       function setChatStatus(text, cls) {
         chatStatusEl.textContent = text;
         chatStatusEl.className = `status ${cls || ""}`;
+      }
+
+      function setChatBusy(isBusy) {
+        const disabled = !chatEnabled || isBusy;
+        chatSendBtn.disabled = disabled;
+        chatMessageEl.disabled = disabled;
+        chatPanelEl.classList.toggle("is-busy", isBusy);
+        chatPanelEl.setAttribute("aria-busy", isBusy ? "true" : "false");
       }
 
       function isMC() {
@@ -821,12 +845,12 @@
         if (typeof data.calculated_variables_md === "string") {
           calculatedVariablesEl.textContent = data.calculated_variables_md;
         }
-        if (typeof data.rendered_answer_md === "string") {
-          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
-        }
         renderTemplate();
         renderMCPreviewFromData(data);
         renderFiguresPreview();
+        if (typeof data.rendered_answer_md === "string") {
+          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
+        }
         updateMCVisibility();
       }
 
@@ -844,9 +868,12 @@
         const qid = questionIdEl.value.trim();
         const message = chatMessageEl.value.trim();
         if (!qid || !message) return;
+        if (!chatEnabled) {
+          setChatStatus("Chat is disabled: no API key configured.", "warn");
+          return;
+        }
         if (autosaveTimer) clearTimeout(autosaveTimer);
-        chatSendBtn.disabled = true;
-        chatMessageEl.disabled = true;
+        setChatBusy(true);
         const attachedFigureIds = pendingChatFigureIds.slice();
         setChatStatus("Thinking...", "warn");
         renderChatMessage("user", message, attachedFigureIds);
@@ -873,8 +900,7 @@
           setChatStatus(`Chat error: ${err.message}`, "warn");
           renderChatMessage("assistant", `Error: ${err.message}`);
         } finally {
-          chatSendBtn.disabled = false;
-          chatMessageEl.disabled = false;
+          setChatBusy(false);
           chatMessageEl.focus();
         }
       }
@@ -1053,7 +1079,7 @@
         sendChatMessage().catch((err) => setChatStatus(`Chat error: ${err.message}`, "warn"));
       });
       chatMessageEl.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
+        if (event.key === "Enter" && event.shiftKey) {
           event.preventDefault();
           sendChatMessage().catch((err) => setChatStatus(`Chat error: ${err.message}`, "warn"));
         }
@@ -1081,12 +1107,8 @@
           renderChatMessage("user", turn.user_message || "", turn.attached_figure_ids || []);
           renderChatMessage("assistant", turn.assistant_message || "");
         }
-      } else {
-        renderChatMessage(
-          "assistant",
-          "{{ 'OpenAI chat is enabled.' if ai_enabled else 'Configure an OpenAI key to use chat.' }}"
-        );
       }
+      setChatBusy(false);
       renderPendingChatAttachments();
     </script>
   </body>

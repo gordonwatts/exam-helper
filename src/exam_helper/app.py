@@ -906,6 +906,10 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 attached_figure_ids=payload.attached_figure_ids,
             )
             preview = _compute_answer_preview(question)
+            if not preview["fatal_error"]:
+                question.solution.last_computed_answer_md = preview[
+                    "rendered_answer_md"
+                ]
             mc_preview = _compute_mc_preview(
                 question.solution.answer_formula_md,
                 question.solution.mc_answer_specs,
@@ -920,10 +924,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "changed_fields": result.changed_fields + ["chat_history_json"],
                 **editor_values,
                 "calculated_variables_md": preview["calculated_variables_md"],
-                "rendered_answer_md": (
-                    question.solution.last_computed_answer_md
-                    or preview["rendered_answer_md"]
-                ),
+                "rendered_answer_md": preview["rendered_answer_md"],
                 "answer_formula_warning": preview["warning"],
                 "mc_preview_choices": mc_preview["preview_choices"],
                 "mc_preview_answers": mc_preview["preview_answers"],
