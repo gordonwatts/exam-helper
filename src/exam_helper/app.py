@@ -728,10 +728,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             _question_form_context(q),
         )
 
-    @app.get("/questions/{question_id}/edit2", response_class=HTMLResponse)
-    def edit_question_v2(request: Request, question_id: str) -> HTMLResponse:
-        return RedirectResponse(f"/questions/{question_id}/edit", status_code=303)
-
     @app.post("/questions/{question_id}/delete")
     def delete_question(question_id: str) -> RedirectResponse:
         question = repo.get_question(question_id)

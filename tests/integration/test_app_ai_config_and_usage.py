@@ -53,12 +53,8 @@ def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     assert "setChatBusy(true)" in resp.text
     assert 'event.key === "Enter" && event.shiftKey' in resp.text
 
-    redirect = client.get("/questions/q_edit/edit2", follow_redirects=False)
-    assert redirect.status_code == 303
-    assert redirect.headers["location"] == "/questions/q_edit/edit"
 
-
-def test_question_editor_legacy_path_redirects_to_edit(tmp_path) -> None:
+def test_question_editor_rendering_is_stable(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key=None)
@@ -66,7 +62,7 @@ def test_question_editor_legacy_path_redirects_to_edit(tmp_path) -> None:
     client.post(
         "/questions/save",
         data={
-            "question_id": "q_edit2",
+            "question_id": "q_chat",
             "title": "T",
             "question_type": "free_response",
             "prompt_md": "P",
@@ -78,9 +74,9 @@ def test_question_editor_legacy_path_redirects_to_edit(tmp_path) -> None:
             "points": 5,
         },
     )
-    resp = client.get("/questions/q_edit2/edit2", follow_redirects=False)
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/questions/q_edit2/edit"
+    resp = client.get("/questions/q_chat/edit")
+    assert resp.status_code == 200
+    assert 'id="chat_thread"' in resp.text
 
 
 def test_usage_totals_accumulate_and_reset(tmp_path) -> None:
