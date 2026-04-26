@@ -721,10 +721,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
     @app.get("/questions/{question_id}/edit", response_class=HTMLResponse)
     def edit_question(request: Request, question_id: str) -> HTMLResponse:
-        return RedirectResponse(f"/questions/{question_id}/edit2", status_code=303)
-
-    @app.get("/questions/{question_id}/edit2", response_class=HTMLResponse)
-    def edit_question_v2(request: Request, question_id: str) -> HTMLResponse:
         q = repo.get_question(question_id)
         return templates.TemplateResponse(
             request,

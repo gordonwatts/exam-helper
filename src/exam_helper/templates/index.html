@@ -90,7 +90,7 @@
           <td>{{ q.question_type.value }}</td>
           <td>
             <div class="actions">
-              <a href="/questions/{{ q.id }}/edit2">Edit</a>
+              <a href="/questions/{{ q.id }}/edit">Edit</a>
               <form method="post" action="/questions/{{ q.id }}/delete" onsubmit="return confirm('Delete question {{ q.id }} from listings? The YAML file will remain on disk.');">
                 <button class="btn-link-danger" type="submit">Delete</button>
               </form>

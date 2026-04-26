@@ -146,14 +146,14 @@ def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
     assert 'id="btn_generate_answer"' not in html
 
 
-def test_edit2_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
+def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
-    question_path = tmp_path / "questions" / "legacy-edit2.yaml"
+    question_path = tmp_path / "questions" / "legacy-editor.yaml"
     question_path.write_text(
         yaml.safe_dump(
             {
-                "id": "legacy-edit2",
+                "id": "legacy-editor",
                 "title": "Old title",
                 "question_type": "free_response",
                 "prompt_md": "Old prompt",
@@ -174,7 +174,7 @@ def test_edit2_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     app = create_app(tmp_path, openai_key=None)
     client = TestClient(app)
 
-    edit_resp = client.get("/questions/legacy-edit2/edit2")
+    edit_resp = client.get("/questions/legacy-editor/edit")
     assert edit_resp.status_code == 200
     edit_html = edit_resp.text
     assert 'id="figures_json"' in edit_html
@@ -189,7 +189,7 @@ def test_edit2_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     save_resp = client.post(
         "/questions/save",
         data={
-            "question_id": "legacy-edit2",
+            "question_id": "legacy-editor",
             "title": "Updated title",
             "question_type": "free_response",
             "choices_yaml": "[]",
@@ -285,7 +285,6 @@ def test_soft_delete_hides_question_but_keeps_yaml_on_disk(tmp_path) -> None:
     home = client.get("/")
     assert home.status_code == 200
     assert "/questions/q1/edit" not in home.text
-    assert "/questions/q1/edit2" not in home.text
 
     question_file = tmp_path / "questions" / "q1.yaml"
     assert question_file.exists()
@@ -322,7 +321,7 @@ def test_new_question_id_skips_soft_deleted_ids(tmp_path) -> None:
     assert 'id="question_id" value="q2"' in new_page.text
 
 
-def test_home_shows_edit2_and_new_question_2_links(tmp_path) -> None:
+def test_home_shows_edit_and_new_question_2_links(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key=None)
@@ -347,9 +346,8 @@ def test_home_shows_edit2_and_new_question_2_links(tmp_path) -> None:
     home = client.get("/")
     assert home.status_code == 200
     assert 'href="/questions/new2"' in home.text
-    assert 'href="/questions/q1/edit2"' in home.text
+    assert 'href="/questions/q1/edit"' in home.text
     assert 'href="/questions/new"' not in home.text
-    assert 'href="/questions/q1/edit"' not in home.text
 
 
 def test_save_persists_dollar_math_delimiters(tmp_path) -> None:

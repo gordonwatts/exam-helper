@@ -99,7 +99,7 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
 
                 page.goto(base_url + "/")
                 page.get_by_role("link", name="Edit").click()
-                page.wait_for_url(base_url + "/questions/q_browser/edit2")
+                page.wait_for_url(base_url + "/questions/q_browser/edit")
 
                 assert page.locator("#question_id").input_value() == "q_browser"
                 assert page.locator("#title").input_value() == "Browser Test"
@@ -138,7 +138,7 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
                 page.wait_for_url(base_url + "/")
 
                 page.get_by_role("link", name="Edit").click()
-                page.wait_for_url(base_url + "/questions/q_browser/edit2")
+                page.wait_for_url(base_url + "/questions/q_browser/edit")
 
                 assert page.locator("#question_id").input_value() == "q_browser"
                 assert page.locator("#title").input_value() == "Browser Test Updated"
@@ -237,8 +237,8 @@ def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
                 pytest.skip(f"Chromium is not available: {exc}")
             try:
                 page = browser.new_page()
-                page.goto(base_url + "/questions/q_browser_mc/edit2")
-                page.wait_for_url(base_url + "/questions/q_browser_mc/edit2")
+                page.goto(base_url + "/questions/q_browser_mc/edit")
+                page.wait_for_url(base_url + "/questions/q_browser_mc/edit")
 
                 page.evaluate("""() => {
                         setEditorValuesFromResponse({
