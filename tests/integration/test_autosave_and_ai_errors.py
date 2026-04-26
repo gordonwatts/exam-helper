@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from exam_helper.ai_service import AIService
 from exam_helper.app import create_app
-from exam_helper.models import AIUsageTotals, DistractorFunction
+from exam_helper.models import (
+    AIUsageTotals,
+    ChatTurn,
+    DistractorFunction,
+    MCAnswerSpec,
+    Question,
+)
 from exam_helper.repository import ProjectRepository
 
 
@@ -27,6 +35,47 @@ def _seed_question(client: TestClient, qid: str, qtype: str = "free_response") -
             "points": 5,
         },
     )
+
+
+def _editor_state_for_question(question: Question) -> dict[str, object]:
+    distractor_functions_text = ""
+    if question.solution.distractor_python_code:
+        distractor_functions_text = (
+            "\n---\n".join(
+                [
+                    f"# distractor: {d.id}\n{(d.python_code or '').strip()}"
+                    for d in question.solution.distractor_python_code
+                ]
+            ).strip()
+            + "\n"
+        )
+    return {
+        "title": question.title,
+        "question_type": question.question_type.value,
+        "mc_options_guidance": question.mc_options_guidance,
+        "question_template_md": question.solution.question_template_md,
+        "solution_parameters_yaml": (
+            "{}"
+            if not question.solution.parameters
+            else json.dumps(question.solution.parameters)
+        ),
+        "answer_formula_md": question.solution.answer_formula_md,
+        "answer_guidance": question.solution.answer_guidance,
+        "distractor_functions_text": distractor_functions_text,
+        "mc_answer_specs_json": json.dumps(
+            [spec.model_dump(mode="json") for spec in question.solution.mc_answer_specs]
+        ),
+        "choices_yaml": "[]",
+        "typed_solution_md": question.solution.typed_solution_md,
+        "typed_solution_status": question.solution.typed_solution_status,
+        "figures_json": json.dumps(
+            [fig.model_dump(mode="json") for fig in question.figures]
+        ),
+        "chat_history_json": json.dumps(
+            [turn.model_dump(mode="json") for turn in question.solution.chat_history]
+        ),
+        "points": question.points,
+    }
 
 
 def test_autosave_marks_typed_solution_stale_on_parameter_change(tmp_path) -> None:
@@ -512,3 +561,226 @@ def test_autosave_updates_mc_options_guidance(tmp_path) -> None:
     assert resp.status_code == 200
     saved = repo.get_question("q_mc_guidance")
     assert saved.mc_options_guidance == "Use realistic sign mistakes only."
+
+
+def test_ai_chat_updates_question_and_returns_payload(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_chat")
+
+    class _AI:
+        def chat_edit_question(self, question, user_message, attached_figure_ids=None):
+            assert question.id == "q_chat"
+            assert user_message == "Please clean this up."
+            assert attached_figure_ids == []
+            updated = question.model_copy(deep=True)
+            updated.title = "Cleaned title"
+            updated.solution.question_template_md = "A cleaner prompt."
+            updated.solution.chat_history = []
+            return AIService.QuestionEditorResult(
+                assistant_message="Cleaned up the prompt.",
+                question=updated,
+                warnings=["Preserved the typed solution."],
+                usage=AIUsageTotals(),
+                changed_fields=["title", "question_template_md"],
+            )
+
+    app.state.ai = _AI()
+    q = repo.get_question("q_chat")
+    resp = client.post(
+        "/questions/q_chat/ai/chat",
+        json={
+            "message": "Please clean this up.",
+            "attached_figure_ids": [],
+            "editor_state": _editor_state_for_question(q),
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["assistant_message"] == "Cleaned up the prompt."
+    assert "title" in body["changed_fields"]
+    assert body["title"] == "Cleaned title"
+    assert body["question_template_md"] == "A cleaner prompt."
+    assert body["warnings"] == ["Preserved the typed solution."]
+    saved = repo.get_question("q_chat")
+    assert saved.title == "Cleaned title"
+    assert saved.solution.question_template_md == "A cleaner prompt."
+    assert len(saved.solution.chat_history) == 1
+    assert saved.solution.chat_history[0].user_message == "Please clean this up."
+
+
+def test_ai_chat_refreshes_rendered_answer_when_guidance_changes(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_chat_answer")
+    seeded = repo.get_question("q_chat_answer")
+    seeded.solution.answer_formula_md = "answer = 9"
+    seeded.solution.answer_guidance = "Old answer: {{answer}}"
+    seeded.solution.last_computed_answer_md = "Old answer: 9"
+    repo.save_question(seeded)
+
+    class _AI:
+        def chat_edit_question(self, question, user_message, attached_figure_ids=None):
+            updated = question.model_copy(deep=True)
+            updated.solution.answer_guidance = "New answer: {{answer}}"
+            updated.solution.last_computed_answer_md = "Stale answer: 9"
+            return AIService.QuestionEditorResult(
+                assistant_message="Updated the answer text.",
+                question=updated,
+                warnings=[],
+                usage=AIUsageTotals(),
+                changed_fields=["answer_guidance"],
+            )
+
+    app.state.ai = _AI()
+    resp = client.post(
+        "/questions/q_chat_answer/ai/chat",
+        json={
+            "message": "Update the answer wording.",
+            "attached_figure_ids": [],
+            "editor_state": _editor_state_for_question(seeded),
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["rendered_answer_md"] == "New answer: 9"
+    saved = repo.get_question("q_chat_answer")
+    assert saved.solution.answer_guidance == "New answer: {{answer}}"
+    assert saved.solution.last_computed_answer_md == "New answer: 9"
+
+
+def test_ai_chat_uses_live_editor_state_and_persists_last_five_turns(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_live_chat")
+    seeded = repo.get_question("q_live_chat")
+    seeded.solution.chat_history = [
+        ChatTurn(user_message=f"user {idx}", assistant_message=f"assistant {idx}")
+        for idx in range(1, 6)
+    ]
+    repo.save_question(seeded)
+
+    class _AI:
+        def chat_edit_question(self, question, user_message, attached_figure_ids=None):
+            assert question.title == "Unsaved local title"
+            assert question.solution.question_template_md == "Unsaved local template"
+            assert attached_figure_ids == ["fig_1"]
+            updated = question.model_copy(deep=True)
+            updated.solution.answer_formula_md = "answer = 12"
+            updated.solution.answer_guidance = "{{answer}}"
+            updated.solution.last_computed_answer_md = "12"
+            return AIService.QuestionEditorResult(
+                assistant_message="Stored the answer formula.",
+                question=updated,
+                warnings=[],
+                usage=AIUsageTotals(),
+                changed_fields=["answer_formula_md", "last_computed_answer_md"],
+            )
+
+    app.state.ai = _AI()
+    live_state = _editor_state_for_question(seeded)
+    live_state["title"] = "Unsaved local title"
+    live_state["question_template_md"] = "Unsaved local template"
+    live_state["figures_json"] = json.dumps(
+        [
+            {
+                "id": "fig_1",
+                "mime_type": "image/png",
+                "data_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2pG1EAAAAASUVORK5CYII=",
+                "sha256": "e8516d5fe5dff6dd2cc7f7269a4df3b741b83472ae1fbf2cbfb2aa8d0cd91015",
+                "caption": "chat attachment",
+            }
+        ]
+    )
+    live_state["chat_history_json"] = json.dumps(
+        [turn.model_dump(mode="json") for turn in seeded.solution.chat_history]
+    )
+
+    resp = client.post(
+        "/questions/q_live_chat/ai/chat",
+        json={
+            "message": "Compute the answer.",
+            "attached_figure_ids": ["fig_1"],
+            "editor_state": live_state,
+        },
+    )
+
+    assert resp.status_code == 200
+    saved = repo.get_question("q_live_chat")
+    assert saved.title == "Unsaved local title"
+    assert saved.solution.question_template_md == "Unsaved local template"
+    assert saved.solution.last_computed_answer_md == "12"
+    assert len(saved.solution.chat_history) == 5
+    assert saved.solution.chat_history[-1].user_message == "Compute the answer."
+    assert saved.solution.chat_history[-1].attached_figure_ids == ["fig_1"]
+    assert saved.solution.chat_history[0].user_message == "user 2"
+
+
+def test_autosave_after_chat_keeps_chat_applied_solution_fields(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_chat_autosave", qtype="multiple_choice")
+
+    class _AI:
+        def chat_edit_question(self, question, user_message, attached_figure_ids=None):
+            updated = question.model_copy(deep=True)
+            updated.solution.answer_formula_md = "answer = 9"
+            updated.solution.answer_guidance = "{{answer}}"
+            updated.solution.mc_answer_specs = [
+                MCAnswerSpec(formula_md=f"answer = {idx}", rationale_md=f"r{idx}")
+                for idx in range(1, 5)
+            ]
+            return AIService.QuestionEditorResult(
+                assistant_message="Updated answer and distractors.",
+                question=updated,
+                warnings=[],
+                usage=AIUsageTotals(),
+                changed_fields=["answer_formula_md", "mc_answer_specs_json"],
+            )
+
+    app.state.ai = _AI()
+    original = repo.get_question("q_chat_autosave")
+    chat_resp = client.post(
+        "/questions/q_chat_autosave/ai/chat",
+        json={
+            "message": "Set the answer and distractors.",
+            "attached_figure_ids": [],
+            "editor_state": _editor_state_for_question(original),
+        },
+    )
+    assert chat_resp.status_code == 200
+    body = chat_resp.json()
+
+    autosave_resp = client.post(
+        "/questions/q_chat_autosave/autosave",
+        json={
+            "title": body["title"],
+            "question_type": body["question_type"],
+            "mc_options_guidance": body["mc_options_guidance"],
+            "question_template_md": body["question_template_md"],
+            "solution_parameters_yaml": body["solution_parameters_yaml"],
+            "answer_formula_md": body["answer_formula_md"],
+            "answer_guidance": body["answer_guidance"],
+            "distractor_functions_text": body["distractor_functions_text"],
+            "mc_answer_specs_json": body["mc_answer_specs_json"],
+            "choices_yaml": body["choices_yaml"],
+            "typed_solution_md": body["typed_solution_md"],
+            "typed_solution_status": body["typed_solution_status"],
+            "figures_json": body["figures_json"],
+            "chat_history_json": body["chat_history_json"],
+            "points": body["points"],
+        },
+    )
+    assert autosave_resp.status_code == 200
+    saved = repo.get_question("q_chat_autosave")
+    assert saved.solution.answer_formula_md == "answer = 9"
+    assert len(saved.solution.mc_answer_specs) == 4

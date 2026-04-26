@@ -179,3 +179,117 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=10)
+
+
+def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import Error as PlaywrightError, sync_playwright
+
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("MC Exam", "Physics 1")
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "exam_helper.cli",
+            "serve",
+            str(tmp_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        _wait_for_server(base_url + "/", proc)
+        seed = httpx.post(
+            base_url + "/questions/save",
+            data={
+                "question_id": "q_browser_mc",
+                "title": "Browser MC Test",
+                "question_type": "multiple_choice",
+                "question_template_md": "What is the value?",
+                "solution_parameters_yaml": "x: 2",
+                "answer_formula_md": "answer = x",
+                "answer_guidance": "The answer is {{answer}}.",
+                "mc_options_guidance": "",
+                "distractor_functions_text": "",
+                "choices_yaml": "[]",
+                "typed_solution_md": "",
+                "typed_solution_status": "fresh",
+                "figures_json": "[]",
+                "points": 5,
+            },
+            follow_redirects=False,
+            timeout=5.0,
+        )
+        assert seed.status_code == 303
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
+            except PlaywrightError as exc:
+                pytest.skip(f"Chromium is not available: {exc}")
+            try:
+                page = browser.new_page()
+                page.goto(base_url + "/questions/q_browser_mc/edit2")
+                page.wait_for_url(base_url + "/questions/q_browser_mc/edit2")
+
+                page.evaluate("""() => {
+                        setEditorValuesFromResponse({
+                          question_type: "multiple_choice",
+                          mc_answer_specs_json: JSON.stringify([
+                            { formula_md: "answer = x + 1", rationale_md: "off by one" },
+                            { formula_md: "answer = x + 2", rationale_md: "off by two" },
+                            { formula_md: "answer = x + 3", rationale_md: "off by three" },
+                            { formula_md: "answer = x + 4", rationale_md: "off by four" }
+                          ]),
+                          mc_preview_rows: [
+                            { preview_md: "22.4", warning: "" },
+                            { preview_md: "23.4", warning: "" },
+                            { preview_md: "24.4", warning: "" },
+                            { preview_md: "25.4", warning: "" }
+                          ],
+                          mc_preview_choices: [
+                            { label: "A", content_md: "22.4", rationale: "" },
+                            { label: "B", content_md: "23.4", rationale: "" },
+                            { label: "C", content_md: "24.4", rationale: "" },
+                            { label: "D", content_md: "25.4", rationale: "" }
+                          ]
+                        });
+                    }""")
+
+                assert (
+                    page.locator("#mc_answer_1_formula_md").input_value().strip()
+                    == "answer = x + 1"
+                )
+                assert (
+                    page.locator("#mc_answer_1_rationale_md").input_value().strip()
+                    == "off by one"
+                )
+                assert (
+                    page.locator("#mc_answer_4_formula_md").input_value().strip()
+                    == "answer = x + 4"
+                )
+                assert (
+                    page.locator("#mc_answer_4_rationale_md").input_value().strip()
+                    == "off by four"
+                )
+                preview_height = page.locator("#mc_answer_1_preview").evaluate(
+                    "(el) => el.getBoundingClientRect().height"
+                )
+                assert preview_height < 40
+            finally:
+                browser.close()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)

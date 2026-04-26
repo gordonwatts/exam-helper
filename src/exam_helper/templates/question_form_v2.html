@@ -121,6 +121,12 @@
         white-space: pre-wrap;
         font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
       }
+      .formula-preview--compact {
+        min-height: 0;
+        display: inline-block;
+        width: fit-content;
+        max-width: 100%;
+      }
       .status {
         min-height: 1.2rem;
         color: var(--muted);
@@ -203,6 +209,64 @@
         font-size: 0.92rem;
         min-height: 1.1rem;
       }
+      .chat-panel {
+        display: grid;
+        gap: 0.85rem;
+      }
+      .chat-panel.is-busy {
+        opacity: 0.78;
+      }
+      .chat-log {
+        display: grid;
+        gap: 0.7rem;
+        max-height: 280px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #fff;
+        padding: 0.85rem;
+      }
+      .chat-message {
+        border-radius: 14px;
+        padding: 0.75rem 0.85rem;
+        max-width: 88%;
+      }
+      .chat-message.user {
+        justify-self: end;
+        background: var(--accent-soft);
+      }
+      .chat-message.assistant {
+        justify-self: start;
+        background: #fff;
+        border: 1px solid #eadfcf;
+      }
+      .chat-role {
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 0.35rem;
+      }
+      .chat-input-row {
+        display: grid;
+        gap: 0.6rem;
+      }
+      .chat-input-row textarea {
+        min-height: 92px;
+      }
+      .chat-attachments {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+      .chat-attachment {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.3rem 0.6rem;
+        background: #fff;
+        font-size: 0.9rem;
+      }
       @media (max-width: 900px) {
         .row, .row3, .mc-preview-grid {
           grid-template-columns: 1fr;
@@ -235,6 +299,7 @@
         <textarea hidden name="distractor_functions_text" id="distractor_functions_text">{{ distractor_functions_text }}</textarea>
         <textarea hidden name="mc_answer_specs_json" id="mc_answer_specs_json">{{ mc_answer_specs_json }}</textarea>
         <textarea hidden name="typed_solution_status" id="typed_solution_status">{{ question.solution.typed_solution_status if question else 'missing' }}</textarea>
+        <textarea hidden name="chat_history_json" id="chat_history_json">{{ chat_history_json }}</textarea>
         <div class="row3">
           <div class="card">
             <label>Question ID</label>
@@ -256,6 +321,31 @@
         <div class="card">
           <label>Title (optional)</label>
           <input name="title" id="title" value="{{ question.title if question else '' }}" />
+        </div>
+
+        <div class="card chat-panel" aria-disabled="{{ 'false' if ai_enabled else 'true' }}" title="{{ 'No API key configured' if not ai_enabled else 'Chat Assistant' }}">
+          <label for="chat_message">Chat Assistant</label>
+          <p class="hint">{{ 'Ask for a rewrite, a cleanup pass, a distractor tweak, or a question-specific edit. Enter adds a newline. Use Shift+Enter to send.' if ai_enabled else 'Chat is disabled until an OpenAI key is configured.' }}</p>
+          <div id="chat_thread" class="chat-log" aria-live="polite"></div>
+          <div class="chat-input-row">
+            <textarea
+              id="chat_message"
+              placeholder="e.g. Please turn this rough prompt into a cleaner exam question."
+              title="{{ 'Enter adds a newline. Use Shift+Enter to send.' if ai_enabled else 'No API key configured.' }}"
+              {% if not ai_enabled %}disabled{% endif %}
+            ></textarea>
+            <div id="chat_attachments" class="chat-attachments"></div>
+            <div class="actions">
+              <button
+                type="button"
+                class="btn"
+                id="btn_send_chat"
+                title="Shift+Enter to send"
+                {% if not ai_enabled %}disabled{% endif %}
+              >Send</button>
+              <span id="chat_status" class="status"></span>
+            </div>
+          </div>
         </div>
 
         <div class="row">
@@ -311,7 +401,7 @@
                 <textarea id="mc_answer_{{ loop.index }}_formula_md" data-mc-formula name="mc_answer_{{ loop.index }}_formula_md">{{ row.formula_md }}</textarea>
                 <label for="mc_answer_{{ loop.index }}_rationale_md">Rationale</label>
                 <textarea id="mc_answer_{{ loop.index }}_rationale_md" data-mc-rationale name="mc_answer_{{ loop.index }}_rationale_md">{{ row.rationale_md }}</textarea>
-                <div class="formula-preview" id="mc_answer_{{ loop.index }}_preview" aria-readonly="true">{{ row.preview_md }}</div>
+                <div class="formula-preview formula-preview--compact" id="mc_answer_{{ loop.index }}_preview" aria-readonly="true">{{ row.preview_md }}</div>
                 <p class="mc-row-warning" id="mc_answer_{{ loop.index }}_warning">{{ row.warning }}</p>
               </div>
             {% endfor %}
@@ -359,6 +449,7 @@
       const mcOptionsGuidanceEl = document.getElementById("mc_options_guidance");
       const distractorFnsEl = document.getElementById("distractor_functions_text");
       const mcAnswerSpecsEl = document.getElementById("mc_answer_specs_json");
+      const chatHistoryEl = document.getElementById("chat_history_json");
       const renderedAnswerEl = document.getElementById("rendered_answer_md");
       const calculatedVariablesEl = document.getElementById("calculated_variables_md");
       const answerFormulaWarningEl = document.getElementById("answer_formula_warning");
@@ -373,11 +464,32 @@
       const mcPreviewAnswers = document.getElementById("mc_preview_answers");
       const mcPreviewRationale = document.getElementById("mc_preview_rationale");
       const mcPreviewWarning = document.getElementById("mc_preview_warning");
+      const chatThreadEl = document.getElementById("chat_thread");
+      const chatMessageEl = document.getElementById("chat_message");
+      const chatSendBtn = document.getElementById("btn_send_chat");
+      const chatStatusEl = document.getElementById("chat_status");
+      const chatAttachmentsEl = document.getElementById("chat_attachments");
+      const chatPanelEl = document.querySelector(".chat-panel");
+      const chatEnabled = {{ 'true' if ai_enabled else 'false' }};
       let autosaveTimer = null;
+      let pendingChatFigureIds = [];
 
       function setStatus(text, cls) {
         saveStatus.textContent = text;
         saveStatus.className = `status ${cls || ""}`;
+      }
+
+      function setChatStatus(text, cls) {
+        chatStatusEl.textContent = text;
+        chatStatusEl.className = `status ${cls || ""}`;
+      }
+
+      function setChatBusy(isBusy) {
+        const disabled = !chatEnabled || isBusy;
+        chatSendBtn.disabled = disabled;
+        chatMessageEl.disabled = disabled;
+        chatPanelEl.classList.toggle("is-busy", isBusy);
+        chatPanelEl.setAttribute("aria-busy", isBusy ? "true" : "false");
       }
 
       function isMC() {
@@ -411,6 +523,15 @@
       function setFigures(figures) {
         figuresInput.value = JSON.stringify(figures);
         renderFiguresPreview();
+      }
+
+      function parseChatHistory() {
+        try {
+          const parsed = JSON.parse(chatHistoryEl.value || "[]");
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
       }
 
       function nextFigureId(figures) {
@@ -512,6 +633,22 @@
         return true;
       }
 
+      async function addChatAttachmentFromFile(file) {
+        if (!file || !String(file.type || "").startsWith("image/")) return false;
+        const figures = parseFigures();
+        const pendingId = nextFigureId(figures);
+        setChatStatus("Processing chat image...", "warn");
+        const figure = await buildFigureFromFile(file);
+        figure.id = pendingId;
+        figures.push(figure);
+        setFigures(figures);
+        pendingChatFigureIds.push(pendingId);
+        renderPendingChatAttachments();
+        scheduleAutosave();
+        setChatStatus(`Attached ${pendingId}`, "good");
+        return true;
+      }
+
       function extractImageFilesFromClipboard(event) {
         const files = [];
         const items = Array.from((event.clipboardData && event.clipboardData.items) || []);
@@ -576,6 +713,21 @@
         return specs;
       }
 
+      function syncMCRowsFromSpecs(specs) {
+        const rows = document.querySelectorAll("[data-mc-row]");
+        rows.forEach((row, idx) => {
+          const formula = row.querySelector("[data-mc-formula]");
+          const rationale = row.querySelector("[data-mc-rationale]");
+          const spec = Array.isArray(specs) ? specs[idx] || {} : {};
+          if (formula) {
+            formula.value = typeof spec.formula_md === "string" ? spec.formula_md : "";
+          }
+          if (rationale) {
+            rationale.value = typeof spec.rationale_md === "string" ? spec.rationale_md : "";
+          }
+        });
+      }
+
       function renderMCPreviewFromData(data) {
         if (!isMC()) {
           mcPreviewAnswers.innerHTML = "";
@@ -606,7 +758,14 @@
           const warningEl = document.getElementById(`mc_answer_${idx + 1}_warning`);
           if (previewEl) {
             const previewText = String(row?.preview_md || "");
-            previewEl.innerHTML = previewText ? marked.parse(normalizeMathDelimitersForPreview(previewText)) : "";
+            if (previewText) {
+              previewEl.innerHTML = "";
+              previewEl.innerHTML = marked.parseInline(
+                normalizeMathDelimitersForPreview(previewText)
+              );
+            } else {
+              previewEl.innerHTML = "";
+            }
           }
           if (warningEl) {
             warningEl.textContent = row?.warning ? `Warning: ${row.warning}` : "";
@@ -654,6 +813,111 @@
         }
       }
 
+      function renderPendingChatAttachments() {
+        if (!pendingChatFigureIds.length) {
+          chatAttachmentsEl.innerHTML = "";
+          return;
+        }
+        chatAttachmentsEl.innerHTML = pendingChatFigureIds.map((id) => (
+          `<span class="chat-attachment">${escapeHtml(id)}</span>`
+        )).join("");
+      }
+
+      function renderChatMessage(role, text, attachedFigureIds = []) {
+        const item = document.createElement("div");
+        item.className = `chat-message ${role}`;
+        const attachments = Array.isArray(attachedFigureIds) && attachedFigureIds.length
+          ? `<div class="hint">Figures: ${attachedFigureIds.map((id) => escapeHtml(id)).join(", ")}</div>`
+          : "";
+        item.innerHTML = `
+          <div class="chat-role">${role === "assistant" ? "Assistant" : "You"}</div>
+          <div>${escapeHtml(String(text || "")).replace(/\n/g, "<br>")}</div>
+          ${attachments}
+        `;
+        chatThreadEl.appendChild(item);
+        chatThreadEl.scrollTop = chatThreadEl.scrollHeight;
+      }
+
+      function setEditorValuesFromResponse(data) {
+        if (typeof data.title === "string") titleEl.value = data.title;
+        if (Object.prototype.hasOwnProperty.call(data, "points")) pointsEl.value = data.points;
+        if (typeof data.question_type === "string") questionTypeEl.value = data.question_type;
+        if (typeof data.question_template_md === "string") templateEl.value = data.question_template_md;
+        if (typeof data.solution_parameters_yaml === "string") paramsEl.value = data.solution_parameters_yaml;
+        if (typeof data.answer_formula_md === "string") answerFormulaEl.value = data.answer_formula_md;
+        if (typeof data.answer_guidance === "string") answerGuidanceEl.value = data.answer_guidance;
+        if (typeof data.mc_options_guidance === "string") mcOptionsGuidanceEl.value = data.mc_options_guidance;
+        if (typeof data.distractor_functions_text === "string") distractorFnsEl.value = data.distractor_functions_text;
+        if (typeof data.mc_answer_specs_json === "string") {
+          mcAnswerSpecsEl.value = data.mc_answer_specs_json;
+          syncMCRowsFromSpecs(parseMCSpecs());
+        }
+        if (typeof data.chat_history_json === "string") chatHistoryEl.value = data.chat_history_json;
+        if (typeof data.figures_json === "string") figuresInput.value = data.figures_json;
+        if (typeof data.typed_solution_status === "string") typedStatusEl.value = data.typed_solution_status;
+        if (typeof data.calculated_variables_md === "string") {
+          calculatedVariablesEl.textContent = data.calculated_variables_md;
+        }
+        renderTemplate();
+        renderMCPreviewFromData(data);
+        renderFiguresPreview();
+        if (typeof data.rendered_answer_md === "string") {
+          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
+        }
+        updateMCVisibility();
+      }
+
+      function applyAssistantResponse(data) {
+        setEditorValuesFromResponse(data);
+        if (Array.isArray(data.warnings) && data.warnings.length) {
+          setChatStatus(data.warnings.join(" | "), "warn");
+        } else {
+          setChatStatus("Saved", "good");
+        }
+        setStatus("Updated via chat", "good");
+      }
+
+      async function sendChatMessage() {
+        const qid = questionIdEl.value.trim();
+        const message = chatMessageEl.value.trim();
+        if (!qid || !message) return;
+        if (!chatEnabled) {
+          setChatStatus("Chat is disabled: no API key configured.", "warn");
+          return;
+        }
+        if (autosaveTimer) clearTimeout(autosaveTimer);
+        setChatBusy(true);
+        const attachedFigureIds = pendingChatFigureIds.slice();
+        setChatStatus("Thinking...", "warn");
+        renderChatMessage("user", message, attachedFigureIds);
+        chatMessageEl.value = "";
+        try {
+          const res = await fetch(`/questions/${qid}/ai/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message,
+              attached_figure_ids: attachedFigureIds,
+              editor_state: serializePayload(),
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || res.statusText || "Chat update failed.");
+          }
+          renderChatMessage("assistant", data.assistant_message || "(no response)");
+          applyAssistantResponse(data);
+          pendingChatFigureIds = [];
+          renderPendingChatAttachments();
+        } catch (err) {
+          setChatStatus(`Chat error: ${err.message}`, "warn");
+          renderChatMessage("assistant", `Error: ${err.message}`);
+        } finally {
+          setChatBusy(false);
+          chatMessageEl.focus();
+        }
+      }
+
       function updateMCVisibility() {
         mcBlock.style.display = isMC() ? "block" : "none";
       }
@@ -672,6 +936,7 @@
           mc_answer_specs_json: mcAnswerSpecsEl.value,
           typed_solution_status: typedStatusEl.value,
           figures_json: figuresInput.value || "[]",
+          chat_history_json: chatHistoryEl.value || "[]",
           points: Number(pointsEl.value || 5),
         };
       }
@@ -772,6 +1037,19 @@
         }
       });
 
+      chatMessageEl.addEventListener("paste", async (event) => {
+        const files = extractImageFilesFromClipboard(event);
+        if (!files.length) return;
+        event.preventDefault();
+        try {
+          for (const file of files) {
+            await addChatAttachmentFromFile(file);
+          }
+        } catch (err) {
+          setChatStatus(`Chat image error: ${err.message}`, "warn");
+        }
+      });
+
       document.addEventListener("dragover", (event) => {
         const hasImage = Array.from(event.dataTransfer?.items || []).some((item) => item.kind === "file" && String(item.type || "").startsWith("image/"));
         if (hasImage) {
@@ -790,6 +1068,13 @@
         if (!files.length) return;
         event.preventDefault();
         try {
+          const dropTarget = event.target instanceof Element ? event.target.closest(".chat-panel") : null;
+          if (dropTarget) {
+            for (const file of files) {
+              await addChatAttachmentFromFile(file);
+            }
+            return;
+          }
           const appendFallback = document.activeElement !== templateEl;
           for (const file of files) {
             await addFigureFromFile(file, appendFallback);
@@ -801,6 +1086,16 @@
 
       form.addEventListener("submit", () => {
         setStatus("Saving...", "warn");
+      });
+
+      chatSendBtn.addEventListener("click", () => {
+        sendChatMessage().catch((err) => setChatStatus(`Chat error: ${err.message}`, "warn"));
+      });
+      chatMessageEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && event.shiftKey) {
+          event.preventDefault();
+          sendChatMessage().catch((err) => setChatStatus(`Chat error: ${err.message}`, "warn"));
+        }
       });
 
       renderTemplate();
@@ -819,6 +1114,15 @@
       renderMarkdownSurface(renderedAnswerEl, renderedAnswerEl.textContent || "");
       updateMCVisibility();
       renderFiguresPreview();
+      const existingChatHistory = parseChatHistory();
+      if (existingChatHistory.length) {
+        for (const turn of existingChatHistory) {
+          renderChatMessage("user", turn.user_message || "", turn.attached_figure_ids || []);
+          renderChatMessage("assistant", turn.assistant_message || "");
+        }
+      }
+      setChatBusy(false);
+      renderPendingChatAttachments();
     </script>
   </body>
 </html>

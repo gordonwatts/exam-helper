@@ -57,6 +57,12 @@ class DistractorFunction(BaseModel):
         return v
 
 
+class ChatTurn(BaseModel):
+    user_message: str = ""
+    assistant_message: str = ""
+    attached_figure_ids: list[str] = Field(default_factory=list)
+
+
 class Solution(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -69,6 +75,7 @@ class Solution(BaseModel):
     typed_solution_md: str = ""
     typed_solution_status: Literal["missing", "fresh", "stale"] = "missing"
     last_computed_answer_md: str = ""
+    chat_history: list[ChatTurn] = Field(default_factory=list)
 
 
 class Question(BaseModel):
