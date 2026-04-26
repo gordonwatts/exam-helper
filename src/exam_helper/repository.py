@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
 
 from exam_helper.models import AIUsageTotals, ProjectConfig, Question
+
+
+def _natural_sort_key(text: str) -> list[object]:
+    parts = re.split(r"(\d+)", text.casefold())
+    key: list[object] = []
+    for part in parts:
+        if not part:
+            continue
+        key.append(int(part) if part.isdigit() else part)
+    return key
 
 
 class ProjectRepository:
@@ -39,7 +50,10 @@ class ProjectRepository:
 
     def list_questions(self, include_deleted: bool = False) -> list[Question]:
         items: list[Question] = []
-        for q_file in sorted(self.questions_dir.glob("*.yaml")):
+        for q_file in sorted(
+            self.questions_dir.glob("*.yaml"),
+            key=lambda path: _natural_sort_key(path.stem),
+        ):
             raw = yaml.safe_load(q_file.read_text(encoding="utf-8"))
             question = Question.model_validate(raw)
             if question.is_deleted and not include_deleted:
@@ -69,7 +83,10 @@ class ProjectRepository:
             self.load_project()
         except Exception as ex:
             errors.append(f"project.yaml invalid: {ex}")
-        for q_file in sorted(self.questions_dir.glob("*.yaml")):
+        for q_file in sorted(
+            self.questions_dir.glob("*.yaml"),
+            key=lambda path: _natural_sort_key(path.stem),
+        ):
             try:
                 raw = yaml.safe_load(q_file.read_text(encoding="utf-8"))
                 question = Question.model_validate(raw)
