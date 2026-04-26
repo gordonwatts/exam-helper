@@ -123,6 +123,9 @@
       }
       .formula-preview--compact {
         min-height: 0;
+        display: inline-block;
+        width: fit-content;
+        max-width: 100%;
       }
       .status {
         min-height: 1.2rem;
@@ -755,7 +758,14 @@
           const warningEl = document.getElementById(`mc_answer_${idx + 1}_warning`);
           if (previewEl) {
             const previewText = String(row?.preview_md || "");
-            previewEl.innerHTML = previewText ? marked.parse(normalizeMathDelimitersForPreview(previewText)) : "";
+            if (previewText) {
+              previewEl.innerHTML = "";
+              previewEl.innerHTML = marked.parseInline(
+                normalizeMathDelimitersForPreview(previewText)
+              );
+            } else {
+              previewEl.innerHTML = "";
+            }
           }
           if (warningEl) {
             warningEl.textContent = row?.warning ? `Warning: ${row.warning}` : "";

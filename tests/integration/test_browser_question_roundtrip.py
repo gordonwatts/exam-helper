@@ -249,8 +249,18 @@ def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
                             { formula_md: "answer = x + 3", rationale_md: "off by three" },
                             { formula_md: "answer = x + 4", rationale_md: "off by four" }
                           ]),
-                          mc_preview_rows: [],
-                          mc_preview_choices: []
+                          mc_preview_rows: [
+                            { preview_md: "22.4", warning: "" },
+                            { preview_md: "23.4", warning: "" },
+                            { preview_md: "24.4", warning: "" },
+                            { preview_md: "25.4", warning: "" }
+                          ],
+                          mc_preview_choices: [
+                            { label: "A", content_md: "22.4", rationale: "" },
+                            { label: "B", content_md: "23.4", rationale: "" },
+                            { label: "C", content_md: "24.4", rationale: "" },
+                            { label: "D", content_md: "25.4", rationale: "" }
+                          ]
                         });
                     }""")
 
@@ -270,6 +280,10 @@ def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
                     page.locator("#mc_answer_4_rationale_md").input_value().strip()
                     == "off by four"
                 )
+                preview_height = page.locator("#mc_answer_1_preview").evaluate(
+                    "(el) => el.getBoundingClientRect().height"
+                )
+                assert preview_height < 40
             finally:
                 browser.close()
     finally:
