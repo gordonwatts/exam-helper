@@ -93,3 +93,13 @@ def test_list_questions_excludes_soft_deleted_by_default(tmp_path: Path) -> None
 
     all_questions = repo.list_questions(include_deleted=True)
     assert [q.id for q in all_questions] == ["q_active", "q_deleted"]
+
+
+def test_list_questions_uses_natural_question_order(tmp_path: Path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    repo.save_question(Question(id="q1", title="First"))
+    repo.save_question(Question(id="q10", title="Tenth"))
+    repo.save_question(Question(id="q2", title="Second"))
+
+    assert [q.id for q in repo.list_questions()] == ["q1", "q2", "q10"]
