@@ -41,7 +41,7 @@ from exam_helper.validation import validate_question
 
 class AutosavePayload(BaseModel):
     title: str = ""
-    question_type: str = "free_response"
+    question_type: str = "multiple_choice"
     mc_options_guidance: str = ""
     question_template_md: str = ""
     solution_parameters_yaml: str = "{}"
@@ -474,7 +474,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         question_type_value = str(
             values.get(
                 "question_type",
-                existing.question_type.value if existing else "free_response",
+                existing.question_type.value if existing else "multiple_choice",
             )
         )
         mc_preview = _compute_mc_preview(
@@ -551,7 +551,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             "question_type": (
                 question.question_type.value
                 if question
-                else QuestionType.free_response.value
+                else QuestionType.multiple_choice.value
             ),
             "mc_options_guidance": question.mc_options_guidance if question else "",
             "question_template_md": (
@@ -750,7 +750,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         question_id: str = Form(...),
         title: str = Form(""),
         points: int = Form(5),
-        question_type: str = Form("free_response"),
+        question_type: str = Form("multiple_choice"),
         mc_options_guidance: str = Form(""),
         question_template_md: str = Form(""),
         mc_answer_specs_json: str = Form("[]"),

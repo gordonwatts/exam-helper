@@ -309,7 +309,7 @@
             <label>Type</label>
             <select name="question_type" id="question_type">
               <option value="free_response" {% if question and question.question_type.value=="free_response" %}selected{% endif %}>Free Response</option>
-              <option value="multiple_choice" {% if question and question.question_type.value=="multiple_choice" %}selected{% endif %}>Multiple Choice</option>
+              <option value="multiple_choice" {% if not question or question.question_type.value=="multiple_choice" %}selected{% endif %}>Multiple Choice</option>
             </select>
           </div>
           <div class="card">

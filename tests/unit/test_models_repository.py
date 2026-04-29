@@ -41,6 +41,7 @@ def test_question_defaults_allow_empty_title() -> None:
     q = Question(id="q2", prompt_md="p")
     assert q.title == ""
     assert q.points == 5
+    assert q.question_type == QuestionType.multiple_choice
 
 
 def test_multiple_choice_allows_partial_choices_during_authoring() -> None:
