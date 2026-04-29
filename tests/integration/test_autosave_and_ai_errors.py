@@ -786,27 +786,44 @@ def test_autosave_after_chat_keeps_chat_applied_solution_fields(tmp_path) -> Non
     assert chat_resp.status_code == 200
     body = chat_resp.json()
 
+    assert body["editor_state"]["answer_formula_md"] == "answer = 9"
+    assert json.loads(body["editor_state"]["mc_answer_specs_json"])[0] == {
+        "formula_md": "answer = 1",
+        "rationale_md": "r1",
+    }
+
     autosave_resp = client.post(
         "/questions/q_chat_autosave/autosave",
-        json={
-            "title": body["title"],
-            "question_type": body["question_type"],
-            "mc_options_guidance": body["mc_options_guidance"],
-            "question_template_md": body["question_template_md"],
-            "solution_parameters_yaml": body["solution_parameters_yaml"],
-            "answer_formula_md": body["answer_formula_md"],
-            "answer_guidance": body["answer_guidance"],
-            "distractor_functions_text": body["distractor_functions_text"],
-            "mc_answer_specs_json": body["mc_answer_specs_json"],
-            "choices_yaml": body["choices_yaml"],
-            "typed_solution_md": body["typed_solution_md"],
-            "typed_solution_status": body["typed_solution_status"],
-            "figures_json": body["figures_json"],
-            "chat_history_json": body["chat_history_json"],
-            "points": body["points"],
-        },
+        json=body["editor_state"],
     )
     assert autosave_resp.status_code == 200
+    autosave_body = autosave_resp.json()
+    assert (
+        autosave_body["editor_state"]["answer_formula_md"]
+        == body["editor_state"]["answer_formula_md"]
+    )
+    assert (
+        autosave_body["editor_state"]["mc_answer_specs_json"]
+        == body["editor_state"]["mc_answer_specs_json"]
+    )
+    assert (
+        autosave_body["editor_state"]["chat_history_json"]
+        == body["editor_state"]["chat_history_json"]
+    )
+
     saved = repo.get_question("q_chat_autosave")
     assert saved.solution.answer_formula_md == "answer = 9"
     assert len(saved.solution.mc_answer_specs) == 4
+    saved_state = _editor_state_for_question(saved)
+    assert (
+        saved_state["answer_formula_md"]
+        == autosave_body["editor_state"]["answer_formula_md"]
+    )
+    assert (
+        saved_state["mc_answer_specs_json"]
+        == autosave_body["editor_state"]["mc_answer_specs_json"]
+    )
+    assert (
+        saved_state["chat_history_json"]
+        == autosave_body["editor_state"]["chat_history_json"]
+    )
