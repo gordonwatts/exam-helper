@@ -471,12 +471,14 @@ def _normalize_choice_text(value: str) -> str:
 
 
 def _numeric_sort_key(value: str) -> float | None:
-    cleaned = re.sub(r",", "", value or "")
-    match = re.search(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", cleaned)
+    cleaned = re.sub(r",", "", value or "").strip()
+    match = re.match(
+        r"^([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(?:\b|$)", cleaned
+    )
     if not match:
         return None
     try:
-        return float(match.group(0))
+        return float(match.group(1))
     except ValueError:
         return None
 
