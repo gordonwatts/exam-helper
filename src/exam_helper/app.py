@@ -64,7 +64,7 @@ class ChatPayload(BaseModel):
     message: str = ""
     attached_figure_ids: list[str] = Field(default_factory=list)
     editor_state: QuestionEditorState
-    history_keep_count: int = Field(default=5, ge=1)
+    history_keep_count: int = Field(default=5, ge=0)
 
 
 def _sanitize_docx_filename_stem(project_name: str) -> str:

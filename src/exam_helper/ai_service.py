@@ -297,7 +297,7 @@ class AIService:
     @staticmethod
     def _truncate_chat_history(turns: list[ChatTurn], keep: int = 5) -> list[ChatTurn]:
         if keep <= 0:
-            return []
+            return [turn.model_copy(deep=True) for turn in turns]
         return [turn.model_copy(deep=True) for turn in turns[-keep:]]
 
     @staticmethod

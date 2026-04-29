@@ -45,6 +45,9 @@ def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     assert "<summary>Chat Assistant</summary>" in resp.text
     assert 'id="chat_thread"' in resp.text
     assert 'id="chat_history_keep_count"' in resp.text
+    assert (
+        'title="Set to 0 to send the full chat history back to the LLM."' in resp.text
+    )
     assert 'id="chat_message"' in resp.text
     assert 'id="btn_send_chat"' in resp.text
     assert "formula-preview--compact" in resp.text

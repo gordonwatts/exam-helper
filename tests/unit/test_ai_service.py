@@ -331,3 +331,49 @@ def test_ai_service_chat_edit_question_truncates_history_by_requested_count(
     assert "assistant 6" in history_block
     assert "user 1" not in history_block
     assert "assistant 3" not in history_block
+
+
+def test_ai_service_chat_edit_question_uses_full_history_when_keep_is_zero(
+    monkeypatch,
+) -> None:
+    from exam_helper import ai_service as mod
+    from exam_helper.models import ChatTurn
+
+    class _RecordingResponses:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+
+            class R:
+                pass
+
+            r = R()
+            r.output_text = '{"assistant_message":"Updated.","warnings":[]}'
+            r.output = []
+            r.id = "resp_1"
+            return r
+
+    class _RecordingClient:
+        def __init__(self):
+            self.responses = _RecordingResponses()
+
+    recording_client = _RecordingClient()
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: recording_client)
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="Original")
+    q.solution.chat_history = [
+        ChatTurn(user_message=f"user {idx}", assistant_message=f"assistant {idx}")
+        for idx in range(1, 4)
+    ]
+
+    out = svc.chat_edit_question(q, "rewrite this", history_keep_count=0)
+
+    assert out.assistant_message == "Updated."
+    prompt_text = recording_client.responses.calls[0]["input"][1]["content"][0]["text"]
+    history_block = prompt_text.split("Persisted recent chat history:\n", 1)[1].split(
+        "\n\nCurrent author request:\n", 1
+    )[0]
+    assert "user 1" in history_block
+    assert "assistant 3" in history_block

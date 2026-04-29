@@ -388,11 +388,12 @@
               <input
                 id="chat_history_keep_count"
                 type="number"
-                min="1"
+                min="0"
                 step="1"
                 value="{{ chat_history_keep_count_default }}"
                 {% if not ai_enabled %}disabled{% endif %}
                 aria-label="Messages sent back to the LLM"
+                title="Set to 0 to send the full chat history back to the LLM."
               />
               <span>turns back to the LLM</span>
             </div>
@@ -569,7 +570,7 @@
 
       function chatHistoryKeepCount() {
         const raw = Number.parseInt(chatHistoryKeepCountEl.value || "5", 10);
-        if (!Number.isFinite(raw) || raw < 1) {
+        if (!Number.isFinite(raw) || raw < 0) {
           return 5;
         }
         return raw;
