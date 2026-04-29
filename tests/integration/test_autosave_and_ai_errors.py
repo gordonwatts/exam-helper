@@ -173,6 +173,32 @@ def test_ai_rewrite_and_parameterize_does_not_fallback_title_from_prompt(
     assert data["title"] == ""
 
 
+def test_ai_rewrite_and_parameterize_rejects_non_numeric_parameters(
+    tmp_path,
+) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_rewrite_bad")
+
+    class _AI:
+        def rewrite_parameterize(self, question):
+            return AIService.RewriteResult(
+                question_template_md="A cart has speed {{v}} m/s.",
+                parameters={"v": "10 m/s"},
+                title="Cart speed",
+                usage=AIUsageTotals(),
+            )
+
+    app.state.ai = _AI()
+    resp = client.post("/questions/q_rewrite_bad/ai/rewrite-and-parameterize")
+    assert resp.status_code == 422
+    payload = resp.json()
+    assert payload["ok"] is False
+    assert "numeric scalars" in payload["error"]
+
+
 def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")

@@ -19,6 +19,7 @@ from exam_helper.models import (
     Question,
     QuestionType,
 )
+from exam_helper.parameter_utils import coerce_numeric_scalar
 from exam_helper.prompt_catalog import PromptBundle, PromptCatalog
 from exam_helper.solution_runtime import (
     SolutionRuntimeError,
@@ -895,46 +896,6 @@ class AIService:
             f"string/list, got {type(raw_params).__name__}."
         )
 
-    @staticmethod
-    def _coerce_numeric_scalar(value: Any) -> Any:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return value
-        if not isinstance(value, str):
-            return value
-        text = value.strip()
-        if not text:
-            return value
-
-        if re.fullmatch(r"[+-]?\d+", text):
-            try:
-                return int(text)
-            except Exception:
-                return value
-
-        if re.fullmatch(r"[+-]?(?:\d+\.\d*|\d*\.\d+)(?:[eE][+-]?\d+)?", text):
-            try:
-                return float(text)
-            except Exception:
-                return value
-
-        frac_match = re.fullmatch(r"([+-]?\d+)\s*/\s*([+-]?\d+)", text)
-        if frac_match:
-            denom = int(frac_match.group(2))
-            if denom != 0:
-                return int(frac_match.group(1)) / denom
-            return value
-
-        latex_frac_match = re.fullmatch(
-            r"\\(?:t?frac)\{([+-]?\d+)\}\{([+-]?\d+)\}", text
-        )
-        if latex_frac_match:
-            denom = int(latex_frac_match.group(2))
-            if denom != 0:
-                return int(latex_frac_match.group(1)) / denom
-        return value
-
     @classmethod
     def _normalize_rewrite_parameters(
         cls,
@@ -974,7 +935,7 @@ class AIService:
                         rewritten_template,
                     )
                 continue
-            filtered[key_clean] = cls._coerce_numeric_scalar(value)
+            filtered[key_clean] = coerce_numeric_scalar(value, strict=True)
 
         return filtered, rewritten_template
 

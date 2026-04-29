@@ -129,6 +129,24 @@ def test_ai_service_rewrite_parameterize_coerces_list_parameters(monkeypatch) ->
     assert "figure_ref" not in out.parameters
 
 
+def test_ai_service_rewrite_parameterize_rejects_non_numeric_parameters(
+    monkeypatch,
+) -> None:
+    from exam_helper import ai_service as mod
+
+    payload = """{"question_template_md":"A car moves at {{v}} m/s","parameters":{"v":"10 m/s"},"title":""}"""
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: _FakeClient(payload))
+    svc = AIService(api_key="k")
+    q = Question(id="q1", title="", prompt_md="old")
+
+    try:
+        svc.rewrite_parameterize(q)
+    except ValueError as ex:
+        assert "numeric scalars" in str(ex)
+    else:
+        raise AssertionError("rewrite_parameterize should reject non-numeric values")
+
+
 def test_ai_service_rewrite_parameterize_normalizes_fraction_and_drops_figure_ref(
     monkeypatch,
 ) -> None:

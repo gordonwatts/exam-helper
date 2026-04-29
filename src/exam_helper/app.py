@@ -26,6 +26,7 @@ from exam_helper.models import (
     Question,
     QuestionType,
 )
+from exam_helper.parameter_utils import coerce_numeric_scalar
 from exam_helper.normalization import normalize_markdown_math_delimiters
 from exam_helper.repository import ProjectRepository
 from exam_helper.solution_runtime import (
@@ -106,6 +107,15 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
     def dump_parameters_yaml(params: dict[str, Any]) -> str:
         return yaml.safe_dump(params or {}, sort_keys=False).strip()
+
+    def validate_numeric_parameters(params: dict[str, Any]) -> dict[str, Any]:
+        validated: dict[str, Any] = {}
+        for key, value in (params or {}).items():
+            key_clean = str(key).strip()
+            if not key_clean:
+                continue
+            validated[key_clean] = coerce_numeric_scalar(value, strict=True)
+        return validated
 
     def parse_distractor_functions_text(raw_text: str) -> list[DistractorFunction]:
         text = (raw_text or "").strip()
@@ -937,11 +947,12 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             q = repo.get_question(question_id)
             result = app.state.ai.rewrite_parameterize(q)
             repo.add_ai_usage(result.usage)
+            parameters = validate_numeric_parameters(result.parameters)
             normalized_template = normalize_markdown_math_delimiters(
                 result.question_template_md
             )
             rendered_prompt = render_template_from_values(
-                normalized_template, result.parameters
+                normalized_template, parameters
             )
             title = q.title.strip() or result.title.strip()
             return {
@@ -950,7 +961,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "rendered_prompt_md": normalize_markdown_math_delimiters(
                     rendered_prompt
                 ),
-                "solution_parameters_yaml": dump_parameters_yaml(result.parameters),
+                "solution_parameters_yaml": dump_parameters_yaml(parameters),
                 "title": title,
             }
         except Exception as ex:
