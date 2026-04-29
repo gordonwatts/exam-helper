@@ -12,7 +12,7 @@ import yaml
 from fastapi import Body, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from exam_helper.ai_service import AIService
 from exam_helper.export_docx import render_project_docx_bytes
@@ -62,8 +62,9 @@ AutosavePayload = QuestionEditorState
 
 class ChatPayload(BaseModel):
     message: str = ""
-    attached_figure_ids: list[str] = []
+    attached_figure_ids: list[str] = Field(default_factory=list)
     editor_state: QuestionEditorState
+    history_keep_count: int = Field(default=5, ge=0)
 
 
 def _sanitize_docx_filename_stem(project_name: str) -> str:
@@ -406,7 +407,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         chat_history_json = json.dumps(
             [
                 turn.model_dump(mode="json")
-                for turn in (question.solution.chat_history[-5:] if question else [])
+                for turn in (question.solution.chat_history if question else [])
             ]
         )
         editor_state = QuestionEditorState(
@@ -466,6 +467,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 else answer_preview["rendered_answer_md"]
             ),
             "chat_history_json": chat_history_json,
+            "chat_history_keep_count_default": 5,
             "ai_enabled": bool(openai_key),
             "question_id_default": (
                 question.id if question else _suggest_next_question_id()
@@ -477,7 +479,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         loaded = json.loads(raw or "[]")
         if not isinstance(loaded, list):
             raise ValueError("chat_history_json must be a JSON list.")
-        return [ChatTurn.model_validate(item) for item in loaded][-5:]
+        return [ChatTurn.model_validate(item) for item in loaded]
 
     def _build_question_from_editor_values(
         question_id: str,
@@ -629,9 +631,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             "chat_history_json": json.dumps(
                 [
                     turn.model_dump(mode="json")
-                    for turn in (
-                        question.solution.chat_history[-5:] if question else []
-                    )
+                    for turn in (question.solution.chat_history if question else [])
                 ]
             ),
         }
@@ -687,16 +687,13 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         assistant_message: str,
         attached_figure_ids: list[str],
     ) -> None:
-        question.solution.chat_history = (
-            question.solution.chat_history
-            + [
-                ChatTurn(
-                    user_message=user_message.strip(),
-                    assistant_message=assistant_message.strip(),
-                    attached_figure_ids=attached_figure_ids[:],
-                )
-            ]
-        )[-5:]
+        question.solution.chat_history = question.solution.chat_history + [
+            ChatTurn(
+                user_message=user_message.strip(),
+                assistant_message=assistant_message.strip(),
+                attached_figure_ids=attached_figure_ids[:],
+            )
+        ]
 
     def _compute_answer_preview(question: Question | None) -> dict[str, str]:
         """Build the non-editable answer preview payload for the editor UI."""
@@ -932,6 +929,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 live_question,
                 payload.message,
                 attached_figure_ids=payload.attached_figure_ids,
+                history_keep_count=payload.history_keep_count,
             )
             repo.add_ai_usage(result.usage)
             question = result.question

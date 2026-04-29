@@ -597,7 +597,13 @@ def test_ai_chat_updates_question_and_returns_payload(tmp_path) -> None:
     _seed_question(client, "q_chat")
 
     class _AI:
-        def chat_edit_question(self, question, user_message, attached_figure_ids=None):
+        def chat_edit_question(
+            self,
+            question,
+            user_message,
+            attached_figure_ids=None,
+            history_keep_count=None,
+        ):
             assert question.id == "q_chat"
             assert user_message == "Please clean this up."
             assert attached_figure_ids == []
@@ -651,7 +657,13 @@ def test_ai_chat_refreshes_rendered_answer_when_guidance_changes(tmp_path) -> No
     repo.save_question(seeded)
 
     class _AI:
-        def chat_edit_question(self, question, user_message, attached_figure_ids=None):
+        def chat_edit_question(
+            self,
+            question,
+            user_message,
+            attached_figure_ids=None,
+            history_keep_count=None,
+        ):
             updated = question.model_copy(deep=True)
             updated.solution.answer_guidance = "New answer: {{answer}}"
             updated.solution.last_computed_answer_md = "Stale answer: 9"
@@ -680,7 +692,7 @@ def test_ai_chat_refreshes_rendered_answer_when_guidance_changes(tmp_path) -> No
     assert saved.solution.last_computed_answer_md == "New answer: 9"
 
 
-def test_ai_chat_uses_live_editor_state_and_persists_last_five_turns(tmp_path) -> None:
+def test_ai_chat_uses_live_editor_state_and_persists_full_history(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key="k")
@@ -694,10 +706,17 @@ def test_ai_chat_uses_live_editor_state_and_persists_last_five_turns(tmp_path) -
     repo.save_question(seeded)
 
     class _AI:
-        def chat_edit_question(self, question, user_message, attached_figure_ids=None):
+        def chat_edit_question(
+            self,
+            question,
+            user_message,
+            attached_figure_ids=None,
+            history_keep_count=None,
+        ):
             assert question.title == "Unsaved local title"
             assert question.solution.question_template_md == "Unsaved local template"
             assert attached_figure_ids == ["fig_1"]
+            assert history_keep_count == 5
             updated = question.model_copy(deep=True)
             updated.solution.answer_formula_md = "answer = 12"
             updated.solution.answer_guidance = "{{answer}}"
@@ -743,10 +762,50 @@ def test_ai_chat_uses_live_editor_state_and_persists_last_five_turns(tmp_path) -
     assert saved.title == "Unsaved local title"
     assert saved.solution.question_template_md == "Unsaved local template"
     assert saved.solution.last_computed_answer_md == "12"
-    assert len(saved.solution.chat_history) == 5
+    assert len(saved.solution.chat_history) == 6
     assert saved.solution.chat_history[-1].user_message == "Compute the answer."
     assert saved.solution.chat_history[-1].attached_figure_ids == ["fig_1"]
-    assert saved.solution.chat_history[0].user_message == "user 2"
+    assert saved.solution.chat_history[0].user_message == "user 1"
+
+
+def test_ai_chat_forwards_requested_history_window(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_history_window")
+
+    class _AI:
+        def chat_edit_question(
+            self,
+            question,
+            user_message,
+            attached_figure_ids=None,
+            history_keep_count=None,
+        ):
+            assert history_keep_count == 2
+            updated = question.model_copy(deep=True)
+            updated.solution.last_computed_answer_md = "ok"
+            return AIService.QuestionEditorResult(
+                assistant_message="Stored the answer.",
+                question=updated,
+                warnings=[],
+                usage=AIUsageTotals(),
+                changed_fields=[],
+            )
+
+    app.state.ai = _AI()
+    original = repo.get_question("q_history_window")
+    resp = client.post(
+        "/questions/q_history_window/ai/chat",
+        json={
+            "message": "Please keep only two turns.",
+            "attached_figure_ids": [],
+            "history_keep_count": 2,
+            "editor_state": _editor_state_for_question(original),
+        },
+    )
+    assert resp.status_code == 200
 
 
 def test_autosave_after_chat_keeps_chat_applied_solution_fields(tmp_path) -> None:
@@ -757,7 +816,13 @@ def test_autosave_after_chat_keeps_chat_applied_solution_fields(tmp_path) -> Non
     _seed_question(client, "q_chat_autosave", qtype="multiple_choice")
 
     class _AI:
-        def chat_edit_question(self, question, user_message, attached_figure_ids=None):
+        def chat_edit_question(
+            self,
+            question,
+            user_message,
+            attached_figure_ids=None,
+            history_keep_count=None,
+        ):
             updated = question.model_copy(deep=True)
             updated.solution.answer_formula_md = "answer = 9"
             updated.solution.answer_guidance = "{{answer}}"
