@@ -569,11 +569,15 @@
       }
 
       function chatHistoryKeepCount() {
-        const raw = Number.parseInt(chatHistoryKeepCountEl.value || "5", 10);
-        if (!Number.isFinite(raw) || raw < 0) {
-          return 5;
+        const raw = Number.parseInt(chatHistoryKeepCountEl.value, 10);
+        if (Number.isFinite(raw) && raw >= 0) {
+          return raw;
         }
-        return raw;
+        const fallback = Number.parseInt(chatHistoryKeepCountEl.defaultValue, 10);
+        if (Number.isFinite(fallback) && fallback >= 0) {
+          return fallback;
+        }
+        return 0;
       }
 
       function isMC() {
