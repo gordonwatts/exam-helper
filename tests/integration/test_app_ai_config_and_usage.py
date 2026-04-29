@@ -41,6 +41,8 @@ def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     )
     resp = client.get("/questions/q_edit/edit")
     assert resp.status_code == 200
+    assert '<details class="card chat-panel"' in resp.text
+    assert "<summary>Chat Assistant</summary>" in resp.text
     assert 'id="chat_thread"' in resp.text
     assert 'id="chat_message"' in resp.text
     assert 'id="btn_send_chat"' in resp.text
