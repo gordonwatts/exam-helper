@@ -19,6 +19,7 @@ from exam_helper.export_docx import render_project_docx_bytes
 from exam_helper.models import (
     AIUsageTotals,
     ChatTurn,
+    DEFAULT_OPENAI_MODEL,
     DistractorFunction,
     MCAnswerSpec,
     MCChoice,
@@ -787,7 +788,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "project": project,
                 "questions": questions,
                 "export_warning": export_warning,
-                "ai_model": (project.ai.model if project else "gpt-5.2"),
+                "ai_model": (project.ai.model if project else DEFAULT_OPENAI_MODEL),
                 "ai_usage": (project.ai.usage if project else AIUsageTotals()),
                 "ai_prompts": (project.ai.prompts if project else None),
             },
@@ -1229,13 +1230,13 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
     @app.post("/project/settings")
     def save_project_settings(
-        openai_model: str = Form("gpt-5.2"),
+        openai_model: str = Form(DEFAULT_OPENAI_MODEL),
         prompt_overall: str = Form(""),
         prompt_solution_and_mc: str = Form(""),
         prompt_prompt_review: str = Form(""),
     ) -> RedirectResponse:
         project = repo.load_project()
-        project.ai.model = openai_model.strip() or "gpt-5.2"
+        project.ai.model = openai_model.strip() or DEFAULT_OPENAI_MODEL
         project.ai.prompts.overall = prompt_overall
         project.ai.prompts.solution_and_mc = prompt_solution_and_mc
         project.ai.prompts.prompt_review = prompt_prompt_review
@@ -1245,14 +1246,14 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
     @app.post("/project/settings/autosave")
     def autosave_project_settings(
-        openai_model: str = Form("gpt-5.2"),
+        openai_model: str = Form(DEFAULT_OPENAI_MODEL),
         prompt_overall: str = Form(""),
         prompt_solution_and_mc: str = Form(""),
         prompt_prompt_review: str = Form(""),
     ) -> JSONResponse:
         try:
             project = repo.load_project()
-            project.ai.model = openai_model.strip() or "gpt-5.2"
+            project.ai.model = openai_model.strip() or DEFAULT_OPENAI_MODEL
             project.ai.prompts.overall = prompt_overall
             project.ai.prompts.solution_and_mc = prompt_solution_and_mc
             project.ai.prompts.prompt_review = prompt_prompt_review

@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+DEFAULT_OPENAI_MODEL = "gpt-5.4"
+
 
 class QuestionType(str, Enum):
     free_response = "free_response"
@@ -129,7 +131,7 @@ class AIUsageTotals(BaseModel):
 
 
 class AIConfig(BaseModel):
-    model: str = "gpt-5.2"
+    model: str = DEFAULT_OPENAI_MODEL
     prompts: AIPromptConfig = Field(default_factory=AIPromptConfig)
     usage: AIUsageTotals = Field(default_factory=AIUsageTotals)
 

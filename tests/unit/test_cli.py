@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from exam_helper import cli
+from exam_helper.models import DEFAULT_OPENAI_MODEL
 
 
 def test_serve_parser_accepts_positional_path() -> None:
@@ -48,3 +49,11 @@ def test_cmd_serve_uses_path_for_project_root(monkeypatch) -> None:
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 9000
     assert captured["log_level"] == "info"
+
+
+def test_init_parser_defaults_openai_model_to_gpt_54() -> None:
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["init", "my-project"])
+
+    assert args.openai_model == DEFAULT_OPENAI_MODEL

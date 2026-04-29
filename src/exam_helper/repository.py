@@ -5,7 +5,12 @@ from pathlib import Path
 
 import yaml
 
-from exam_helper.models import AIUsageTotals, ProjectConfig, Question
+from exam_helper.models import (
+    AIUsageTotals,
+    DEFAULT_OPENAI_MODEL,
+    ProjectConfig,
+    Question,
+)
 
 
 def _natural_sort_key(text: str) -> list[object]:
@@ -28,7 +33,7 @@ class ProjectRepository:
         self.questions_dir.mkdir(parents=True, exist_ok=True)
 
     def init_project(
-        self, name: str, course: str, openai_model: str = "gpt-5.2"
+        self, name: str, course: str, openai_model: str = DEFAULT_OPENAI_MODEL
     ) -> None:
         self.ensure_layout()
         cfg = ProjectConfig(name=name, course=course)

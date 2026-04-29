@@ -8,7 +8,7 @@
 ## 2. Create an exam project
 
 ```bash
-uv run exam-helper init my-exam --name "Exam Draft" --course "Physics 1" --openai-model gpt-5.2
+uv run exam-helper init my-exam --name "Exam Draft" --course "Physics 1" --openai-model gpt-5.4
 ```
 
 This creates:
