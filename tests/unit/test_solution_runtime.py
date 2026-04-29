@@ -136,6 +136,24 @@ def test_harness_sorts_numeric_then_text_tiebreak_by_source() -> None:
     ]
 
 
+def test_harness_sorts_text_choices_lexicographically() -> None:
+    answer_code = "answer = 'Option 2'"
+    d1 = "def distractor(params):\n    return {'distractor_md': 'Option 10', 'rationale': 'r'}\n"
+    d2 = "def distractor(params):\n    return {'distractor_md': 'Option 1', 'rationale': 'r'}\n"
+    d3 = "def distractor(params):\n    return {'distractor_md': 'Option 3', 'rationale': 'r'}\n"
+    d4 = "def distractor(params):\n    return {'distractor_md': 'Alpha', 'rationale': 'r'}\n"
+    out = run_mc_harness(
+        answer_code, [("d1", d1), ("d2", d2), ("d3", d3), ("d4", d4)], {}
+    )
+    assert [c.content_md for c in out.choices] == [
+        "Alpha",
+        "Option 1",
+        "Option 10",
+        "Option 2",
+        "Option 3",
+    ]
+
+
 def test_mc_formula_harness_uses_answer_formula_for_the_correct_choice() -> None:
     out = run_mc_formula_harness(
         "answer = 2",
@@ -181,6 +199,27 @@ def test_mc_formula_harness_bare_distractor_expression_overrides_seed_answer() -
     )
     assert out.row_previews[1]["content_md"] == "33"
     assert [c.content_md for c in out.choices] == ["33", "55"]
+
+
+def test_mc_formula_harness_sorts_text_values_lexicographically() -> None:
+    out = run_mc_formula_harness(
+        "answer = 'Option 2'",
+        [
+            {"formula_md": "answer = 'Option 10'", "rationale_md": "text distractor"},
+            {"formula_md": "answer = 'Option 1'", "rationale_md": "text distractor"},
+            {"formula_md": "answer = 'Option 3'", "rationale_md": "text distractor"},
+            {"formula_md": "answer = 'Alpha'", "rationale_md": "text distractor"},
+        ],
+        {},
+        strict=True,
+    )
+    assert [c.content_md for c in out.choices] == [
+        "Alpha",
+        "Option 1",
+        "Option 10",
+        "Option 2",
+        "Option 3",
+    ]
 
 
 def test_evaluate_answer_formula_bare_expression_overrides_inherited_answer() -> None:
