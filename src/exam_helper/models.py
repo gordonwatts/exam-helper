@@ -89,7 +89,7 @@ class Question(BaseModel):
     difficulty: int = 3
     points: int = 5
     is_deleted: bool = False
-    question_type: QuestionType = QuestionType.free_response
+    question_type: QuestionType = QuestionType.multiple_choice
     mc_options_guidance: str = ""
     figures: list[FigureData] = Field(default_factory=list)
     choices: list[MCChoice] = Field(default_factory=list)

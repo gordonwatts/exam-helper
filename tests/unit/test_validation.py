@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from exam_helper.models import Question
+from exam_helper.models import Question, QuestionType
 from exam_helper.repository import ProjectRepository
 from exam_helper.validation import validate_project
 
@@ -16,6 +16,7 @@ def test_validate_project_with_solution_code(tmp_path: Path) -> None:
         id="q1",
         title="t",
         prompt_md="p",
+        question_type=QuestionType.free_response,
         solution={
             "answer_formula_md": "answer = 'ok'",
             "parameters": {},

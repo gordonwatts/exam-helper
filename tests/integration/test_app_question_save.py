@@ -144,6 +144,8 @@ def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
     assert 'id="rendered_answer_md"' in html
     assert 'id="btn_rewrite"' not in html
     assert 'id="btn_generate_answer"' not in html
+    assert '<option value="multiple_choice" selected>' in html
+    assert '<option value="free_response" selected>' not in html
 
 
 def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
