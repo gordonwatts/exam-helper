@@ -544,7 +544,7 @@
           typed_solution_status: String(raw.typed_solution_status || "missing"),
           figures_json: String(raw.figures_json || "[]"),
           chat_history_json: String(raw.chat_history_json || "[]"),
-          points: Number(raw.points || 5),
+          points: Number(raw.points ?? 5),
         };
       }
 
