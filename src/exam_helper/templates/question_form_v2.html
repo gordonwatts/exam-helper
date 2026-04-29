@@ -322,6 +322,8 @@
         <textarea hidden name="mc_options_guidance" id="mc_options_guidance">{{ question.mc_options_guidance if question else '' }}</textarea>
         <textarea hidden name="distractor_functions_text" id="distractor_functions_text">{{ distractor_functions_text }}</textarea>
         <textarea hidden name="mc_answer_specs_json" id="mc_answer_specs_json">{{ mc_answer_specs_json }}</textarea>
+        <textarea hidden name="choices_yaml" id="choices_yaml">{{ choices_yaml }}</textarea>
+        <textarea hidden name="typed_solution_md" id="typed_solution_md">{{ question.solution.typed_solution_md if question else '' }}</textarea>
         <textarea hidden name="typed_solution_status" id="typed_solution_status">{{ question.solution.typed_solution_status if question else 'missing' }}</textarea>
         <textarea hidden name="chat_history_json" id="chat_history_json">{{ chat_history_json }}</textarea>
         <div class="row3">
@@ -475,6 +477,8 @@
       const mcOptionsGuidanceEl = document.getElementById("mc_options_guidance");
       const distractorFnsEl = document.getElementById("distractor_functions_text");
       const mcAnswerSpecsEl = document.getElementById("mc_answer_specs_json");
+      const choicesYamlEl = document.getElementById("choices_yaml");
+      const typedSolutionEl = document.getElementById("typed_solution_md");
       const chatHistoryEl = document.getElementById("chat_history_json");
       const renderedAnswerEl = document.getElementById("rendered_answer_md");
       const calculatedVariablesEl = document.getElementById("calculated_variables_md");
@@ -497,6 +501,7 @@
       const chatAttachmentsEl = document.getElementById("chat_attachments");
       const chatPanelEl = document.querySelector(".chat-panel");
       const chatEnabled = {{ 'true' if ai_enabled else 'false' }};
+      let editorState = {{ editor_state | tojson }};
       let autosaveTimer = null;
       let pendingChatFigureIds = [];
 
@@ -520,6 +525,88 @@
 
       function isMC() {
         return questionTypeEl.value === "multiple_choice";
+      }
+
+      function normalizeEditorState(state) {
+        const raw = state || {};
+        return {
+          title: String(raw.title || ""),
+          question_type: String(raw.question_type || "multiple_choice"),
+          mc_options_guidance: String(raw.mc_options_guidance || ""),
+          question_template_md: String(raw.question_template_md || ""),
+          solution_parameters_yaml: String(raw.solution_parameters_yaml || "{}"),
+          answer_formula_md: String(raw.answer_formula_md || ""),
+          answer_guidance: String(raw.answer_guidance || ""),
+          distractor_functions_text: String(raw.distractor_functions_text || ""),
+          mc_answer_specs_json: String(raw.mc_answer_specs_json || "[]"),
+          choices_yaml: String(raw.choices_yaml || "[]"),
+          typed_solution_md: String(raw.typed_solution_md || ""),
+          typed_solution_status: String(raw.typed_solution_status || "missing"),
+          figures_json: String(raw.figures_json || "[]"),
+          chat_history_json: String(raw.chat_history_json || "[]"),
+          points: Number(raw.points || 5),
+        };
+      }
+
+      function collectEditorStateFromDOM() {
+        syncMCSpecsFromDOM();
+        editorState = normalizeEditorState({
+          ...editorState,
+          title: titleEl.value,
+          question_type: questionTypeEl.value,
+          question_template_md: templateEl.value,
+          solution_parameters_yaml: paramsEl.value,
+          answer_formula_md: answerFormulaEl.value,
+          answer_guidance: answerGuidanceEl.value,
+          mc_options_guidance: mcOptionsGuidanceEl.value,
+          distractor_functions_text: distractorFnsEl.value,
+          mc_answer_specs_json: mcAnswerSpecsEl.value,
+          choices_yaml: choicesYamlEl.value || "[]",
+          typed_solution_md: typedSolutionEl.value || "",
+          typed_solution_status: typedStatusEl.value,
+          figures_json: figuresInput.value || "[]",
+          chat_history_json: chatHistoryEl.value || "[]",
+          points: Number(pointsEl.value || 5),
+        });
+        return editorState;
+      }
+
+      function renderEditorState(data = {}) {
+        const nextState = data.editor_state || { ...editorState, ...data };
+        editorState = normalizeEditorState(nextState);
+        titleEl.value = editorState.title;
+        pointsEl.value = editorState.points;
+        questionTypeEl.value = editorState.question_type;
+        templateEl.value = editorState.question_template_md;
+        paramsEl.value = editorState.solution_parameters_yaml;
+        answerFormulaEl.value = editorState.answer_formula_md;
+        answerGuidanceEl.value = editorState.answer_guidance;
+        mcOptionsGuidanceEl.value = editorState.mc_options_guidance;
+        distractorFnsEl.value = editorState.distractor_functions_text;
+        mcAnswerSpecsEl.value = editorState.mc_answer_specs_json;
+        choicesYamlEl.value = editorState.choices_yaml;
+        typedSolutionEl.value = editorState.typed_solution_md;
+        typedStatusEl.value = editorState.typed_solution_status;
+        chatHistoryEl.value = editorState.chat_history_json;
+        figuresInput.value = editorState.figures_json;
+        syncMCRowsFromSpecs(parseMCSpecs());
+        if (typeof data.calculated_variables_md === "string") {
+          calculatedVariablesEl.textContent = data.calculated_variables_md;
+        }
+        answerFormulaWarningEl.textContent = data.warning || data.answer_formula_warning
+          ? `Warning: ${data.warning || data.answer_formula_warning}`
+          : "";
+        renderTemplate();
+        renderMCPreviewFromData(data);
+        renderFiguresPreview();
+        if (typeof data.rendered_answer_md === "string") {
+          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
+        }
+        updateMCVisibility();
+      }
+
+      function setEditorValuesFromResponse(data) {
+        renderEditorState(data);
       }
 
       function escapeHtml(text) {
@@ -548,6 +635,7 @@
 
       function setFigures(figures) {
         figuresInput.value = JSON.stringify(figures);
+        editorState = normalizeEditorState({ ...editorState, figures_json: figuresInput.value });
         renderFiguresPreview();
       }
 
@@ -725,6 +813,7 @@
       function syncMCSpecsFromDOM() {
         if (!isMC()) {
           mcAnswerSpecsEl.value = "[]";
+          editorState = normalizeEditorState({ ...editorState, mc_answer_specs_json: "[]" });
           return [];
         }
         const specs = Array.from(document.querySelectorAll("[data-mc-row]")).map((row) => {
@@ -736,6 +825,7 @@
           };
         });
         mcAnswerSpecsEl.value = JSON.stringify(specs);
+        editorState = normalizeEditorState({ ...editorState, mc_answer_specs_json: mcAnswerSpecsEl.value });
         return specs;
       }
 
@@ -864,37 +954,8 @@
         chatThreadEl.scrollTop = chatThreadEl.scrollHeight;
       }
 
-      function setEditorValuesFromResponse(data) {
-        if (typeof data.title === "string") titleEl.value = data.title;
-        if (Object.prototype.hasOwnProperty.call(data, "points")) pointsEl.value = data.points;
-        if (typeof data.question_type === "string") questionTypeEl.value = data.question_type;
-        if (typeof data.question_template_md === "string") templateEl.value = data.question_template_md;
-        if (typeof data.solution_parameters_yaml === "string") paramsEl.value = data.solution_parameters_yaml;
-        if (typeof data.answer_formula_md === "string") answerFormulaEl.value = data.answer_formula_md;
-        if (typeof data.answer_guidance === "string") answerGuidanceEl.value = data.answer_guidance;
-        if (typeof data.mc_options_guidance === "string") mcOptionsGuidanceEl.value = data.mc_options_guidance;
-        if (typeof data.distractor_functions_text === "string") distractorFnsEl.value = data.distractor_functions_text;
-        if (typeof data.mc_answer_specs_json === "string") {
-          mcAnswerSpecsEl.value = data.mc_answer_specs_json;
-          syncMCRowsFromSpecs(parseMCSpecs());
-        }
-        if (typeof data.chat_history_json === "string") chatHistoryEl.value = data.chat_history_json;
-        if (typeof data.figures_json === "string") figuresInput.value = data.figures_json;
-        if (typeof data.typed_solution_status === "string") typedStatusEl.value = data.typed_solution_status;
-        if (typeof data.calculated_variables_md === "string") {
-          calculatedVariablesEl.textContent = data.calculated_variables_md;
-        }
-        renderTemplate();
-        renderMCPreviewFromData(data);
-        renderFiguresPreview();
-        if (typeof data.rendered_answer_md === "string") {
-          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
-        }
-        updateMCVisibility();
-      }
-
       function applyAssistantResponse(data) {
-        setEditorValuesFromResponse(data);
+        renderEditorState(data);
         if (Array.isArray(data.warnings) && data.warnings.length) {
           setChatStatus(data.warnings.join(" | "), "warn");
         } else {
@@ -949,22 +1010,7 @@
       }
 
       function serializePayload() {
-        syncMCSpecsFromDOM();
-        return {
-          title: titleEl.value,
-          question_type: questionTypeEl.value,
-          question_template_md: templateEl.value,
-          solution_parameters_yaml: paramsEl.value,
-          answer_formula_md: answerFormulaEl.value,
-          answer_guidance: answerGuidanceEl.value,
-          mc_options_guidance: mcOptionsGuidanceEl.value,
-          distractor_functions_text: distractorFnsEl.value,
-          mc_answer_specs_json: mcAnswerSpecsEl.value,
-          typed_solution_status: typedStatusEl.value,
-          figures_json: figuresInput.value || "[]",
-          chat_history_json: chatHistoryEl.value || "[]",
-          points: Number(pointsEl.value || 5),
-        };
+        return { ...collectEditorStateFromDOM() };
       }
 
       async function autosaveNow() {
@@ -981,14 +1027,7 @@
           setStatus(`Save error: ${data.error || res.statusText}`, "warn");
           throw new Error(data.error || res.statusText);
         }
-        if (typeof data.calculated_variables_md === "string") {
-          calculatedVariablesEl.textContent = data.calculated_variables_md;
-        }
-        if (typeof data.rendered_answer_md === "string") {
-          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
-        }
-        renderMCPreviewFromData(data);
-        answerFormulaWarningEl.textContent = data.warning ? `Warning: ${data.warning}` : "";
+        renderEditorState(data);
         const statusWarning = [data.warning, data.mc_preview_warning].filter(Boolean).join(" | ");
         setStatus(statusWarning ? "Saved with warning" : "Saved", statusWarning ? "warn" : "good");
       }
@@ -1111,6 +1150,7 @@
       });
 
       form.addEventListener("submit", () => {
+        collectEditorStateFromDOM();
         setStatus("Saving...", "warn");
       });
 
@@ -1124,7 +1164,7 @@
         }
       });
 
-      renderTemplate();
+      renderEditorState({ editor_state: editorState });
       syncMCSpecsFromDOM();
       renderMCPreviewFromData({
         mc_preview_choices: {{ mc_preview_choices | tojson }},

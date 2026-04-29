@@ -39,7 +39,7 @@ from exam_helper.solution_runtime import (
 from exam_helper.validation import validate_question
 
 
-class AutosavePayload(BaseModel):
+class QuestionEditorState(BaseModel):
     title: str = ""
     question_type: str = "multiple_choice"
     mc_options_guidance: str = ""
@@ -57,10 +57,13 @@ class AutosavePayload(BaseModel):
     points: int = 5
 
 
+AutosavePayload = QuestionEditorState
+
+
 class ChatPayload(BaseModel):
     message: str = ""
     attached_figure_ids: list[str] = []
-    editor_state: AutosavePayload
+    editor_state: QuestionEditorState
 
 
 def _sanitize_docx_filename_stem(project_name: str) -> str:
@@ -406,12 +409,46 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 for turn in (question.solution.chat_history[-5:] if question else [])
             ]
         )
+        editor_state = QuestionEditorState(
+            title=question.title if question else "",
+            points=question.points if question else 5,
+            question_type=(
+                question.question_type.value
+                if question
+                else QuestionType.multiple_choice.value
+            ),
+            mc_options_guidance=question.mc_options_guidance if question else "",
+            question_template_md=(
+                question.solution.question_template_md
+                if question
+                else "The length of the rod is {{dummy}} $m$."
+            ),
+            solution_parameters_yaml=(
+                solution_parameters_yaml if question else "dummy: 5"
+            ),
+            answer_formula_md=question.solution.answer_formula_md if question else "",
+            answer_guidance=question.solution.answer_guidance if question else "",
+            distractor_functions_text=distractor_functions_text,
+            mc_answer_specs_json=dump_mc_answer_specs_json(mc_answer_specs),
+            choices_yaml=(
+                dump_choices_yaml(question.choices)
+                if question and question.choices
+                else default_mc_choices_yaml()
+            ),
+            typed_solution_md=(question.solution.typed_solution_md if question else ""),
+            typed_solution_status=(
+                question.solution.typed_solution_status if question else "missing"
+            ),
+            figures_json=figures_json,
+            chat_history_json=chat_history_json,
+        )
         return {
             "question": question,
             "figures_json": figures_json,
             "solution_parameters_yaml": solution_parameters_yaml,
             "distractor_functions_text": distractor_functions_text,
             "mc_answer_specs_json": dump_mc_answer_specs_json(mc_answer_specs),
+            "choices_yaml": editor_state.choices_yaml,
             "mc_answer_rows": mc_preview["rows"],
             "mc_preview_choices": mc_preview["preview_choices"],
             "mc_preview_answers": mc_preview["preview_answers"],
@@ -433,6 +470,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             "question_id_default": (
                 question.id if question else _suggest_next_question_id()
             ),
+            "editor_state": editor_state.model_dump(mode="json"),
         }
 
     def _parse_chat_history_json(raw: str) -> list[ChatTurn]:
@@ -597,6 +635,50 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 ]
             ),
         }
+
+    def _state_from_question(question: Question | None) -> QuestionEditorState:
+        return QuestionEditorState.model_validate(
+            _editor_values_from_question(question)
+        )
+
+    def _build_question_from_editor_state(
+        question_id: str,
+        existing: Question | None,
+        state: QuestionEditorState,
+    ) -> tuple[Question, dict[str, Any], dict[str, Any]]:
+        return _build_question_from_editor_values(
+            question_id, existing, state.model_dump(mode="json")
+        )
+
+    def _editor_response_payload(
+        question: Question,
+        preview: dict[str, Any],
+        mc_preview: dict[str, Any],
+        *,
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        editor_state = _state_from_question(question)
+        payload: dict[str, Any] = {
+            "ok": True,
+            "editor_state": editor_state.model_dump(mode="json"),
+            "typed_solution_status": question.solution.typed_solution_status,
+            "calculated_variables_md": preview["calculated_variables_md"],
+            "rendered_answer_md": (
+                question.solution.last_computed_answer_md
+                or preview["rendered_answer_md"]
+            ),
+            "mc_preview_choices": mc_preview["preview_choices"],
+            "mc_preview_answers": mc_preview["preview_answers"],
+            "mc_preview_rationale": mc_preview["preview_rationale"],
+            "mc_preview_warning": mc_preview["warning"],
+            "mc_preview_rows": mc_preview["rows"],
+            "warning": preview["warning"],
+            "answer_formula_warning": preview["warning"],
+        }
+        payload.update(editor_state.model_dump(mode="json"))
+        if extra:
+            payload.update(extra)
+        return payload
 
     def _append_chat_turn(
         question: Question,
@@ -803,45 +885,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 existing = repo.get_question(question_id)
             except Exception:
                 existing = None
-            question, preview, mc_preview = _build_question_from_editor_values(
-                question_id,
-                existing,
-                {
-                    "title": payload.title,
-                    "points": payload.points,
-                    "question_type": payload.question_type,
-                    "mc_options_guidance": payload.mc_options_guidance,
-                    "question_template_md": payload.question_template_md,
-                    "solution_parameters_yaml": payload.solution_parameters_yaml,
-                    "answer_formula_md": payload.answer_formula_md,
-                    "answer_guidance": payload.answer_guidance,
-                    "distractor_functions_text": payload.distractor_functions_text,
-                    "mc_answer_specs_json": payload.mc_answer_specs_json,
-                    "typed_solution_md": payload.typed_solution_md,
-                    "typed_solution_status": payload.typed_solution_status,
-                    "choices_yaml": payload.choices_yaml,
-                    "figures_json": payload.figures_json,
-                    "chat_history_json": payload.chat_history_json,
-                },
+            question, preview, mc_preview = _build_question_from_editor_state(
+                question_id, existing, payload
             )
             repo.save_question(question)
-            return JSONResponse(
-                {
-                    "ok": True,
-                    "typed_solution_status": question.solution.typed_solution_status,
-                    "calculated_variables_md": preview["calculated_variables_md"],
-                    "rendered_answer_md": (
-                        question.solution.last_computed_answer_md
-                        or preview["rendered_answer_md"]
-                    ),
-                    "mc_preview_choices": mc_preview["preview_choices"],
-                    "mc_preview_answers": mc_preview["preview_answers"],
-                    "mc_preview_rationale": mc_preview["preview_rationale"],
-                    "mc_preview_warning": mc_preview["warning"],
-                    "mc_preview_rows": mc_preview["rows"],
-                    "warning": preview["warning"],
-                }
-            )
+            return JSONResponse(_editor_response_payload(question, preview, mc_preview))
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
@@ -877,26 +925,8 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 existing = repo.get_question(question_id)
             except Exception:
                 existing = None
-            live_question, _, _ = _build_question_from_editor_values(
-                question_id,
-                existing,
-                {
-                    "title": payload.editor_state.title,
-                    "points": payload.editor_state.points,
-                    "question_type": payload.editor_state.question_type,
-                    "mc_options_guidance": payload.editor_state.mc_options_guidance,
-                    "question_template_md": payload.editor_state.question_template_md,
-                    "solution_parameters_yaml": payload.editor_state.solution_parameters_yaml,
-                    "answer_formula_md": payload.editor_state.answer_formula_md,
-                    "answer_guidance": payload.editor_state.answer_guidance,
-                    "distractor_functions_text": payload.editor_state.distractor_functions_text,
-                    "mc_answer_specs_json": payload.editor_state.mc_answer_specs_json,
-                    "typed_solution_md": payload.editor_state.typed_solution_md,
-                    "typed_solution_status": payload.editor_state.typed_solution_status,
-                    "choices_yaml": payload.editor_state.choices_yaml,
-                    "figures_json": payload.editor_state.figures_json,
-                    "chat_history_json": payload.editor_state.chat_history_json,
-                },
+            live_question, _, _ = _build_question_from_editor_state(
+                question_id, existing, payload.editor_state
             )
             result = app.state.ai.chat_edit_question(
                 live_question,
@@ -922,22 +952,16 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 question.solution.parameters,
             )
             repo.save_question(question)
-            editor_values = _editor_values_from_question(question)
-            return {
-                "ok": True,
-                "assistant_message": result.assistant_message,
-                "warnings": result.warnings,
-                "changed_fields": result.changed_fields + ["chat_history_json"],
-                **editor_values,
-                "calculated_variables_md": preview["calculated_variables_md"],
-                "rendered_answer_md": preview["rendered_answer_md"],
-                "answer_formula_warning": preview["warning"],
-                "mc_preview_choices": mc_preview["preview_choices"],
-                "mc_preview_answers": mc_preview["preview_answers"],
-                "mc_preview_rationale": mc_preview["preview_rationale"],
-                "mc_preview_warning": mc_preview["warning"],
-                "mc_preview_rows": mc_preview["rows"],
-            }
+            return _editor_response_payload(
+                question,
+                preview,
+                mc_preview,
+                extra={
+                    "assistant_message": result.assistant_message,
+                    "warnings": result.warnings,
+                    "changed_fields": result.changed_fields + ["chat_history_json"],
+                },
+            )
         except Exception as ex:
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
