@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from exam_helper.ai_service import AIService
 from exam_helper.app import create_app
-from exam_helper.models import AIUsageTotals
+from exam_helper.models import AIUsageTotals, ChatTurn
 from exam_helper.repository import ProjectRepository
 
 
@@ -44,6 +44,7 @@ def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     assert '<details class="card chat-panel"' in resp.text
     assert "<summary>Chat Assistant</summary>" in resp.text
     assert 'id="chat_thread"' in resp.text
+    assert 'id="chat_history_keep_count"' in resp.text
     assert 'id="chat_message"' in resp.text
     assert 'id="btn_send_chat"' in resp.text
     assert "formula-preview--compact" in resp.text
@@ -54,6 +55,43 @@ def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     assert 'title="No API key configured."' in resp.text
     assert "setChatBusy(true)" in resp.text
     assert 'event.key === "Enter" && event.shiftKey' in resp.text
+
+
+def test_question_editor_embeds_full_chat_history_and_window_control(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    client.post(
+        "/questions/save",
+        data={
+            "question_id": "q_history",
+            "title": "T",
+            "question_type": "free_response",
+            "prompt_md": "P",
+            "question_template_md": "P",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "distractor_functions_text": "",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+    seeded = repo.get_question("q_history")
+    seeded.solution.chat_history = [
+        ChatTurn(user_message=f"user {idx}", assistant_message=f"assistant {idx}")
+        for idx in range(1, 7)
+    ]
+    repo.save_question(seeded)
+
+    resp = client.get("/questions/q_history/edit")
+    assert resp.status_code == 200
+    assert 'id="chat_history_keep_count"' in resp.text
+    assert 'value="5"' in resp.text
+    assert "Sending the last" in resp.text
+    assert "Messages above this line are not sent to the LLM." in resp.text
+    assert "user 1" in resp.text
+    assert "user 6" in resp.text
 
 
 def test_question_editor_rendering_is_stable(tmp_path) -> None:

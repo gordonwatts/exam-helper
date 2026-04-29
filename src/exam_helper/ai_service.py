@@ -636,12 +636,15 @@ class AIService:
         question: Question,
         user_message: str,
         attached_figure_ids: list[str] | None = None,
+        history_keep_count: int = 5,
     ) -> QuestionEditorResult:
         client = self._client()
         working = question.model_copy(deep=True)
         changed_fields: set[str] = set()
         warnings: list[str] = []
-        recent_history = self._truncate_chat_history(working.solution.chat_history)
+        recent_history = self._truncate_chat_history(
+            working.solution.chat_history, keep=history_keep_count
+        )
         state = self._editor_state_for_question(working)
         state_json = json.dumps(
             state.model_dump(mode="json"), ensure_ascii=False, indent=2

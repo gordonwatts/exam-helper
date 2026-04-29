@@ -250,6 +250,35 @@
         background: #fff;
         padding: 0.85rem;
       }
+      .chat-history-window {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+      .chat-history-window input {
+        width: 5.5rem;
+        margin: 0;
+      }
+      .chat-history-separator {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 0.3rem 0;
+        color: var(--muted);
+        font-size: 0.8rem;
+        letter-spacing: 0.02em;
+      }
+      .chat-history-separator::before,
+      .chat-history-separator::after {
+        content: "";
+        flex: 1;
+        border-top: 1px solid var(--line);
+      }
+      .chat-history-separator span {
+        white-space: nowrap;
+      }
       .chat-message {
         border-radius: 14px;
         padding: 0.75rem 0.85rem;
@@ -354,6 +383,19 @@
           <div class="chat-panel-body">
             <p class="hint">{{ 'Ask for a rewrite, a cleanup pass, a distractor tweak, or a question-specific edit. Enter adds a newline. Use Shift+Enter to send.' if ai_enabled else 'Chat is disabled until an OpenAI key is configured.' }}</p>
             <div id="chat_thread" class="chat-log" aria-live="polite"></div>
+            <div class="chat-history-window">
+              <span>Sending the last</span>
+              <input
+                id="chat_history_keep_count"
+                type="number"
+                min="1"
+                step="1"
+                value="{{ chat_history_keep_count_default }}"
+                {% if not ai_enabled %}disabled{% endif %}
+                aria-label="Messages sent back to the LLM"
+              />
+              <span>turns back to the LLM</span>
+            </div>
             <div class="chat-input-row">
               <textarea
                 id="chat_message"
@@ -495,6 +537,7 @@
       const mcPreviewRationale = document.getElementById("mc_preview_rationale");
       const mcPreviewWarning = document.getElementById("mc_preview_warning");
       const chatThreadEl = document.getElementById("chat_thread");
+      const chatHistoryKeepCountEl = document.getElementById("chat_history_keep_count");
       const chatMessageEl = document.getElementById("chat_message");
       const chatSendBtn = document.getElementById("btn_send_chat");
       const chatStatusEl = document.getElementById("chat_status");
@@ -517,10 +560,19 @@
 
       function setChatBusy(isBusy) {
         const disabled = !chatEnabled || isBusy;
+        chatHistoryKeepCountEl.disabled = disabled;
         chatSendBtn.disabled = disabled;
         chatMessageEl.disabled = disabled;
         chatPanelEl.classList.toggle("is-busy", isBusy);
         chatPanelEl.setAttribute("aria-busy", isBusy ? "true" : "false");
+      }
+
+      function chatHistoryKeepCount() {
+        const raw = Number.parseInt(chatHistoryKeepCountEl.value || "5", 10);
+        if (!Number.isFinite(raw) || raw < 1) {
+          return 5;
+        }
+        return raw;
       }
 
       function isMC() {
@@ -599,6 +651,7 @@
         renderTemplate();
         renderMCPreviewFromData(data);
         renderFiguresPreview();
+        renderChatHistory();
         if (typeof data.rendered_answer_md === "string") {
           renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
         }
@@ -939,7 +992,7 @@
         )).join("");
       }
 
-      function renderChatMessage(role, text, attachedFigureIds = []) {
+      function createChatMessageElement(role, text, attachedFigureIds = []) {
         const item = document.createElement("div");
         item.className = `chat-message ${role}`;
         const attachments = Array.isArray(attachedFigureIds) && attachedFigureIds.length
@@ -950,7 +1003,45 @@
           <div>${escapeHtml(String(text || "")).replace(/\n/g, "<br>")}</div>
           ${attachments}
         `;
+        return item;
+      }
+
+      function renderChatMessage(role, text, attachedFigureIds = []) {
+        const item = createChatMessageElement(role, text, attachedFigureIds);
         chatThreadEl.appendChild(item);
+        chatThreadEl.scrollTop = chatThreadEl.scrollHeight;
+      }
+
+      function renderChatHistorySeparator() {
+        const item = document.createElement("div");
+        item.className = "chat-history-separator";
+        item.innerHTML = "<span>Messages above this line are not sent to the LLM.</span>";
+        return item;
+      }
+
+      function renderChatHistory() {
+        const history = parseChatHistory();
+        chatThreadEl.innerHTML = "";
+        if (!history.length) {
+          return;
+        }
+        const keepCount = chatHistoryKeepCount();
+        const splitIndex = Math.max(0, history.length - keepCount);
+        history.forEach((turn, idx) => {
+          if (idx === splitIndex && splitIndex > 0) {
+            chatThreadEl.appendChild(renderChatHistorySeparator());
+          }
+          chatThreadEl.appendChild(
+            createChatMessageElement(
+              "user",
+              turn.user_message || "",
+              turn.attached_figure_ids || []
+            )
+          );
+          chatThreadEl.appendChild(
+            createChatMessageElement("assistant", turn.assistant_message || "")
+          );
+        });
         chatThreadEl.scrollTop = chatThreadEl.scrollHeight;
       }
 
@@ -985,6 +1076,7 @@
             body: JSON.stringify({
               message,
               attached_figure_ids: attachedFigureIds,
+              history_keep_count: chatHistoryKeepCount(),
               editor_state: serializePayload(),
             }),
           });
@@ -1157,6 +1249,9 @@
       chatSendBtn.addEventListener("click", () => {
         sendChatMessage().catch((err) => setChatStatus(`Chat error: ${err.message}`, "warn"));
       });
+      chatHistoryKeepCountEl.addEventListener("input", () => {
+        renderChatHistory();
+      });
       chatMessageEl.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && event.shiftKey) {
           event.preventDefault();
@@ -1180,13 +1275,7 @@
       renderMarkdownSurface(renderedAnswerEl, renderedAnswerEl.textContent || "");
       updateMCVisibility();
       renderFiguresPreview();
-      const existingChatHistory = parseChatHistory();
-      if (existingChatHistory.length) {
-        for (const turn of existingChatHistory) {
-          renderChatMessage("user", turn.user_message || "", turn.attached_figure_ids || []);
-          renderChatMessage("assistant", turn.assistant_message || "");
-        }
-      }
+      renderChatHistory();
       setChatBusy(false);
       renderPendingChatAttachments();
     </script>
