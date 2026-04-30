@@ -62,6 +62,9 @@
         </div>
       </div>
     </div>
+    {% if pandoc_warning %}
+    <p class="warning"><strong>Pandoc warning:</strong> {{ pandoc_warning }}</p>
+    {% endif %}
     {% if export_warning %}
     <p class="warning"><strong>Export warning:</strong> {{ export_warning }}</p>
     {% endif %}

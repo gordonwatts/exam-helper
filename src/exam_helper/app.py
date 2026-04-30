@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import base64
+import shutil
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,10 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from exam_helper.ai_service import AIService
-from exam_helper.export_docx import render_project_docx_bytes
+from exam_helper.export_docx import (
+    _PANDOC_MISSING_WARNING,
+    render_project_docx_bytes,
+)
 from exam_helper.models import (
     AIUsageTotals,
     ChatTurn,
@@ -780,6 +784,9 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         questions = repo.list_questions() if repo.project_file.exists() else []
         project = repo.load_project() if repo.project_file.exists() else None
         export_warning = request.cookies.get("exam_helper_export_warning")
+        pandoc_warning = (
+            _PANDOC_MISSING_WARNING if shutil.which("pandoc") is None else None
+        )
         response = templates.TemplateResponse(
             request,
             "index.html",
@@ -788,6 +795,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 "project": project,
                 "questions": questions,
                 "export_warning": export_warning,
+                "pandoc_warning": pandoc_warning,
                 "ai_model": (project.ai.model if project else DEFAULT_OPENAI_MODEL),
                 "ai_usage": (project.ai.usage if project else AIUsageTotals()),
                 "ai_prompts": (project.ai.prompts if project else None),
