@@ -20,6 +20,23 @@ def test_home_shows_model_and_usage(tmp_path) -> None:
     assert DEFAULT_OPENAI_MODEL in resp.text
 
 
+def test_home_warns_when_pandoc_is_missing(tmp_path, monkeypatch) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    monkeypatch.setattr("exam_helper.app.shutil.which", lambda name: None)
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+
+    resp = client.get("/")
+
+    assert resp.status_code == 200
+    assert "Pandoc warning:" in resp.text
+    assert (
+        "Pandoc not available; DOCX was exported with plain-text math fallback."
+        in resp.text
+    )
+
+
 def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
