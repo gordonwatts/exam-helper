@@ -132,6 +132,7 @@ def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
     resp = client.get("/questions/new2")
     assert resp.status_code == 200
     html = resp.text
+    assert "<title>Question Editor - New Question</title>" in html
     assert "New Question" in html
     assert 'id="figures_json"' in html
     assert 'id="mc_answer_specs_json"' in html

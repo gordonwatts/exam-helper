@@ -16,6 +16,7 @@ def test_home_shows_model_and_usage(tmp_path) -> None:
     client = TestClient(app)
     resp = client.get("/")
     assert resp.status_code == 200
+    assert "<title>Exam Helper - Exam</title>" in resp.text
     assert "model:" in resp.text
     assert DEFAULT_OPENAI_MODEL in resp.text
 
@@ -59,6 +60,7 @@ def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     )
     resp = client.get("/questions/q_edit/edit")
     assert resp.status_code == 200
+    assert "<title>Question Editor - q_edit - T</title>" in resp.text
     assert '<details class="card chat-panel"' in resp.text
     assert "<summary>Chat Assistant</summary>" in resp.text
     assert 'id="chat_thread"' in resp.text
@@ -107,6 +109,7 @@ def test_question_editor_embeds_full_chat_history_and_window_control(tmp_path) -
 
     resp = client.get("/questions/q_history/edit")
     assert resp.status_code == 200
+    assert "<title>Question Editor - q_history - T</title>" in resp.text
     assert 'id="chat_history_keep_count"' in resp.text
     assert 'value="5"' in resp.text
     assert "Sending the last" in resp.text
@@ -137,6 +140,7 @@ def test_question_editor_rendering_is_stable(tmp_path) -> None:
     )
     resp = client.get("/questions/q_chat/edit")
     assert resp.status_code == 200
+    assert "<title>Question Editor - q_chat - T</title>" in resp.text
     assert 'id="chat_thread"' in resp.text
 
 
