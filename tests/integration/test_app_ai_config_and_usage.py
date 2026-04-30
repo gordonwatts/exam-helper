@@ -4,19 +4,20 @@ from fastapi.testclient import TestClient
 
 from exam_helper.ai_service import AIService
 from exam_helper.app import create_app
-from exam_helper.models import AIUsageTotals, ChatTurn
+from exam_helper.models import AIUsageTotals, DEFAULT_OPENAI_MODEL
+from exam_helper.models import ChatTurn
 from exam_helper.repository import ProjectRepository
 
 
 def test_home_shows_model_and_usage(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
-    repo.init_project("Exam", "Physics", openai_model="gpt-5.2")
+    repo.init_project("Exam", "Physics", openai_model=DEFAULT_OPENAI_MODEL)
     app = create_app(tmp_path, openai_key=None)
     client = TestClient(app)
     resp = client.get("/")
     assert resp.status_code == 200
     assert "model:" in resp.text
-    assert "gpt-5.2" in resp.text
+    assert DEFAULT_OPENAI_MODEL in resp.text
 
 
 def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:

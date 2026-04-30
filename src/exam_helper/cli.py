@@ -9,6 +9,7 @@ import uvicorn
 from exam_helper.app import create_app
 from exam_helper.config import resolve_openai_api_key
 from exam_helper.export_docx import export_project_to_docx
+from exam_helper.models import DEFAULT_OPENAI_MODEL
 from exam_helper.repository import ProjectRepository
 from exam_helper.validation import validate_project
 
@@ -82,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("path")
     p_init.add_argument("--name", default="Example Exam Project")
     p_init.add_argument("--course", default="Calculus-based Intro Physics")
-    p_init.add_argument("--openai-model", default="gpt-5.2")
+    p_init.add_argument("--openai-model", default=DEFAULT_OPENAI_MODEL)
     p_init.set_defaults(func=cmd_init)
 
     p_serve = sub.add_parser("serve", help="Serve the local web app.")

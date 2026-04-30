@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from exam_helper.models import FigureData, Question, QuestionType
+from exam_helper.models import DEFAULT_OPENAI_MODEL, FigureData, Question, QuestionType
 from exam_helper.repository import ProjectRepository
 
 
@@ -60,7 +60,7 @@ def test_project_defaults_include_ai_config(tmp_path: Path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     project = repo.load_project()
-    assert project.ai.model == "gpt-5.2"
+    assert project.ai.model == DEFAULT_OPENAI_MODEL
     assert project.ai.prompts.overall == ""
     assert project.ai.usage.total_tokens == 0
 
@@ -72,7 +72,7 @@ def test_project_load_back_compat_without_ai_block(tmp_path: Path) -> None:
         "name: Exam\ncourse: Physics\n", encoding="utf-8"
     )
     project = repo.load_project()
-    assert project.ai.model == "gpt-5.2"
+    assert project.ai.model == DEFAULT_OPENAI_MODEL
     assert project.ai.usage.total_cost_usd == 0.0
 
 

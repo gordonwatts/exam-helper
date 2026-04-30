@@ -14,6 +14,7 @@ from exam_helper.models import (
     AIPromptConfig,
     AIUsageTotals,
     ChatTurn,
+    DEFAULT_OPENAI_MODEL,
     DistractorFunction,
     MCAnswerSpec,
     Question,
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AIService:
     api_key: str | None
-    model: str = "gpt-5.2"
+    model: str = DEFAULT_OPENAI_MODEL
     prompts_override: AIPromptConfig | None = None
     prompt_catalog: PromptCatalog | None = None
 
