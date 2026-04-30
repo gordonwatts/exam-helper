@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from exam_helper import cli
 from exam_helper.models import DEFAULT_OPENAI_MODEL
 
@@ -20,6 +22,19 @@ def test_serve_parser_defaults_path_to_current_directory() -> None:
     args = parser.parse_args(["serve"])
 
     assert args.path == "."
+
+
+def test_serve_help_mentions_project_path_and_openai_env(capsys) -> None:
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["serve", "-h"])
+
+    out = capsys.readouterr().out
+    assert "project.yaml" in out
+    assert "Path to the exam project directory." in out
+    assert "EXAM_HELPER_OPENAI_KEY in ~/.env" in out
+    assert "--openai-key OPENAI_KEY" in out
 
 
 def test_cmd_serve_uses_path_for_project_root(monkeypatch) -> None:

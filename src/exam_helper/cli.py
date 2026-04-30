@@ -14,6 +14,12 @@ from exam_helper.repository import ProjectRepository
 from exam_helper.validation import validate_project
 
 
+class _HelpFormatter(
+    argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter
+):
+    pass
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     root = Path(args.path)
     repo = ProjectRepository(root)
@@ -76,7 +82,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="exam-helper")
+    parser = argparse.ArgumentParser(
+        prog="exam-helper",
+        formatter_class=_HelpFormatter,
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_init = sub.add_parser("init", help="Initialize a new exam project.")
@@ -86,11 +95,33 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--openai-model", default=DEFAULT_OPENAI_MODEL)
     p_init.set_defaults(func=cmd_init)
 
-    p_serve = sub.add_parser("serve", help="Serve the local web app.")
-    p_serve.add_argument("path", nargs="?", default=".")
+    p_serve = sub.add_parser(
+        "serve",
+        help="Serve the local web app.",
+        formatter_class=_HelpFormatter,
+        description=(
+            "Start the local FastAPI + HTMX app for an exam project directory.\n"
+            "The path should point at the project root containing project.yaml."
+        ),
+        epilog=(
+            "OpenAI key resolution:\n"
+            "  1. --openai-key\n"
+            "  2. EXAM_HELPER_OPENAI_KEY in ~/.env\n"
+        ),
+    )
+    p_serve.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Path to the exam project directory.",
+    )
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8000)
-    p_serve.add_argument("--openai-key", default=None)
+    p_serve.add_argument(
+        "--openai-key",
+        default=None,
+        help="OpenAI API key override.",
+    )
     p_serve.add_argument("-v", "--verbose", action="count", default=0)
     p_serve.set_defaults(func=cmd_serve)
 
