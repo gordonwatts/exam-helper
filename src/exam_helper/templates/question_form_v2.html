@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Question Editor</title>
+    <title>{% if question %}Question Editor - {{ question.id }}{% if question.title.strip() %} - {{ question.title }}{% endif %}{% else %}Question Editor - New Question{% endif %}</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <script>
@@ -565,106 +565,7 @@
         chatSendBtn.disabled = disabled;
         chatMessageEl.disabled = disabled;
         chatPanelEl.classList.toggle("is-busy", isBusy);
-        chatPanelEl.setAttribute("aria-busy", isBusy ? "true" : "false");
-      }
-
-      function chatHistoryKeepCount() {
-        const raw = Number.parseInt(chatHistoryKeepCountEl.value, 10);
-        if (Number.isFinite(raw) && raw >= 0) {
-          return raw;
-        }
-        const fallback = Number.parseInt(chatHistoryKeepCountEl.defaultValue, 10);
-        if (Number.isFinite(fallback) && fallback >= 0) {
-          return fallback;
-        }
-        return 0;
-      }
-
-      function isMC() {
-        return questionTypeEl.value === "multiple_choice";
-      }
-
-      function normalizeEditorState(state) {
-        const raw = state || {};
-        return {
-          title: String(raw.title || ""),
-          question_type: String(raw.question_type || "multiple_choice"),
-          mc_options_guidance: String(raw.mc_options_guidance || ""),
-          question_template_md: String(raw.question_template_md || ""),
-          solution_parameters_yaml: String(raw.solution_parameters_yaml || "{}"),
-          answer_formula_md: String(raw.answer_formula_md || ""),
-          answer_guidance: String(raw.answer_guidance || ""),
-          distractor_functions_text: String(raw.distractor_functions_text || ""),
-          mc_answer_specs_json: String(raw.mc_answer_specs_json || "[]"),
-          choices_yaml: String(raw.choices_yaml || "[]"),
-          typed_solution_md: String(raw.typed_solution_md || ""),
-          typed_solution_status: String(raw.typed_solution_status || "missing"),
-          figures_json: String(raw.figures_json || "[]"),
-          chat_history_json: String(raw.chat_history_json || "[]"),
-          points: Number(raw.points ?? 5),
-        };
-      }
-
-      function collectEditorStateFromDOM() {
-        syncMCSpecsFromDOM();
-        editorState = normalizeEditorState({
-          ...editorState,
-          title: titleEl.value,
-          question_type: questionTypeEl.value,
-          question_template_md: templateEl.value,
-          solution_parameters_yaml: paramsEl.value,
-          answer_formula_md: answerFormulaEl.value,
-          answer_guidance: answerGuidanceEl.value,
-          mc_options_guidance: mcOptionsGuidanceEl.value,
-          distractor_functions_text: distractorFnsEl.value,
-          mc_answer_specs_json: mcAnswerSpecsEl.value,
-          choices_yaml: choicesYamlEl.value || "[]",
-          typed_solution_md: typedSolutionEl.value || "",
-          typed_solution_status: typedStatusEl.value,
-          figures_json: figuresInput.value || "[]",
-          chat_history_json: chatHistoryEl.value || "[]",
-          points: Number(pointsEl.value || 5),
-        });
-        return editorState;
-      }
-
-      function renderEditorState(data = {}) {
-        const nextState = data.editor_state || { ...editorState, ...data };
-        editorState = normalizeEditorState(nextState);
-        titleEl.value = editorState.title;
-        pointsEl.value = editorState.points;
-        questionTypeEl.value = editorState.question_type;
-        templateEl.value = editorState.question_template_md;
-        paramsEl.value = editorState.solution_parameters_yaml;
-        answerFormulaEl.value = editorState.answer_formula_md;
-        answerGuidanceEl.value = editorState.answer_guidance;
-        mcOptionsGuidanceEl.value = editorState.mc_options_guidance;
-        distractorFnsEl.value = editorState.distractor_functions_text;
-        mcAnswerSpecsEl.value = editorState.mc_answer_specs_json;
-        choicesYamlEl.value = editorState.choices_yaml;
-        typedSolutionEl.value = editorState.typed_solution_md;
-        typedStatusEl.value = editorState.typed_solution_status;
-        chatHistoryEl.value = editorState.chat_history_json;
-        figuresInput.value = editorState.figures_json;
-        syncMCRowsFromSpecs(parseMCSpecs());
-        if (typeof data.calculated_variables_md === "string") {
-          calculatedVariablesEl.textContent = data.calculated_variables_md;
-        }
-        answerFormulaWarningEl.textContent = data.warning || data.answer_formula_warning
-          ? `Warning: ${data.warning || data.answer_formula_warning}`
-          : "";
-        renderTemplate();
-        renderMCPreviewFromData(data);
-        renderFiguresPreview();
-        renderChatHistory();
-        if (typeof data.rendered_answer_md === "string") {
-          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
-        }
-        updateMCVisibility();
-      }
-
-      function setEditorValuesFromResponse(data) {
-        renderEditorState(data);
+        chatSendBtn.textContent = isBusy ? "Sending..." : "Send";
       }
 
       function escapeHtml(text) {
@@ -678,8 +579,51 @@
 
       function normalizeMathDelimitersForPreview(text) {
         return (text || "")
-          .replace(/\\\[(.*?)\\\]/gs, (_, inner) => `$$${inner}$$`)
-          .replace(/\\\((.*?)\\\)/gs, (_, inner) => `$${inner}$`);
+          .replace(/\\\\\[(.*?)\\\\\]/gs, (_, inner) => `$$${inner}$$`)
+          .replace(/\\\\\((.*?)\\\\\)/gs, (_, inner) => `$${inner}$`);
+      }
+
+      function normalizeEditorState(state) {
+        const next = { ...state };
+        next.title = String(next.title || "");
+        next.question_type = String(next.question_type || "multiple_choice");
+        next.mc_options_guidance = String(next.mc_options_guidance || "");
+        next.question_template_md = String(next.question_template_md || "");
+        next.solution_parameters_yaml = String(next.solution_parameters_yaml || "{}");
+        next.answer_formula_md = String(next.answer_formula_md || "");
+        next.answer_guidance = String(next.answer_guidance || "");
+        next.distractor_functions_text = String(next.distractor_functions_text || "");
+        next.mc_answer_specs_json = String(next.mc_answer_specs_json || "[]");
+        next.choices_yaml = String(next.choices_yaml || "[]");
+        next.typed_solution_md = String(next.typed_solution_md || "");
+        next.typed_solution_status = String(next.typed_solution_status || "missing");
+        next.figures_json = String(next.figures_json || "[]");
+        next.chat_history_json = String(next.chat_history_json || "[]");
+        const parsedPoints = Number(next.points);
+        next.points = Number.isFinite(parsedPoints) ? parsedPoints : 5;
+        return next;
+      }
+
+      function collectEditorStateFromDOM() {
+        editorState = normalizeEditorState({
+          ...editorState,
+          title: titleEl.value,
+          question_type: questionTypeEl.value,
+          mc_options_guidance: mcOptionsGuidanceEl.value,
+          question_template_md: templateEl.value,
+          solution_parameters_yaml: paramsEl.value,
+          answer_formula_md: answerFormulaEl.value,
+          answer_guidance: answerGuidanceEl.value,
+          distractor_functions_text: distractorFnsEl.value,
+          mc_answer_specs_json: mcAnswerSpecsEl.value,
+          choices_yaml: choicesYamlEl.value,
+          typed_solution_md: typedSolutionEl.value,
+          typed_solution_status: typedStatusEl.value,
+          figures_json: figuresInput.value,
+          chat_history_json: chatHistoryEl.value,
+          points: pointsEl.value,
+        });
+        return editorState;
       }
 
       function parseFigures() {
@@ -697,39 +641,37 @@
         renderFiguresPreview();
       }
 
-      function parseChatHistory() {
-        try {
-          const parsed = JSON.parse(chatHistoryEl.value || "[]");
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
-        }
-      }
-
       function nextFigureId(figures) {
-        const used = new Set((figures || []).map((f) => String(f.id || "").trim()).filter(Boolean));
-        for (let i = 1; i < 10000; i += 1) {
-          const candidate = `fig_${i}`;
-          if (!used.has(candidate)) return candidate;
+        const used = new Set((figures || []).map((figure) => String(figure.id || "")));
+        for (let idx = 1; idx < 1000; idx += 1) {
+          const candidate = `fig_${idx}`;
+          if (!used.has(candidate)) {
+            return candidate;
+          }
         }
         return `fig_${Date.now()}`;
+      }
+
+      function figureUrl(figureId) {
+        const qid = questionIdEl.value.trim();
+        return qid ? `/questions/${encodeURIComponent(qid)}/${encodeURIComponent(figureId)}` : "#";
       }
 
       function renderFiguresPreview() {
         const figures = parseFigures();
         if (!figures.length) {
-          figuresPreviewEl.innerHTML = "<em>No figures yet.</em>";
+          figuresPreviewEl.innerHTML = '<p class="hint">No embedded figures yet.</p>';
           return;
         }
-        figuresPreviewEl.innerHTML = figures.map((fig, idx) => {
-          const mime = String(fig.mime_type || "image/unknown");
-          const id = escapeHtml(String(fig.id || `fig_${idx + 1}`));
-          const sha = escapeHtml(String(fig.sha256 || "").slice(0, 12));
-          const src = `data:${mime};base64,${fig.data_base64 || ""}`;
+        figuresPreviewEl.innerHTML = figures.map((figure, idx) => {
+          const caption = escapeHtml(figure.caption || "");
+          const figureId = escapeHtml(figure.id || `fig_${idx + 1}`);
+          const mimeType = escapeHtml(figure.mime_type || "image/png");
+          const dataSize = String((figure.data_base64 || "").length);
           return (
-            `<div class="figure-item">` +
-            `<img src="${src}" alt="${id}" />` +
-            `<div class="figure-meta"><div><strong>${id}</strong></div><div>${escapeHtml(mime)}</div><div>sha256: ${sha}...</div></div>` +
+            `<div class="figure-item" data-figure-idx="${idx}">` +
+            `<img src="${figureUrl(figure.id || `fig_${idx + 1}`)}" alt="${figureId}" onerror="this.style.display='none';" />` +
+            `<div><strong>${figureId}</strong><div class="figure-meta">${mimeType} · ${dataSize} base64 chars</div><div class="figure-meta">${caption || "No caption"}</div></div>` +
             `<button type="button" class="btn btn-secondary" data-remove-figure="${idx}">Remove</button>` +
             `</div>`
           );
@@ -842,7 +784,7 @@
         }
         let out = templateEl.value || "";
         for (const [k, v] of Object.entries(params)) {
-          const re = new RegExp("\\{\\{\\s*" + String(k).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\}\\}", "g");
+          const re = new RegExp("\\{\\{\\s*" + String(k).replace(/[.*+?^${}()|[\\]\\]/g, "\\$&") + "\\s*\\}\\}", "g");
           out = out.replace(re, String(v));
         }
         promptPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(out || ""));
