@@ -66,7 +66,7 @@ def render_template_from_values(template: str, values: dict[str, Any]) -> str:
     for key, value in items:
         rendered = re.sub(
             r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}",
-            str(value),
+            _format_value(value),
             rendered,
         )
     return rendered
@@ -146,9 +146,39 @@ def _evaluate_formula_expression(
 
 
 def _format_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return _format_numeric_scalar(value)
     if isinstance(value, sp.Basic):
+        if value.is_number and not value.free_symbols:
+            try:
+                return _format_numeric_scalar(float(sp.N(value, 15)))
+            except Exception:
+                pass
         return sp.sstr(value)
     return str(value)
+
+
+def _format_numeric_scalar(value: float) -> str:
+    if not math.isfinite(value):
+        return str(value)
+
+    rendered = format(value, ".3g")
+    if "e" not in rendered and "E" not in rendered:
+        return rendered
+
+    match = re.match(r"^([+-]?(?:\d+(?:\.\d*)?|\.\d+))[eE]([+-]?\d+)$", rendered)
+    if match is None:
+        return rendered
+    mantissa, exponent = match.groups()
+    exponent = exponent.lstrip("+")
+    exponent = exponent.lstrip("0") or "0"
+    if exponent.startswith("-"):
+        exponent = "-" + exponent[1:].lstrip("0")
+        if exponent == "-":
+            exponent = "0"
+    return f"{mantissa}e{exponent}"
 
 
 def _line_targets(node: ast.AST) -> list[str]:

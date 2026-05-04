@@ -47,6 +47,30 @@ def test_answer_formula_success() -> None:
     assert result.final_answer == "2.5"
 
 
+def test_answer_formula_formats_numeric_values_compactly() -> None:
+    result = run_answer_formula(
+        "x = 238.28347281\nanswer = x",
+        {},
+        answer_text_md="x={{answer}}",
+        strict=True,
+    )
+    assert result.calculated_variables_md == "x = 238\nanswer = 238"
+    assert result.answer_md == "x=238"
+    assert result.final_answer == "238"
+
+
+def test_answer_formula_uses_scientific_notation_for_small_values() -> None:
+    result = run_answer_formula(
+        "answer = 0.00000283",
+        {},
+        answer_text_md="a={{answer}}",
+        strict=True,
+    )
+    assert result.calculated_variables_md == "answer = 2.83e-6"
+    assert result.answer_md == "a=2.83e-6"
+    assert result.final_answer == "2.83e-6"
+
+
 def test_answer_formula_requires_nonempty_formula() -> None:
     with pytest.raises(SolutionRuntimeError, match="Formula text is empty"):
         run_answer_formula("", {})
