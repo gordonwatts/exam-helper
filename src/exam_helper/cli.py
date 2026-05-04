@@ -122,7 +122,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="OpenAI API key override.",
     )
-    p_serve.add_argument("-v", "--verbose", action="count", default=0)
+    p_serve.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Increase logging verbosity; repeat for more detail.",
+    )
     p_serve.set_defaults(func=cmd_serve)
 
     p_validate = sub.add_parser("validate", help="Validate question files.")
