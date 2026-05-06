@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import math
 import re
+from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -149,36 +150,72 @@ def _format_value(value: Any) -> str:
     if isinstance(value, bool):
         return str(value)
     if isinstance(value, (int, float)):
-        return _format_numeric_scalar(value)
+        numeric_value = _decimal_from_value(value)
+        if numeric_value is not None:
+            return _format_decimal_with_sig_figs(numeric_value)
+        return str(value)
     if isinstance(value, sp.Basic):
-        if value.is_number and not value.free_symbols:
-            try:
-                return _format_numeric_scalar(float(sp.N(value, 15)))
-            except Exception:
-                pass
+        numeric_value = _decimal_from_value(value)
+        if numeric_value is not None:
+            return _format_decimal_with_sig_figs(numeric_value)
         return sp.sstr(value)
     return str(value)
 
 
-def _format_numeric_scalar(value: float) -> str:
-    if not math.isfinite(value):
-        return str(value)
+def _decimal_from_value(value: Any) -> Decimal | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return Decimal(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        return Decimal(str(value))
+    if isinstance(value, sp.Basic):
+        if not value.is_number or value.is_infinite:
+            return None
+        if value.is_Integer:
+            return Decimal(int(value))
+        try:
+            return Decimal(str(sp.N(value, 15)))
+        except Exception:
+            return None
+    return None
 
-    rendered = format(value, ".3g")
-    if "e" not in rendered and "E" not in rendered:
-        return rendered
 
-    match = re.match(r"^([+-]?(?:\d+(?:\.\d*)?|\.\d+))[eE]([+-]?\d+)$", rendered)
-    if match is None:
-        return rendered
-    mantissa, exponent = match.groups()
-    exponent = exponent.lstrip("+")
-    exponent = exponent.lstrip("0") or "0"
-    if exponent.startswith("-"):
-        exponent = "-" + exponent[1:].lstrip("0")
-        if exponent == "-":
-            exponent = "0"
-    return f"{mantissa}e{exponent}"
+def _format_decimal_with_sig_figs(value: Decimal, sig_figs: int = 3) -> str:
+    if value.is_zero():
+        return "0"
+
+    sign = "-" if value.is_signed() else ""
+    abs_value = value.copy_abs()
+
+    if abs_value == abs_value.to_integral_value():
+        return f"{sign}{format(abs_value.to_integral_value(), 'f')}"
+
+    exponent = abs_value.adjusted()
+
+    def _format_scientific(decimal_value: Decimal) -> str:
+        scientific_exponent = decimal_value.copy_abs().adjusted()
+        mantissa = decimal_value.scaleb(-scientific_exponent)
+        mantissa_places = max(sig_figs - 1, 0)
+        quant = Decimal(1).scaleb(-mantissa_places)
+        mantissa = mantissa.quantize(quant, rounding=ROUND_HALF_UP)
+        if mantissa == Decimal(10):
+            mantissa = Decimal(1).quantize(quant, rounding=ROUND_HALF_UP)
+            scientific_exponent += 1
+        return f"{sign}{format(mantissa, 'f')}e{scientific_exponent}"
+
+    if exponent >= 3 or exponent < -3:
+        return _format_scientific(abs_value)
+
+    decimals = max(sig_figs - exponent - 1, 0)
+    quant = Decimal(1).scaleb(-decimals)
+    rounded = abs_value.quantize(quant, rounding=ROUND_HALF_UP)
+    if rounded.adjusted() >= 3 or rounded.adjusted() < -3:
+        return _format_scientific(rounded)
+
+    return f"{sign}{format(rounded, 'f')}"
 
 
 def _line_targets(node: ast.AST) -> list[str]:

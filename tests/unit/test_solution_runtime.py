@@ -42,9 +42,9 @@ def test_answer_formula_success() -> None:
     result = run_answer_formula(
         code, {"v": 2.5}, answer_text_md="v={{v}} m/s", strict=True
     )
-    assert result.calculated_variables_md == "v = 2.5\nanswer = 2.5"
-    assert result.answer_md == "v=2.5 m/s"
-    assert result.final_answer == "2.5"
+    assert result.calculated_variables_md == "v = 2.50\nanswer = 2.50"
+    assert result.answer_md == "v=2.50 m/s"
+    assert result.final_answer == "2.50"
 
 
 def test_answer_formula_formats_numeric_values_compactly() -> None:
@@ -80,6 +80,22 @@ def test_answer_formula_tracks_last_expression() -> None:
     result = run_answer_formula("x = 1\nx + 2", {}, strict=True)
     assert result.calculated_variables_md == "x = 1\nanswer = 3"
     assert result.final_answer == "3"
+
+
+def test_answer_formula_formats_numeric_values_with_sig_figs() -> None:
+    result = run_answer_formula(
+        "x = 0.1\nanswer = 238.28347281",
+        {},
+        strict=True,
+    )
+    assert result.calculated_variables_md == "x = 0.100\nanswer = 238"
+    assert result.final_answer == "238"
+
+
+def test_answer_formula_keeps_text_answers_as_text() -> None:
+    result = run_answer_formula("answer = '0.00000283'", {}, strict=True)
+    assert result.calculated_variables_md == "answer = 0.00000283"
+    assert result.final_answer == "0.00000283"
 
 
 def test_answer_formula_does_not_backfill_answer_after_a_fatal_error() -> None:
@@ -223,6 +239,28 @@ def test_mc_formula_harness_bare_distractor_expression_overrides_seed_answer() -
     )
     assert out.row_previews[1]["content_md"] == "33"
     assert [c.content_md for c in out.choices] == ["33", "55"]
+
+
+def test_mc_formula_harness_formats_numeric_values_with_sig_figs() -> None:
+    out = run_mc_formula_harness(
+        "answer = 0.1",
+        [
+            {"formula_md": "answer = 0.00000283", "rationale_md": "small value"},
+            {"formula_md": "answer = 999.5", "rationale_md": "rounds up"},
+            {"formula_md": "answer = 'text'", "rationale_md": "text distractor"},
+            {"formula_md": "answer = 238.28347281", "rationale_md": "long decimal"},
+        ],
+        {},
+        strict=True,
+    )
+    assert out.correct_answer_md == "0.100"
+    assert [c.content_md for c in out.choices] == [
+        "2.83e-6",
+        "0.100",
+        "238",
+        "1.00e3",
+        "text",
+    ]
 
 
 def test_mc_formula_harness_sorts_text_values_lexicographically() -> None:
