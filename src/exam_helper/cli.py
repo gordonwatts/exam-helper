@@ -66,7 +66,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         level = logging.DEBUG
     logging.basicConfig(level=level, format="%(levelname)s:%(name)s:%(message)s")
 
-    key = resolve_openai_api_key(args.openai_key)
+    key = resolve_openai_api_key(args.openai_key, Path(args.path))
     if key:
         print("OpenAI key loaded.")
     else:
@@ -107,6 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
             "OpenAI key resolution:\n"
             "  1. --openai-key\n"
             "  2. EXAM_HELPER_OPENAI_KEY in ~/.env\n"
+            "  3. EXAM_HELPER_OPENAI_KEY in the project .env path\n"
         ),
     )
     p_serve.add_argument(
