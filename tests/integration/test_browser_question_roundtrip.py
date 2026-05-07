@@ -256,10 +256,26 @@ def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
                             { preview_md: "25.4", warning: "" }
                           ],
                           mc_preview_choices: [
-                            { label: "A", content_md: "22.4", rationale: "" },
-                            { label: "B", content_md: "23.4", rationale: "" },
-                            { label: "C", content_md: "24.4", rationale: "" },
-                            { label: "D", content_md: "25.4", rationale: "" }
+                            {
+                              label: "A",
+                              content_md: "22.4",
+                              rationale: "This explanation is intentionally long so it wraps onto a second line in the preview pane."
+                            },
+                            {
+                              label: "B",
+                              content_md: "23.4",
+                              rationale: "This explanation is intentionally long so it wraps onto a second line in the preview pane."
+                            },
+                            {
+                              label: "C",
+                              content_md: "24.4",
+                              rationale: "This explanation is intentionally long so it wraps onto a second line in the preview pane."
+                            },
+                            {
+                              label: "D",
+                              content_md: "25.4",
+                              rationale: "This explanation is intentionally long so it wraps onto a second line in the preview pane."
+                            }
                           ]
                         });
                     }""")
@@ -284,6 +300,10 @@ def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
                     "(el) => el.getBoundingClientRect().height"
                 )
                 assert preview_height < 40
+                preview_row_display = page.locator(
+                    "#mc_preview_rationale > div"
+                ).first.evaluate("(el) => getComputedStyle(el).display")
+                assert preview_row_display == "grid"
             finally:
                 browser.close()
     finally:

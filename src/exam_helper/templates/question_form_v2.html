@@ -124,6 +124,15 @@
       .mc-preview-text {
         white-space: pre-wrap;
       }
+      .mc-preview-text > div {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0.35rem;
+        align-items: start;
+      }
+      .mc-preview-text > div > span {
+        min-width: 0;
+      }
       .formula-preview--compact {
         min-height: 0;
         display: inline-block;
