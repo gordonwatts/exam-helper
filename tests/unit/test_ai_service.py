@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+
 from exam_helper.ai_service import AIService
-from exam_helper.models import Question
+from exam_helper.models import FigureData, Question
 
 
 class _FakeResponses:
@@ -282,6 +285,63 @@ def test_ai_service_chat_edit_question_uses_tool_calls(monkeypatch) -> None:
         "question_template_md",
     ]
     assert out.warnings == ["Validated the deterministic answer formula."]
+
+
+def test_ai_service_chat_edit_question_includes_figure_metadata_in_prompt(
+    monkeypatch,
+) -> None:
+    from exam_helper import ai_service as mod
+
+    class _RecordingResponses:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+
+            class R:
+                pass
+
+            r = R()
+            r.output_text = '{"assistant_message":"Updated.","warnings":[]}'
+            r.output = []
+            r.id = "resp_1"
+            return r
+
+    class _RecordingClient:
+        def __init__(self):
+            self.responses = _RecordingResponses()
+
+    recording_client = _RecordingClient()
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: recording_client)
+    svc = AIService(api_key="k")
+
+    b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+        "/w8AAgMBgU7Y5e0AAAAASUVORK5CYII="
+    )
+    fig = FigureData(
+        id="fig_1",
+        mime_type="image/png",
+        data_base64=b64,
+        sha256=hashlib.sha256(base64.b64decode(b64.encode("ascii"))).hexdigest(),
+        caption="small diagram",
+    )
+    q = Question(id="q1", title="Original")
+    q.figures = [fig]
+
+    out = svc.chat_edit_question(q, "rewrite this")
+
+    assert out.assistant_message == "Updated."
+    prompt_text = "\n".join(
+        item["text"]
+        for item in recording_client.responses.calls[0]["input"][1]["content"]
+        if item.get("type") == "input_text"
+    )
+    assert "Figures associated with this question:" in prompt_text
+    assert "fig_1: small diagram (image/png)" in prompt_text
+    assert '"figure_ids"' in prompt_text
+    assert "fig_1" in prompt_text
 
 
 def test_ai_service_chat_edit_question_truncates_history_by_requested_count(

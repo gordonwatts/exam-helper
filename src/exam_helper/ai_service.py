@@ -67,6 +67,8 @@ class AIService:
         question_type: str = "free_response"
         points: int = 5
         mc_options_guidance: str = ""
+        figure_ids: list[str] = Field(default_factory=list)
+        figure_summaries: list[str] = Field(default_factory=list)
         question_template_md: str = ""
         solution_parameters_yaml: str = "{}"
         answer_formula_md: str = ""
@@ -230,6 +232,23 @@ class AIService:
         return items
 
     @staticmethod
+    def _figure_summaries(question: Question) -> list[str]:
+        summaries: list[str] = []
+        for fig in question.figures:
+            caption = (fig.caption or fig.id or "").strip() or fig.id
+            summaries.append(f"{fig.id}: {caption} ({fig.mime_type})")
+        return summaries
+
+    @classmethod
+    def _figure_prompt_text(cls, question: Question) -> str:
+        summaries = cls._figure_summaries(question)
+        if not summaries:
+            return ""
+        return "Figures associated with this question:\n" + "\n".join(
+            f"- {item}" for item in summaries
+        )
+
+    @staticmethod
     def _editor_state_for_question(
         question: Question,
     ) -> "AIService.QuestionEditorState":
@@ -261,6 +280,8 @@ class AIService:
             question_type=question.question_type.value,
             points=question.points,
             mc_options_guidance=question.mc_options_guidance,
+            figure_ids=[fig.id for fig in question.figures],
+            figure_summaries=AIService._figure_summaries(question),
             question_template_md=question.solution.question_template_md,
             solution_parameters_yaml=_dump_parameters(question.solution.parameters),
             answer_formula_md=question.solution.answer_formula_md,
@@ -680,6 +701,9 @@ class AIService:
                 ),
             }
         ]
+        figure_prompt_text = self._figure_prompt_text(working)
+        if figure_prompt_text:
+            user_content.append({"type": "input_text", "text": figure_prompt_text})
         if attached_ids:
             user_content.append(
                 {
