@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import math
 import re
+from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -66,7 +67,7 @@ def render_template_from_values(template: str, values: dict[str, Any]) -> str:
     for key, value in items:
         rendered = re.sub(
             r"\{\{\s*" + re.escape(str(key)) + r"\s*\}\}",
-            str(value),
+            _format_value(value),
             rendered,
         )
     return rendered
@@ -146,9 +147,75 @@ def _evaluate_formula_expression(
 
 
 def _format_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        numeric_value = _decimal_from_value(value)
+        if numeric_value is not None:
+            return _format_decimal_with_sig_figs(numeric_value)
+        return str(value)
     if isinstance(value, sp.Basic):
+        numeric_value = _decimal_from_value(value)
+        if numeric_value is not None:
+            return _format_decimal_with_sig_figs(numeric_value)
         return sp.sstr(value)
     return str(value)
+
+
+def _decimal_from_value(value: Any) -> Decimal | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return Decimal(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        return Decimal(str(value))
+    if isinstance(value, sp.Basic):
+        if not value.is_number or value.is_infinite:
+            return None
+        if value.is_Integer:
+            return Decimal(int(value))
+        try:
+            return Decimal(str(sp.N(value, 15)))
+        except Exception:
+            return None
+    return None
+
+
+def _format_decimal_with_sig_figs(value: Decimal, sig_figs: int = 3) -> str:
+    if value.is_zero():
+        return "0"
+
+    sign = "-" if value.is_signed() else ""
+    abs_value = value.copy_abs()
+
+    if abs_value == abs_value.to_integral_value():
+        return f"{sign}{format(abs_value.to_integral_value(), 'f')}"
+
+    exponent = abs_value.adjusted()
+
+    def _format_scientific(decimal_value: Decimal) -> str:
+        scientific_exponent = decimal_value.copy_abs().adjusted()
+        mantissa = decimal_value.scaleb(-scientific_exponent)
+        mantissa_places = max(sig_figs - 1, 0)
+        quant = Decimal(1).scaleb(-mantissa_places)
+        mantissa = mantissa.quantize(quant, rounding=ROUND_HALF_UP)
+        if mantissa == Decimal(10):
+            mantissa = Decimal(1).quantize(quant, rounding=ROUND_HALF_UP)
+            scientific_exponent += 1
+        return f"{sign}{format(mantissa, 'f')}e{scientific_exponent}"
+
+    if exponent >= 3 or exponent < -3:
+        return _format_scientific(abs_value)
+
+    decimals = max(sig_figs - exponent - 1, 0)
+    quant = Decimal(1).scaleb(-decimals)
+    rounded = abs_value.quantize(quant, rounding=ROUND_HALF_UP)
+    if rounded.adjusted() >= 3 or rounded.adjusted() < -3:
+        return _format_scientific(rounded)
+
+    return f"{sign}{format(rounded, 'f')}"
 
 
 def _line_targets(node: ast.AST) -> list[str]:

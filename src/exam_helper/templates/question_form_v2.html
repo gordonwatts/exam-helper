@@ -121,6 +121,9 @@
         white-space: pre-wrap;
         font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
       }
+      .mc-preview-text {
+        white-space: pre-wrap;
+      }
       .formula-preview--compact {
         min-height: 0;
         display: inline-block;
@@ -480,11 +483,11 @@
           <div class="mc-preview-grid" style="margin-top: 0.8rem;">
             <div class="card preview">
               <strong>MC Preview (Answers)</strong>
-              <div id="mc_preview_answers">{{ mc_preview_answers if question else '' }}</div>
+              <div id="mc_preview_answers" class="mc-preview-text">{{ mc_preview_answers if question else '' }}</div>
             </div>
             <div class="card preview">
               <strong>MC Preview (Answers + Explanations)</strong>
-              <div id="mc_preview_rationale">{{ mc_preview_rationale if question else '' }}</div>
+              <div id="mc_preview_rationale" class="mc-preview-text">{{ mc_preview_rationale if question else '' }}</div>
             </div>
           </div>
           <p class="hint" id="mc_preview_warning">{{ mc_preview_warning if question else '' }}</p>
@@ -581,6 +584,23 @@
         return (text || "")
           .replace(/\\\\\[(.*?)\\\\\]/gs, (_, inner) => `$$${inner}$$`)
           .replace(/\\\\\((.*?)\\\\\)/gs, (_, inner) => `$${inner}$`);
+      }
+
+      function formatTemplateValue(value) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          let rendered = Number(value).toPrecision(3);
+          if (/e/i.test(rendered)) {
+            rendered = rendered.replace(/e\+?0*(\d+)/i, "e$1");
+            rendered = rendered.replace(/e-0*(\d+)/i, "e-$1");
+          } else {
+            rendered = rendered
+              .replace(/(\.\d*?[1-9])0+$/, "$1")
+              .replace(/\.0+$/, "")
+              .replace(/\.$/, "");
+          }
+          return rendered;
+        }
+        return String(value);
       }
 
       function normalizeEditorState(state) {
@@ -785,7 +805,7 @@
         let out = templateEl.value || "";
         for (const [k, v] of Object.entries(params)) {
           const re = new RegExp("\\{\\{\\s*" + String(k).replace(/[.*+?^${}()|[\\]\\]/g, "\\$&") + "\\s*\\}\\}", "g");
-          out = out.replace(re, String(v));
+          out = out.replace(re, formatTemplateValue(v));
         }
         promptPreview.innerHTML = marked.parse(normalizeMathDelimitersForPreview(out || ""));
         if (window.MathJax && window.MathJax.typesetPromise) {
