@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import socket
 import subprocess
 import sys
@@ -284,6 +287,110 @@ def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
                     "(el) => el.getBoundingClientRect().height"
                 )
                 assert preview_height < 40
+            finally:
+                browser.close()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
+
+
+def test_browser_figure_preview_modal_opens_and_closes(tmp_path: Path) -> None:
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import Error as PlaywrightError, sync_playwright
+
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Figure Exam", "Physics 1")
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+
+    # 1x1 transparent PNG
+    b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+        "/w8AAgMBgU7Y5e0AAAAASUVORK5CYII="
+    )
+    sha256 = hashlib.sha256(base64.b64decode(b64.encode("ascii"))).hexdigest()
+    figures_json = json.dumps(
+        [
+            {
+                "id": "fig_1",
+                "mime_type": "image/png",
+                "data_base64": b64,
+                "sha256": sha256,
+                "caption": "tiny figure",
+            }
+        ]
+    )
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "exam_helper.cli",
+            "serve",
+            str(tmp_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        _wait_for_server(base_url + "/", proc)
+        seed = httpx.post(
+            base_url + "/questions/save",
+            data={
+                "question_id": "q_figure",
+                "title": "Figure Test",
+                "question_type": "free_response",
+                "question_template_md": "Look at <figure fig_1>.",
+                "solution_parameters_yaml": "{}",
+                "answer_formula_md": "answer = 1",
+                "answer_guidance": "",
+                "mc_options_guidance": "",
+                "distractor_functions_text": "",
+                "choices_yaml": "[]",
+                "typed_solution_md": "",
+                "typed_solution_status": "fresh",
+                "figures_json": figures_json,
+                "points": 5,
+            },
+            follow_redirects=False,
+            timeout=5.0,
+        )
+        assert seed.status_code == 303
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
+            except PlaywrightError as exc:
+                pytest.skip(f"Chromium is not available: {exc}")
+            try:
+                page = browser.new_page()
+                page.goto(base_url + "/questions/q_figure/edit")
+                page.wait_for_url(base_url + "/questions/q_figure/edit")
+
+                preview_button = page.locator("[data-open-figure='0']")
+                assert preview_button.is_visible()
+                preview_button.click()
+
+                modal = page.locator("#figure_modal")
+                assert modal.get_attribute("aria-hidden") == "false"
+                assert page.locator("#figure_modal_title").inner_text() == "fig_1"
+                assert "tiny figure" in page.locator("#figure_modal_meta").inner_text()
+                assert modal.locator("#figure_modal_image").get_attribute("src")
+
+                page.locator("#figure_modal .figure-modal__backdrop").click()
+                assert modal.get_attribute("aria-hidden") == "true"
+
+                preview_button.click()
+                page.locator("#figure_modal_close").click()
+                assert modal.get_attribute("aria-hidden") == "true"
             finally:
                 browser.close()
     finally:
