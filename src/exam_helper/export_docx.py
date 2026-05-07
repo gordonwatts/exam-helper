@@ -156,7 +156,10 @@ def _build_project_markdown(
 
     for i, q in enumerate(questions, start=1):
         prompt = normalize_markdown_math_delimiters(_render_prompt(q))
-        lines.append(f"{i}. [{q.points} points] {prompt}")
+        prompt_lines = prompt.splitlines() or [""]
+        lines.append(f"{i}. [{q.points} points] {prompt_lines[0]}")
+        for line in prompt_lines[1:]:
+            lines.append(f"   {line}" if line else "   ")
 
         for figure in q.figures:
             try:
