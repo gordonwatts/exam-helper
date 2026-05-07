@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from exam_helper.ai_service import AIService
 from exam_helper.export_docx import (
     _PANDOC_MISSING_WARNING,
+    render_question_docx_bytes,
     render_project_docx_bytes,
 )
 from exam_helper.models import (
@@ -1217,6 +1218,37 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         )
         project = repo.load_project()
         filename = f"{_sanitize_docx_filename_stem(project.name)}.docx"
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        }
+        if warnings:
+            headers["X-Exam-Helper-Export-Warnings"] = " | ".join(warnings)
+        response = Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers,
+        )
+        if warnings:
+            response.set_cookie(
+                "exam_helper_export_warning",
+                " | ".join(warnings),
+                max_age=300,
+                samesite="lax",
+            )
+        return response
+
+    @app.post("/questions/{question_id}/export/docx")
+    def export_question_docx(
+        question_id: str, include_solutions: str | None = Form(None)
+    ) -> Response:
+        include = include_solutions is not None
+        content, warnings = render_question_docx_bytes(
+            project_root=project_root,
+            question_id=question_id,
+            include_solutions=include,
+        )
+        question = repo.get_question(question_id)
+        filename = f"{_sanitize_docx_filename_stem(question.id)}.docx"
         headers = {
             "Content-Disposition": f'attachment; filename="{filename}"',
         }
