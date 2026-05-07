@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import json
 
 from fastapi.testclient import TestClient
@@ -234,6 +235,57 @@ def test_harness_run_returns_422_for_collisions(tmp_path) -> None:
     assert resp.status_code == 422
     assert resp.json()["ok"] is False
     assert resp.json()["collisions"]
+
+
+def test_harness_run_logs_exception_before_returning_422(tmp_path, monkeypatch) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key=None)
+    client = TestClient(app)
+    _seed_question(client, "q_harness_error", qtype="multiple_choice")
+    client.post(
+        "/questions/q_harness_error/autosave",
+        json={
+            "title": "T",
+            "question_type": "multiple_choice",
+            "prompt_md": "P",
+            "question_template_md": "P",
+            "solution_parameters_yaml": "{}",
+            "answer_formula_md": "answer = 2",
+            "mc_answer_specs_json": (
+                "["
+                '{"formula_md":"answer = 3","rationale_md":"r"},'
+                '{"formula_md":"answer = 4","rationale_md":"r"},'
+                '{"formula_md":"answer = 5","rationale_md":"r"},'
+                '{"formula_md":"answer = 6","rationale_md":"r"}'
+                "]"
+            ),
+            "distractor_functions_text": "",
+            "choices_yaml": "[]",
+            "typed_solution_md": "",
+            "typed_solution_status": "missing",
+            "figures_json": "[]",
+            "points": 5,
+        },
+    )
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    records: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def _record_exception(self, msg, *args, **kwargs):
+        records.append((msg, args, kwargs))
+
+    monkeypatch.setattr(logging.Logger, "exception", _record_exception)
+    monkeypatch.setattr("exam_helper.app.run_answer_formula", _boom)
+    resp = client.post("/questions/q_harness_error/harness/run")
+
+    assert resp.status_code == 422
+    assert resp.json()["ok"] is False
+    assert records
+    assert records[0][0].startswith("harness.run failed question_id=%s")
+    assert records[0][1][0] == "q_harness_error"
 
 
 def test_autosave_updates_mc_formula_preview(tmp_path) -> None:
