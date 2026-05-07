@@ -121,6 +121,9 @@
         white-space: pre-wrap;
         font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
       }
+      .mc-preview-text {
+        white-space: pre-wrap;
+      }
       .formula-preview--compact {
         min-height: 0;
         display: inline-block;
@@ -480,11 +483,11 @@
           <div class="mc-preview-grid" style="margin-top: 0.8rem;">
             <div class="card preview">
               <strong>MC Preview (Answers)</strong>
-              <div id="mc_preview_answers">{{ mc_preview_answers if question else '' }}</div>
+              <div id="mc_preview_answers" class="mc-preview-text">{{ mc_preview_answers if question else '' }}</div>
             </div>
             <div class="card preview">
               <strong>MC Preview (Answers + Explanations)</strong>
-              <div id="mc_preview_rationale">{{ mc_preview_rationale if question else '' }}</div>
+              <div id="mc_preview_rationale" class="mc-preview-text">{{ mc_preview_rationale if question else '' }}</div>
             </div>
           </div>
           <p class="hint" id="mc_preview_warning">{{ mc_preview_warning if question else '' }}</p>

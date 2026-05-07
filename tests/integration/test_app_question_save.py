@@ -143,6 +143,9 @@ def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
     assert 'id="calculated_variables_md"' in html
     assert 'id="answer_guidance"' in html
     assert 'id="rendered_answer_md"' in html
+    assert 'id="mc_preview_answers"' in html
+    assert 'id="mc_preview_rationale"' in html
+    assert 'class="mc-preview-text"' in html
     assert 'id="btn_rewrite"' not in html
     assert 'id="btn_generate_answer"' not in html
     assert '<option value="multiple_choice" selected>' in html
@@ -188,6 +191,8 @@ def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     assert 'id="answer_formula_md"' in edit_html
     assert 'id="calculated_variables_md"' in edit_html
     assert 'id="rendered_answer_md"' in edit_html
+    assert 'id="mc_preview_answers"' in edit_html
+    assert 'id="mc_preview_rationale"' in edit_html
 
     save_resp = client.post(
         "/questions/save",
