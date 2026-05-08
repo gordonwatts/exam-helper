@@ -20,6 +20,7 @@ dependencies = [
   "sympy>=1.14.0",
   "pint>=0.24.0",
   "openai>=1.99.0",
+  "typer>=0.12.5",
   "python-docx>=1.2.0",
 ]
 
