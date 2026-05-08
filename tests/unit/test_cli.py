@@ -1,44 +1,30 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import re
 from pathlib import Path
 
-import pytest
+import click
+from typer.testing import CliRunner
 
 from exam_helper import cli
 from exam_helper.models import DEFAULT_OPENAI_MODEL
 
-
-def test_serve_parser_accepts_positional_path() -> None:
-    parser = cli.build_parser()
-
-    args = parser.parse_args(["serve", "my-project"])
-
-    assert args.path == "my-project"
+runner = CliRunner()
 
 
-def test_serve_parser_defaults_path_to_current_directory() -> None:
-    parser = cli.build_parser()
+def test_serve_help_mentions_project_path_and_openai_env() -> None:
+    result = runner.invoke(cli.cli_app, ["serve", "--help"])
 
-    args = parser.parse_args(["serve"])
-
-    assert args.path == "."
-
-
-def test_serve_help_mentions_project_path_and_openai_env(capsys) -> None:
-    parser = cli.build_parser()
-
-    with pytest.raises(SystemExit):
-        parser.parse_args(["serve", "-h"])
-
-    out = capsys.readouterr().out
+    assert result.exit_code == 0
+    out = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
     assert "project.yaml" in out
     assert "Path to the exam project directory." in out
     assert "EXAM_HELPER_OPENAI_KEY in ~/.env" in out
     assert "EXAM_HELPER_OPENAI_KEY in the project .env path" in out
-    assert "--openai-key OPENAI_KEY" in out
+    assert "--openai-key" in out
 
 
-def test_cmd_serve_uses_path_for_project_root(monkeypatch) -> None:
+def test_serve_command_accepts_positional_path(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_create_app(*, project_root: Path, openai_key: str | None):
@@ -58,10 +44,9 @@ def test_cmd_serve_uses_path_for_project_root(monkeypatch) -> None:
         cli, "resolve_openai_api_key", lambda key, project_root=None: "key"
     )
 
-    parser = cli.build_parser()
-    args = parser.parse_args(["serve", "my-project", "--port", "9000"])
+    result = runner.invoke(cli.cli_app, ["serve", "my-project", "--port", "9000"])
 
-    assert cli.cmd_serve(args) == 0
+    assert result.exit_code == 0
     assert captured["project_root"] == Path("my-project")
     assert captured["openai_key"] == "key"
     assert captured["host"] == "127.0.0.1"
@@ -69,9 +54,98 @@ def test_cmd_serve_uses_path_for_project_root(monkeypatch) -> None:
     assert captured["log_level"] == "info"
 
 
-def test_init_parser_defaults_openai_model_to_gpt_54() -> None:
-    parser = cli.build_parser()
+def test_serve_command_defaults_path_to_current_directory(monkeypatch) -> None:
+    captured: dict[str, object] = {}
 
-    args = parser.parse_args(["init", "my-project"])
+    def fake_create_app(*, project_root: Path, openai_key: str | None):
+        captured["project_root"] = project_root
+        captured["openai_key"] = openai_key
+        return object()
 
-    assert args.openai_model == DEFAULT_OPENAI_MODEL
+    def fake_run(app, host: str, port: int, log_level: str) -> None:
+        captured["app"] = app
+        captured["host"] = host
+        captured["port"] = port
+        captured["log_level"] = log_level
+
+    monkeypatch.setattr(cli, "create_app", fake_create_app)
+    monkeypatch.setattr(cli.uvicorn, "run", fake_run)
+    monkeypatch.setattr(
+        cli, "resolve_openai_api_key", lambda key, project_root=None: "key"
+    )
+
+    result = runner.invoke(cli.cli_app, ["serve"])
+
+    assert result.exit_code == 0
+    assert captured["project_root"] == Path(".")
+    assert captured["openai_key"] == "key"
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 8000
+    assert captured["log_level"] == "info"
+
+
+def test_init_command_defaults_openai_model_to_gpt_54(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeRepo:
+        def __init__(self, root: Path):
+            captured["root"] = root
+
+        def init_project(self, *, name: str, course: str, openai_model: str) -> None:
+            captured["name"] = name
+            captured["course"] = course
+            captured["openai_model"] = openai_model
+
+    monkeypatch.setattr(cli, "ProjectRepository", FakeRepo)
+
+    result = runner.invoke(cli.cli_app, ["init", "my-project"])
+
+    assert result.exit_code == 0
+    assert captured["root"] == Path("my-project")
+    assert captured["name"] == "Example Exam Project"
+    assert captured["course"] == "Calculus-based Intro Physics"
+    assert captured["openai_model"] == DEFAULT_OPENAI_MODEL
+
+
+def test_export_docx_command_defaults_include_solutions(monkeypatch, tmp_path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_export_project_to_docx(
+        *, project_root: Path, output_path: Path, include_solutions: bool
+    ) -> list[str]:
+        captured["project_root"] = project_root
+        captured["output_path"] = output_path
+        captured["include_solutions"] = include_solutions
+        return []
+
+    monkeypatch.setattr(cli, "export_project_to_docx", fake_export_project_to_docx)
+
+    output = tmp_path / "exam.docx"
+    result = runner.invoke(
+        cli.cli_app, ["export", "docx", "my-project", "--output", str(output)]
+    )
+
+    assert result.exit_code == 0
+    assert captured["project_root"] == Path("my-project")
+    assert captured["output_path"] == output
+    assert captured["include_solutions"] is False
+
+
+def test_validate_command_reports_missing_path(capsys) -> None:
+    result = runner.invoke(cli.cli_app, ["validate", "missing-project"])
+
+    assert result.exit_code == 1
+    assert "ERROR: Path does not exist: missing-project" in result.stdout
+
+
+def test_main_returns_click_exit_code_for_cli_errors(monkeypatch, capsys) -> None:
+    def fake_cli_app(*args, **kwargs):
+        raise click.BadParameter("bad path")
+
+    monkeypatch.setattr(cli, "cli_app", fake_cli_app)
+
+    exit_code = cli.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "bad path" in captured.err
