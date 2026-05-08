@@ -193,6 +193,7 @@ def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     assert 'id="rendered_answer_md"' in edit_html
     assert 'id="mc_preview_answers"' in edit_html
     assert 'id="mc_preview_rationale"' in edit_html
+    assert "mc-preview-rationale-card" in edit_html
 
     save_resp = client.post(
         "/questions/save",

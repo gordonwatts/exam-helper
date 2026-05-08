@@ -124,10 +124,14 @@
       .mc-preview-text {
         white-space: pre-wrap;
       }
-      .mc-preview-text > div {
+      .mc-preview-rationale-card {
+        border-left: 4px solid var(--accent);
+        padding-left: 0.9rem;
+      }
+      .mc-preview-rationale-card .mc-preview-text > div {
         display: grid;
-        grid-template-columns: 2.5rem minmax(0, 1fr);
-        column-gap: 0.5rem;
+        grid-template-columns: 3rem minmax(0, 1fr);
+        column-gap: 0.65rem;
         align-items: start;
       }
       .mc-preview-choice-label {
@@ -498,7 +502,7 @@
               <strong>MC Preview (Answers)</strong>
               <div id="mc_preview_answers" class="mc-preview-text">{{ mc_preview_answers if question else '' }}</div>
             </div>
-            <div class="card preview">
+            <div class="card preview mc-preview-rationale-card">
               <strong>MC Preview (Answers + Explanations)</strong>
               <div id="mc_preview_rationale" class="mc-preview-text">{{ mc_preview_rationale if question else '' }}</div>
             </div>
