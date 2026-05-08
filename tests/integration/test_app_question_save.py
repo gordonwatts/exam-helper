@@ -194,7 +194,7 @@ def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     assert 'id="mc_preview_answers"' in edit_html
     assert 'id="mc_preview_rationale"' in edit_html
     assert "Export this question to DOCX" in edit_html
-    assert "/questions/legacy-editor/export/docx" in edit_html
+    assert 'formaction="/questions/legacy-editor/export/docx"' in edit_html
     assert 'name="include_solutions"' in edit_html
 
     save_resp = client.post(

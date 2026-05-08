@@ -511,10 +511,16 @@
         <div class="actions">
           <button type="submit" class="btn">Save and Return</button>
           {% if question %}
-          <form class="export-form" method="post" action="/questions/{{ question.id }}/export/docx">
-            <button class="btn btn-secondary" type="submit">Export this question to DOCX</button>
-            <label><input type="checkbox" name="include_solutions" value="1" /> Include solutions</label>
-          </form>
+          <div class="export-form">
+            <button
+              class="btn btn-secondary"
+              type="submit"
+              formaction="/questions/{{ question.id }}/export/docx"
+              formmethod="post"
+              formnovalidate
+            >Export this question to DOCX</button>
+            <label><input type="checkbox" name="include_solutions" value="1" form="question-form" /> Include solutions</label>
+          </div>
           {% endif %}
           <span id="save_status" class="status">Ready</span>
         </div>
