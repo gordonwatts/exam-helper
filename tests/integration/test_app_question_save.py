@@ -6,7 +6,9 @@ import yaml
 
 from fastapi.testclient import TestClient
 
+from exam_helper.ai_service import AIService
 from exam_helper.app import create_app
+from exam_helper.models import AIUsageTotals
 from exam_helper.repository import ProjectRepository
 
 
@@ -65,6 +67,35 @@ def test_validate_figure_endpoint_returns_hash_and_size(tmp_path) -> None:
     assert payload["size"] == len(raw)
 
 
+def test_summarize_figure_endpoint_returns_summary(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+
+    class FakeAI:
+        def summarize_figure(self, *, mime_type: str, data_base64: str):
+            assert mime_type == "image/png"
+            assert data_base64 == b64
+            return AIService.AIResult(
+                text="A block on an incline plane.",
+                usage=AIUsageTotals(),
+            )
+
+    app.state.ai = FakeAI()
+    client = TestClient(app)
+
+    raw = b"png-bytes"
+    b64 = base64.b64encode(raw).decode("ascii")
+
+    resp = client.post(
+        "/figures/summarize",
+        data={"data_base64": b64, "mime_type": "image/png"},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["summary"] == "A block on an incline plane."
+
+
 def test_embedded_figure_route_serves_question_figure_bytes(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
@@ -117,6 +148,7 @@ def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
     assert 'id="figures_preview"' in html
     assert 'id="btn_add_figure"' in html
     assert 'id="figure_file_input"' in html
+    assert 'id="figure_notice"' in html
 
     redirect = client.get("/questions/new", follow_redirects=False)
     assert redirect.status_code == 303
@@ -212,6 +244,7 @@ def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     assert 'name="include_solutions"' in edit_html
     assert "/questions/legacy-editor/fig_1" in edit_html
     assert 'data-open-figure="0"' in edit_html
+    assert "Summary:" in edit_html
 
     save_resp = client.post(
         "/questions/save",

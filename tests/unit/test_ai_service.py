@@ -189,6 +189,45 @@ def test_ai_service_generate_distractor_functions(monkeypatch) -> None:
     assert len(out.distractors) == 4
 
 
+def test_ai_service_summarize_figure(monkeypatch) -> None:
+    from exam_helper import ai_service as mod
+
+    class _RecordingResponses:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+
+            class R:
+                pass
+
+            r = R()
+            r.output_text = "A block slides down an incline."
+            r.output = []
+            r.id = "resp_1"
+            return r
+
+    class _RecordingClient:
+        def __init__(self):
+            self.responses = _RecordingResponses()
+
+    recording_client = _RecordingClient()
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key: recording_client)
+    svc = AIService(api_key="k")
+
+    out = svc.summarize_figure("image/png", "aGVsbG8=")
+
+    assert out.text == "A block slides down an incline."
+    call = recording_client.responses.calls[0]
+    assert call["input"][0]["content"][0]["text"].startswith(
+        "You write concise figure summaries"
+    )
+    assert call["input"][1]["content"][1]["image_url"].startswith(
+        "data:image/png;base64,"
+    )
+
+
 def test_usage_parses_total_cost_from_formatted_string() -> None:
     svc = AIService(api_key="k")
 

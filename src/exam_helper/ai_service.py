@@ -250,6 +250,42 @@ class AIService:
             f"- {item}" for item in summaries
         )
 
+    def summarize_figure(self, mime_type: str, data_base64: str) -> AIResult:
+        client = self._client()
+        system_prompt = (
+            "You write concise figure summaries for a physics exam author. "
+            "Return plain text only, with one short sentence."
+        )
+        user_prompt = (
+            "Summarize the attached figure for the question author in one short "
+            "sentence. Mention the important objects, labels, and relationships. "
+            "Return plain text only."
+        )
+        response = client.responses.create(
+            model=self.model,
+            input=[
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": system_prompt}],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": user_prompt},
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:{mime_type};base64,{data_base64}",
+                            "detail": "low",
+                        },
+                    ],
+                },
+            ],
+        )
+        text = getattr(response, "output_text", "").strip()
+        if not text:
+            raise ValueError("Empty AI response.")
+        return AIService.AIResult(text=text, usage=self._usage_from_response(response))
+
     @staticmethod
     def _editor_state_for_question(
         question: Question,
