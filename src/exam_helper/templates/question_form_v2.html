@@ -126,11 +126,15 @@
       }
       .mc-preview-text > div {
         display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 0.35rem;
+        grid-template-columns: 2.5rem minmax(0, 1fr);
+        column-gap: 0.5rem;
         align-items: start;
       }
-      .mc-preview-text > div > span {
+      .mc-preview-choice-label {
+        text-align: right;
+        font-weight: 700;
+      }
+      .mc-preview-choice-content {
         min-width: 0;
       }
       .formula-preview--compact {
@@ -936,7 +940,12 @@
           const rationale = rationaleText
             ? ` - ${marked.parseInline(normalizeMathDelimitersForPreview(rationaleText))}`
             : "";
-          return `<div><strong>${label}.</strong> <span>${content}${rationale}</span></div>`;
+          return (
+            `<div>` +
+            `<span class="mc-preview-choice-label">${label}.</span>` +
+            `<span class="mc-preview-choice-content">${content}${rationale}</span>` +
+            `</div>`
+          );
         }).join("");
         mcPreviewAnswers.innerHTML = previewAnswersHtml;
         mcPreviewRationale.innerHTML = previewRationaleHtml;
