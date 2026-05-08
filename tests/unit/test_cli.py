@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import click
 from typer.testing import CliRunner
 
 from exam_helper import cli
@@ -128,3 +129,23 @@ def test_export_docx_command_defaults_include_solutions(monkeypatch, tmp_path) -
     assert captured["project_root"] == Path("my-project")
     assert captured["output_path"] == output
     assert captured["include_solutions"] is False
+
+
+def test_validate_command_reports_missing_path(capsys) -> None:
+    result = runner.invoke(cli.cli_app, ["validate", "missing-project"])
+
+    assert result.exit_code == 1
+    assert "ERROR: Path does not exist: missing-project" in result.stdout
+
+
+def test_main_returns_click_exit_code_for_cli_errors(monkeypatch, capsys) -> None:
+    def fake_cli_app(*args, **kwargs):
+        raise click.BadParameter("bad path")
+
+    monkeypatch.setattr(cli, "cli_app", fake_cli_app)
+
+    exit_code = cli.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "bad path" in captured.err
