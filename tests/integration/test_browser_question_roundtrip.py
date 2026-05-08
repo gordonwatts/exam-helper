@@ -418,3 +418,124 @@ def test_browser_figure_preview_modal_opens_and_closes(tmp_path: Path) -> None:
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=10)
+
+
+def test_browser_figure_drop_accepts_jpg_svg_and_warns_on_bad_files(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import Error as PlaywrightError, sync_playwright
+
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Figure Upload Exam", "Physics 1")
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "exam_helper.cli",
+            "serve",
+            str(tmp_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        _wait_for_server(base_url + "/", proc)
+        seed = httpx.post(
+            base_url + "/questions/save",
+            data={
+                "question_id": "q_upload",
+                "title": "Figure Upload Test",
+                "question_type": "free_response",
+                "question_template_md": "Upload a figure.",
+                "solution_parameters_yaml": "{}",
+                "answer_formula_md": "answer = 1",
+                "answer_guidance": "",
+                "mc_options_guidance": "",
+                "distractor_functions_text": "",
+                "choices_yaml": "[]",
+                "typed_solution_md": "",
+                "typed_solution_status": "fresh",
+                "figures_json": "[]",
+                "points": 5,
+            },
+            follow_redirects=False,
+            timeout=5.0,
+        )
+        assert seed.status_code == 303
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
+            except PlaywrightError as exc:
+                pytest.skip(f"Chromium is not available: {exc}")
+            try:
+                page = browser.new_page()
+                page.goto(base_url + "/questions/q_upload/edit")
+                page.wait_for_url(base_url + "/questions/q_upload/edit")
+
+                page.evaluate("""() => {
+                        const section = document.querySelector("#figures_section");
+                        const transfer = new DataTransfer();
+                        transfer.items.add(new File(
+                          [new Uint8Array([1, 2, 3, 4])],
+                          "photo.jpg",
+                          { type: "" }
+                        ));
+                        transfer.items.add(new File(
+                          [new Uint8Array([5, 6, 7, 8])],
+                          "diagram.svg",
+                          { type: "" }
+                        ));
+                        transfer.items.add(new File(
+                          [new TextEncoder().encode("not an image")],
+                          "notes.txt",
+                          { type: "text/plain" }
+                        ));
+                        section.dispatchEvent(new DragEvent("dragover", {
+                          bubbles: true,
+                          cancelable: true,
+                          dataTransfer: transfer
+                        }));
+                        section.dispatchEvent(new DragEvent("drop", {
+                          bubbles: true,
+                          cancelable: true,
+                          dataTransfer: transfer
+                        }));
+                    }""")
+
+                page.wait_for_function(
+                    "() => document.querySelectorAll('#figures_preview .figure-item').length === 2"
+                )
+
+                notice = page.locator("#figure_notice")
+                assert notice.is_visible()
+                assert "notes.txt" in notice.inner_text()
+                assert ".jpg" in notice.inner_text()
+
+                first_src = page.locator(
+                    "#figures_preview .figure-item:nth-of-type(1) img"
+                ).get_attribute("src")
+                second_src = page.locator(
+                    "#figures_preview .figure-item:nth-of-type(2) img"
+                ).get_attribute("src")
+                assert first_src is not None
+                assert second_src is not None
+                assert first_src.startswith("data:image/jpeg;base64,")
+                assert second_src.startswith("data:image/svg+xml;base64,")
+            finally:
+                browser.close()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)

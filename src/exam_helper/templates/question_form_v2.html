@@ -201,6 +201,26 @@
         text-align: left;
         cursor: zoom-in;
       }
+      #figures_section {
+        position: relative;
+      }
+      .figure-notice {
+        display: none;
+        position: absolute;
+        top: 4rem;
+        right: 1rem;
+        max-width: min(30rem, calc(100% - 2rem));
+        padding: 0.75rem 0.9rem;
+        border-radius: 14px;
+        border: 1px solid #f0c87b;
+        background: #fff5df;
+        color: #8a4b1a;
+        box-shadow: 0 12px 24px rgba(90, 64, 28, 0.12);
+        z-index: 1;
+      }
+      .figure-notice.is-visible {
+        display: block;
+      }
       .figure-preview-button img {
         cursor: zoom-in;
       }
@@ -590,8 +610,8 @@
           <label>Figures (embedded)</label>
           <p class="hint">Paste into Question Template, drag/drop onto the page, or add image files here. The image data stays in the question YAML.</p>
           <button type="button" class="btn btn-secondary" id="btn_add_figure">Add Image File</button>
+          <input type="file" id="figure_file_input" accept="image/*,.svg" multiple style="display:none;" />
           <div id="figure_notice" class="figure-notice" role="status" aria-live="polite"></div>
-          <input type="file" id="figure_file_input" accept="image/*" multiple style="display:none;" />
           <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
           <div id="figures_preview">
             {% if question and question.figures %}
@@ -928,19 +948,6 @@
         return `${prefix} Allowed figure files: ${allowedFigureFileList()}.`;
       }
 
-      function splitSupportedFigureFiles(files) {
-        const valid = [];
-        const rejected = [];
-        for (const file of files || []) {
-          if (isSupportedFigureFile(file)) {
-            valid.push(file);
-          } else {
-            rejected.push(file);
-          }
-        }
-        return { valid, rejected };
-      }
-
       async function summarizeFigureData(mimeType, dataBase64) {
         const body = new FormData();
         body.append("mime_type", mimeType);
@@ -952,7 +959,6 @@
         }
         return String(data.summary || "").trim();
       }
-
       function renderFiguresPreview() {
         const figures = parseFigures();
         if (!figures.length) {
@@ -1122,24 +1128,45 @@
         return files;
       }
 
-      function addFigureFiles(files, fallbackAppend = true) {
+      function splitSupportedFigureFiles(files) {
+        const valid = [];
+        const rejected = [];
+        for (const file of files || []) {
+          if (isSupportedFigureFile(file)) {
+            valid.push(file);
+          } else {
+            rejected.push(file);
+          }
+        }
+        return { valid, rejected };
+      }
+
+      async function addFigureFiles(files, fallbackAppend = true) {
         const { valid, rejected } = splitSupportedFigureFiles(files);
         if (rejected.length) {
           showFigureNotice(summarizeRejectedFigureFiles(rejected));
         }
-        return Promise.all(
-          valid.map((file) => addFigureFromFile(file, fallbackAppend))
-        ).then((results) => results.some(Boolean));
+        if (!valid.length) {
+          return false;
+        }
+        for (const file of valid) {
+          await addFigureFromFile(file, fallbackAppend);
+        }
+        return true;
       }
 
-      function addChatFigureFiles(files) {
+      async function addChatFigureFiles(files) {
         const { valid, rejected } = splitSupportedFigureFiles(files);
         if (rejected.length) {
           setChatStatus(summarizeRejectedFigureFiles(rejected), "warn");
         }
-        return Promise.all(valid.map((file) => addChatAttachmentFromFile(file))).then(
-          (results) => results.some(Boolean)
-        );
+        if (!valid.length) {
+          return false;
+        }
+        for (const file of valid) {
+          await addChatAttachmentFromFile(file);
+        }
+        return true;
       }
 
       function renderTemplate() {
@@ -1523,8 +1550,10 @@
       });
 
       document.addEventListener("dragover", (event) => {
-        const hasImage = Array.from(event.dataTransfer?.items || []).some((item) => item.kind === "file" && String(item.type || "").startsWith("image/"));
-        if (hasImage) {
+        const hasFileItem = Array.from(event.dataTransfer?.items || []).some(
+          (item) => item.kind === "file"
+        );
+        if (hasFileItem) {
           event.preventDefault();
           figuresSectionEl.style.borderColor = "#0f766e";
         }
@@ -1536,6 +1565,7 @@
 
       document.addEventListener("drop", async (event) => {
         figuresSectionEl.style.borderColor = "";
+        clearFigureNotice();
         const files = Array.from(event.dataTransfer?.files || []);
         if (!files.length) return;
         event.preventDefault();
