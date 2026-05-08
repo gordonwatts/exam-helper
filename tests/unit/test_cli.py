@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -14,7 +15,7 @@ def test_serve_help_mentions_project_path_and_openai_env() -> None:
     result = runner.invoke(cli.cli_app, ["serve", "--help"])
 
     assert result.exit_code == 0
-    out = result.stdout
+    out = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
     assert "project.yaml" in out
     assert "Path to the exam project directory." in out
     assert "EXAM_HELPER_OPENAI_KEY in ~/.env" in out
