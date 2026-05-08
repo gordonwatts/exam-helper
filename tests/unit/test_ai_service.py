@@ -228,6 +228,24 @@ def test_ai_service_summarize_figure(monkeypatch) -> None:
     )
 
 
+def test_ai_service_summarize_figure_rejects_invalid_inputs() -> None:
+    svc = AIService(api_key="k")
+
+    try:
+        svc.summarize_figure("text/plain", "aGVsbG8=")
+    except ValueError as ex:
+        assert "Unsupported figure mime type" in str(ex)
+    else:
+        raise AssertionError("summarize_figure should reject unsupported mime types")
+
+    try:
+        svc.summarize_figure("image/png", "not-base64")
+    except ValueError as ex:
+        assert "valid base64" in str(ex)
+    else:
+        raise AssertionError("summarize_figure should reject invalid base64")
+
+
 def test_usage_parses_total_cost_from_formatted_string() -> None:
     svc = AIService(api_key="k")
 

@@ -923,8 +923,11 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         data_base64: str = Form(...), mime_type: str = Form("image/png")
     ) -> Any:
         try:
+            normalized_mime, normalized_data = AIService._prepare_figure_summary_input(
+                mime_type, data_base64
+            )
             result = app.state.ai.summarize_figure(
-                mime_type=mime_type, data_base64=data_base64
+                mime_type=normalized_mime, data_base64=normalized_data
             )
             repo.add_ai_usage(result.usage)
             return {"summary": result.text}

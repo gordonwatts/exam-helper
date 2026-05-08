@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 import re
@@ -39,6 +41,14 @@ class AIService:
     model: str = DEFAULT_OPENAI_MODEL
     prompts_override: AIPromptConfig | None = None
     prompt_catalog: PromptCatalog | None = None
+    _SUPPORTED_FIGURE_SUMMARY_MIME_TYPES = {
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "image/svg+xml",
+    }
+    _MAX_FIGURE_SUMMARY_BYTES = 2 * 1024 * 1024
 
     @dataclass
     class AIResult:
@@ -250,7 +260,35 @@ class AIService:
             f"- {item}" for item in summaries
         )
 
+    @classmethod
+    def _prepare_figure_summary_input(
+        cls, mime_type: str, data_base64: str
+    ) -> tuple[str, str]:
+        normalized_mime = str(mime_type or "").strip().lower() or "image/png"
+        if normalized_mime not in cls._SUPPORTED_FIGURE_SUMMARY_MIME_TYPES:
+            raise ValueError(
+                f"Unsupported figure mime type: {mime_type}. "
+                "Allowed figure types are png, jpeg, gif, webp, and svg."
+            )
+        try:
+            raw = base64.b64decode(
+                str(data_base64 or "").encode("ascii"), validate=True
+            )
+        except (binascii.Error, UnicodeEncodeError) as exc:
+            raise ValueError("Figure data_base64 must be valid base64.") from exc
+        if not raw:
+            raise ValueError("Figure image data is empty.")
+        if len(raw) > cls._MAX_FIGURE_SUMMARY_BYTES:
+            raise ValueError(
+                "Figure image is too large to summarize safely "
+                f"({len(raw)} bytes; limit {cls._MAX_FIGURE_SUMMARY_BYTES} bytes)."
+            )
+        return normalized_mime, base64.b64encode(raw).decode("ascii")
+
     def summarize_figure(self, mime_type: str, data_base64: str) -> AIResult:
+        normalized_mime, normalized_base64 = self._prepare_figure_summary_input(
+            mime_type, data_base64
+        )
         client = self._client()
         system_prompt = (
             "You write concise figure summaries for a physics exam author. "
@@ -274,7 +312,7 @@ class AIService:
                         {"type": "input_text", "text": user_prompt},
                         {
                             "type": "input_image",
-                            "image_url": f"data:{mime_type};base64,{data_base64}",
+                            "image_url": f"data:{normalized_mime};base64,{normalized_base64}",
                             "detail": "low",
                         },
                     ],

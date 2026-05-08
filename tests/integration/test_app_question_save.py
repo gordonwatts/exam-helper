@@ -96,6 +96,21 @@ def test_summarize_figure_endpoint_returns_summary(tmp_path) -> None:
     assert payload["summary"] == "A block on an incline plane."
 
 
+def test_summarize_figure_endpoint_rejects_invalid_inputs(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+
+    resp = client.post(
+        "/figures/summarize",
+        data={"data_base64": "aGVsbG8=", "mime_type": "text/plain"},
+    )
+    assert resp.status_code == 422
+    payload = resp.json()
+    assert "Unsupported figure mime type" in payload["error"]
+
+
 def test_embedded_figure_route_serves_question_figure_bytes(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
