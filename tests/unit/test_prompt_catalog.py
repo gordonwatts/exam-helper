@@ -29,6 +29,7 @@ def test_prompt_catalog_builds_answer_formula_prompt() -> None:
     bundle = catalog.compose(action="generate_answer_formula", question=q)
     assert "Answer Formula (SymPy):" in bundle.user_prompt
     assert "Answer Text (Markdown):" in bundle.user_prompt
+    assert "Use ** for powers in SymPy" in bundle.system_prompt
 
 
 def test_prompt_catalog_applies_overall_and_rewrite_override() -> None:

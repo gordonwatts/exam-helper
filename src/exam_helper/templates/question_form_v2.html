@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% if question %}Question Editor - {{ question.id }}{% if question.title.strip() %} - {{ question.title }}{% endif %}{% else %}Question Editor - New Question{% endif %}</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f766e'/%3E%3Cpath d='M20 18h24v8H20zm0 14h24v8H20zm0 14h16v8H20z' fill='white'/%3E%3C/svg%3E"
+    />
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <script>
@@ -188,9 +192,68 @@
         border-radius: 10px;
         border: 1px solid #eee4d2;
       }
+      .figure-preview-button {
+        display: block;
+        width: 100%;
+        border: 0;
+        padding: 0;
+        background: none;
+        text-align: left;
+        cursor: zoom-in;
+      }
+      .figure-preview-button img {
+        cursor: zoom-in;
+      }
       .figure-meta {
         font-size: 0.92rem;
         color: var(--muted);
+      }
+      .figure-modal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        z-index: 60;
+      }
+      .figure-modal.is-open {
+        display: flex;
+      }
+      .figure-modal__backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(41, 30, 18, 0.78);
+        backdrop-filter: blur(4px);
+      }
+      .figure-modal__panel {
+        position: relative;
+        z-index: 1;
+        width: min(96vw, 1000px);
+        max-height: 90vh;
+        overflow: auto;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(41, 30, 18, 0.35);
+        padding: 1rem;
+        display: grid;
+        gap: 0.75rem;
+      }
+      .figure-modal__panel img {
+        width: 100%;
+        max-height: 76vh;
+        object-fit: contain;
+        background: #fff;
+        border-radius: 14px;
+        border: 1px solid #eadfcf;
+      }
+      .figure-modal__meta {
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      .figure-modal__close {
+        justify-self: end;
       }
       .mc-preview-grid {
         display: grid;
@@ -505,7 +568,32 @@
           <button type="button" class="btn btn-secondary" id="btn_add_figure">Add Image File</button>
           <input type="file" id="figure_file_input" accept="image/*" multiple style="display:none;" />
           <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
-          <div id="figures_preview"></div>
+          <div id="figures_preview">
+            {% if question and question.figures %}
+              {% for figure in question.figures %}
+              <div class="figure-item" data-figure-idx="{{ loop.index0 }}">
+                <button type="button" class="figure-preview-button" data-open-figure="{{ loop.index0 }}" aria-label="Open full-size preview of {{ figure.id }}">
+                  <img src="/questions/{{ question.id }}/{{ figure.id }}" alt="{{ figure.id }}" />
+                </button>
+                <div>
+                  <strong>{{ figure.id }}</strong>
+                  <div class="figure-meta">{{ figure.mime_type }} · {{ figure.data_base64 | length }} base64 chars</div>
+                  <div class="figure-meta">{{ figure.caption or "No caption" }}</div>
+                </div>
+                <button type="button" class="btn btn-secondary" data-remove-figure="{{ loop.index0 }}">Remove</button>
+              </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+        </div>
+        <div id="figure_modal" class="figure-modal" aria-hidden="true">
+          <div class="figure-modal__backdrop" data-close-figure-modal></div>
+          <div class="figure-modal__panel" role="dialog" aria-modal="true" aria-labelledby="figure_modal_title">
+            <button type="button" class="btn btn-secondary figure-modal__close" id="figure_modal_close" data-close-figure-modal aria-label="Close full-size figure preview">Close</button>
+            <h3 id="figure_modal_title">Figure preview</h3>
+            <img id="figure_modal_image" alt="" />
+            <div id="figure_modal_meta" class="figure-modal__meta"></div>
+          </div>
         </div>
 
         <div class="actions">
@@ -570,6 +658,11 @@
       const figuresInput = document.getElementById("figures_json");
       const figuresPreviewEl = document.getElementById("figures_preview");
       const figuresSectionEl = document.getElementById("figures_section");
+      const figureModalEl = document.getElementById("figure_modal");
+      const figureModalTitleEl = document.getElementById("figure_modal_title");
+      const figureModalImageEl = document.getElementById("figure_modal_image");
+      const figureModalMetaEl = document.getElementById("figure_modal_meta");
+      const figureModalCloseEl = document.getElementById("figure_modal_close");
       const addFigureBtn = document.getElementById("btn_add_figure");
       const figureFileInput = document.getElementById("figure_file_input");
       const promptPreview = document.getElementById("prompt_preview");
@@ -588,6 +681,7 @@
       let editorState = {{ editor_state | tojson }};
       let autosaveTimer = null;
       let pendingChatFigureIds = [];
+      let figureModalLastFocus = null;
 
       function setStatus(text, cls) {
         saveStatus.textContent = text;
@@ -714,6 +808,16 @@
         return qid ? `/questions/${encodeURIComponent(qid)}/${encodeURIComponent(figureId)}` : "#";
       }
 
+      function figurePreviewSrc(figure, fallbackId = "") {
+        const mimeType = String(figure?.mime_type || "image/png");
+        const dataBase64 = String(figure?.data_base64 || "");
+        if (dataBase64) {
+          return `data:${mimeType};base64,${dataBase64}`;
+        }
+        const figureId = String(figure?.id || fallbackId || "");
+        return figureId ? figureUrl(figureId) : "#";
+      }
+
       function renderFiguresPreview() {
         const figures = parseFigures();
         if (!figures.length) {
@@ -727,12 +831,45 @@
           const dataSize = String((figure.data_base64 || "").length);
           return (
             `<div class="figure-item" data-figure-idx="${idx}">` +
-            `<img src="${figureUrl(figure.id || `fig_${idx + 1}`)}" alt="${figureId}" onerror="this.style.display='none';" />` +
+            `<button type="button" class="figure-preview-button" data-open-figure="${idx}" aria-label="Open full-size preview of ${figureId}">` +
+            `<img src="${escapeHtml(figurePreviewSrc(figure, figure.id || `fig_${idx + 1}`))}" alt="${figureId}" />` +
+            `</button>` +
             `<div><strong>${figureId}</strong><div class="figure-meta">${mimeType} · ${dataSize} base64 chars</div><div class="figure-meta">${caption || "No caption"}</div></div>` +
             `<button type="button" class="btn btn-secondary" data-remove-figure="${idx}">Remove</button>` +
             `</div>`
           );
         }).join("");
+      }
+
+      function closeFigureModal() {
+        figureModalEl.classList.remove("is-open");
+        figureModalEl.setAttribute("aria-hidden", "true");
+        figureModalImageEl.removeAttribute("src");
+        figureModalImageEl.alt = "";
+        figureModalTitleEl.textContent = "Figure preview";
+        figureModalMetaEl.textContent = "";
+        if (figureModalLastFocus && typeof figureModalLastFocus.focus === "function") {
+          figureModalLastFocus.focus();
+        }
+        figureModalLastFocus = null;
+      }
+
+      function openFigureModal(idx) {
+        const figures = parseFigures();
+        if (!Number.isInteger(idx) || idx < 0 || idx >= figures.length) return;
+        const figure = figures[idx] || {};
+        const figureId = String(figure.id || `fig_${idx + 1}`);
+        const caption = String(figure.caption || "");
+        const mimeType = String(figure.mime_type || "image/png");
+        const dataSize = String((figure.data_base64 || "").length);
+        figureModalTitleEl.textContent = figureId;
+        figureModalImageEl.src = figurePreviewSrc(figure, figureId);
+        figureModalImageEl.alt = caption ? `${figureId}: ${caption}` : figureId;
+        figureModalMetaEl.textContent = `${mimeType} · ${dataSize} base64 chars${caption ? ` · ${caption}` : ""}`;
+        figureModalLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        figureModalEl.classList.add("is-open");
+        figureModalEl.setAttribute("aria-hidden", "false");
+        figureModalCloseEl.focus();
       }
 
       function insertTemplateAtCursor(text, fallbackAppend = true) {
@@ -1174,6 +1311,12 @@
       });
 
       figuresPreviewEl.addEventListener("click", (event) => {
+        const openBtn = event.target.closest("[data-open-figure]");
+        if (openBtn) {
+          const openIdx = Number(openBtn.getAttribute("data-open-figure"));
+          openFigureModal(openIdx);
+          return;
+        }
         const btn = event.target.closest("[data-remove-figure]");
         if (!btn) return;
         const idx = Number(btn.getAttribute("data-remove-figure"));
@@ -1245,6 +1388,18 @@
         }
       });
 
+      figureModalEl.addEventListener("click", (event) => {
+        if (event.target instanceof Element && event.target.closest("[data-close-figure-modal]")) {
+          closeFigureModal();
+        }
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && figureModalEl.classList.contains("is-open")) {
+          closeFigureModal();
+        }
+      });
+
       form.addEventListener("submit", () => {
         collectEditorStateFromDOM();
         setStatus("Saving...", "warn");
@@ -1279,6 +1434,7 @@
       renderMarkdownSurface(renderedAnswerEl, renderedAnswerEl.textContent || "");
       updateMCVisibility();
       renderFiguresPreview();
+      closeFigureModal();
       renderChatHistory();
       setChatBusy(false);
       renderPendingChatAttachments();

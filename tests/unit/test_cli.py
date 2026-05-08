@@ -34,6 +34,7 @@ def test_serve_help_mentions_project_path_and_openai_env(capsys) -> None:
     assert "project.yaml" in out
     assert "Path to the exam project directory." in out
     assert "EXAM_HELPER_OPENAI_KEY in ~/.env" in out
+    assert "EXAM_HELPER_OPENAI_KEY in the project .env path" in out
     assert "--openai-key OPENAI_KEY" in out
 
 
@@ -53,7 +54,9 @@ def test_cmd_serve_uses_path_for_project_root(monkeypatch) -> None:
 
     monkeypatch.setattr(cli, "create_app", fake_create_app)
     monkeypatch.setattr(cli.uvicorn, "run", fake_run)
-    monkeypatch.setattr(cli, "resolve_openai_api_key", lambda _: "key")
+    monkeypatch.setattr(
+        cli, "resolve_openai_api_key", lambda key, project_root=None: "key"
+    )
 
     parser = cli.build_parser()
     args = parser.parse_args(["serve", "my-project", "--port", "9000"])

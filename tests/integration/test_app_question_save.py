@@ -155,6 +155,11 @@ def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
 def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
+    fig_b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+        "/w8AAgMBgU7Y5e0AAAAASUVORK5CYII="
+    )
+    fig_sha = hashlib.sha256(base64.b64decode(fig_b64.encode("ascii"))).hexdigest()
     question_path = tmp_path / "questions" / "legacy-editor.yaml"
     question_path.write_text(
         yaml.safe_dump(
@@ -167,6 +172,15 @@ def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
                 "solution_md": "Old solution",
                 "typed_solution_md": "Typed solution",
                 "typed_solution_status": "draft",
+                "figures": [
+                    {
+                        "id": "fig_1",
+                        "mime_type": "image/png",
+                        "data_base64": fig_b64,
+                        "sha256": fig_sha,
+                        "caption": "tiny figure",
+                    }
+                ],
                 "answer_function": "def answer(student_answer, context):\n    return True",
                 "distractors": ["wrong 1", "wrong 2"],
                 "checker": {
@@ -196,6 +210,8 @@ def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     assert "Export this question to DOCX" in edit_html
     assert 'formaction="/questions/legacy-editor/export/docx"' in edit_html
     assert 'name="include_solutions"' in edit_html
+    assert "/questions/legacy-editor/fig_1" in edit_html
+    assert 'data-open-figure="0"' in edit_html
 
     save_resp = client.post(
         "/questions/save",

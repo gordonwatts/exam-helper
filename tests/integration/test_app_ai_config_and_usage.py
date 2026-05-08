@@ -17,6 +17,7 @@ def test_home_shows_model_and_usage(tmp_path) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
     assert "<title>Exam Helper - Exam</title>" in resp.text
+    assert 'rel="icon"' in resp.text
     assert "model:" in resp.text
     assert DEFAULT_OPENAI_MODEL in resp.text
 
@@ -61,6 +62,7 @@ def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     resp = client.get("/questions/q_edit/edit")
     assert resp.status_code == 200
     assert "<title>Question Editor - q_edit - T</title>" in resp.text
+    assert 'rel="icon"' in resp.text
     assert '<details class="card chat-panel"' in resp.text
     assert "<summary>Chat Assistant</summary>" in resp.text
     assert 'id="chat_thread"' in resp.text
