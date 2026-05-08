@@ -207,7 +207,7 @@ def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     assert 'id="rendered_answer_md"' in edit_html
     assert 'id="mc_preview_answers"' in edit_html
     assert 'id="mc_preview_rationale"' in edit_html
-    assert "data:image/png;base64," in edit_html
+    assert "/questions/legacy-editor/fig_1" in edit_html
     assert 'data-open-figure="0"' in edit_html
 
     save_resp = client.post(
