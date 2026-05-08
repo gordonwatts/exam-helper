@@ -273,11 +273,12 @@ def test_harness_run_logs_exception_before_returning_422(tmp_path, monkeypatch) 
         raise RuntimeError("boom")
 
     records: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+    app_logger = logging.getLogger("exam_helper.app")
 
-    def _record_exception(self, msg, *args, **kwargs):
+    def _record_exception(msg, *args, **kwargs):
         records.append((msg, args, kwargs))
 
-    monkeypatch.setattr(logging.Logger, "exception", _record_exception)
+    monkeypatch.setattr(app_logger, "exception", _record_exception)
     monkeypatch.setattr("exam_helper.app.run_answer_formula", _boom)
     resp = client.post("/questions/q_harness_error/harness/run")
 
