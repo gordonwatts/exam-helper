@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import click
 import typer
 import uvicorn
 
@@ -42,7 +43,8 @@ def cmd_init(
 def cmd_validate(path: str | Path) -> int:
     resolved = Path(path)
     if not resolved.exists():
-        raise typer.BadParameter(f"Path does not exist: {resolved}")
+        print(f"ERROR: Path does not exist: {resolved}")
+        return 1
     if resolved.is_file():
         resolved = resolved.parent
     repo = ProjectRepository(resolved)
@@ -164,6 +166,14 @@ def main() -> int:
         cli_app(prog_name="exam-helper", standalone_mode=False)
     except typer.Exit as exc:
         return exc.exit_code
+    except click.ClickException as exc:
+        exc.show()
+        return exc.exit_code
+    except SystemExit as exc:
+        code = exc.code
+        if isinstance(code, int):
+            return code
+        return 1
     return 0
 
 
