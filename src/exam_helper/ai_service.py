@@ -699,7 +699,8 @@ class AIService:
                     "Persisted recent chat history:\n"
                     f"{history_text}\n\n"
                     f"Current author request:\n{user_message.strip()}\n\n"
-                    "Only images attached to this turn are included below."
+                    "Figure metadata and summaries are included below. "
+                    "Only image bytes explicitly attached to this turn are included below."
                 ),
             }
         ]

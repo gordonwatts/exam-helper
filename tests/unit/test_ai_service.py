@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 
 from exam_helper.ai_service import AIService
 from exam_helper.models import FigureData, Question
@@ -338,12 +339,17 @@ def test_ai_service_chat_edit_question_includes_figure_metadata_in_prompt(
         for item in recording_client.responses.calls[0]["input"][1]["content"]
         if item.get("type") == "input_text"
     )
+    state_json = prompt_text.split("Current editor state:\n", 1)[1].split(
+        "\n\nPersisted recent chat history:\n", 1
+    )[0]
+    state = json.loads(state_json)
     assert "Figures associated with this question:" in prompt_text
     assert "fig_1: small diagram (image/png)" in prompt_text
     assert '"figure_ids"' in prompt_text
     assert "fig_1" in prompt_text
     assert '"figure_summaries"' in prompt_text
     assert "small diagram" in prompt_text
+    assert state["figure_summaries"] == ["fig_1: small diagram (image/png)"]
 
 
 def test_ai_service_chat_edit_question_truncates_history_by_requested_count(
