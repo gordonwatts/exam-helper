@@ -926,6 +926,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
     @app.post("/questions/{question_id}/ai/chat")
     def ai_chat(question_id: str, payload: ChatPayload = Body(...)) -> dict:
         try:
+            question_for_log = None
             existing = None
             try:
                 existing = repo.get_question(question_id)
@@ -934,12 +935,14 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             live_question, _, _ = _build_question_from_editor_state(
                 question_id, existing, payload.editor_state
             )
+            question_for_log = live_question
             result = app.state.ai.chat_edit_question(
                 live_question,
                 payload.message,
                 attached_figure_ids=payload.attached_figure_ids,
                 history_keep_count=payload.history_keep_count,
             )
+            question_for_log = result.question
             repo.add_ai_usage(result.usage)
             question = result.question
             _append_chat_turn(
@@ -970,6 +973,30 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 },
             )
         except Exception as ex:
+            logger.exception(
+                "harness.run failed question_id=%s qtype=%s template_len=%s params_keys=%s figures=%s",
+                question_id,
+                (
+                    question_for_log.question_type.value
+                    if question_for_log is not None
+                    else "unknown"
+                ),
+                (
+                    len((question_for_log.solution.question_template_md or "").strip())
+                    if question_for_log is not None
+                    else 0
+                ),
+                (
+                    sorted((question_for_log.solution.parameters or {}).keys())
+                    if question_for_log is not None
+                    else []
+                ),
+                (
+                    [f.id for f in (question_for_log.figures or [])]
+                    if question_for_log is not None
+                    else []
+                ),
+            )
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/questions/{question_id}/ai/rewrite-and-parameterize")
@@ -1097,6 +1124,18 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
             repo.save_question(q)
             return payload
         except Exception as ex:
+            logger.exception(
+                "harness.run failed question_id=%s qtype=%s template_len=%s params_keys=%s figures=%s",
+                question_id,
+                q.question_type.value if "q" in locals() else "unknown",
+                (
+                    len((q.solution.question_template_md or "").strip())
+                    if "q" in locals()
+                    else 0
+                ),
+                sorted((q.solution.parameters or {}).keys()) if "q" in locals() else [],
+                [f.id for f in (q.figures or [])] if "q" in locals() else [],
+            )
             return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
 
     @app.post("/questions/{question_id}/ai/generate-mc-distractors")
