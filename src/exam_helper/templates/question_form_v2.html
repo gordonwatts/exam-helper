@@ -767,13 +767,13 @@
         return qid ? `/questions/${encodeURIComponent(qid)}/${encodeURIComponent(figureId)}` : "#";
       }
 
-      function figurePreviewSrc(figure) {
+      function figurePreviewSrc(figure, fallbackId = "") {
         const mimeType = String(figure?.mime_type || "image/png");
         const dataBase64 = String(figure?.data_base64 || "");
         if (dataBase64) {
           return `data:${mimeType};base64,${dataBase64}`;
         }
-        const figureId = String(figure?.id || "");
+        const figureId = String(figure?.id || fallbackId || "");
         return figureId ? figureUrl(figureId) : "#";
       }
 
@@ -791,7 +791,7 @@
           return (
             `<div class="figure-item" data-figure-idx="${idx}">` +
             `<button type="button" class="figure-preview-button" data-open-figure="${idx}" aria-label="Open full-size preview of ${figureId}">` +
-            `<img src="${escapeHtml(figurePreviewSrc(figure))}" alt="${figureId}" />` +
+            `<img src="${escapeHtml(figurePreviewSrc(figure, figure.id || `fig_${idx + 1}`))}" alt="${figureId}" />` +
             `</button>` +
             `<div><strong>${figureId}</strong><div class="figure-meta">${mimeType} · ${dataSize} base64 chars</div><div class="figure-meta">${caption || "No caption"}</div></div>` +
             `<button type="button" class="btn btn-secondary" data-remove-figure="${idx}">Remove</button>` +
@@ -822,7 +822,7 @@
         const mimeType = String(figure.mime_type || "image/png");
         const dataSize = String((figure.data_base64 || "").length);
         figureModalTitleEl.textContent = figureId;
-        figureModalImageEl.src = figurePreviewSrc(figure);
+        figureModalImageEl.src = figurePreviewSrc(figure, figureId);
         figureModalImageEl.alt = caption ? `${figureId}: ${caption}` : figureId;
         figureModalMetaEl.textContent = `${mimeType} · ${dataSize} base64 chars${caption ? ` · ${caption}` : ""}`;
         figureModalLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
