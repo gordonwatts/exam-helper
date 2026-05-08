@@ -563,7 +563,7 @@
               {% for figure in question.figures %}
               <div class="figure-item" data-figure-idx="{{ loop.index0 }}">
                 <button type="button" class="figure-preview-button" data-open-figure="{{ loop.index0 }}" aria-label="Open full-size preview of {{ figure.id }}">
-                  <img src="data:{{ figure.mime_type }};base64,{{ figure.data_base64 }}" alt="{{ figure.id }}" />
+                  <img src="/questions/{{ question.id }}/{{ figure.id }}" alt="{{ figure.id }}" />
                 </button>
                 <div>
                   <strong>{{ figure.id }}</strong>
