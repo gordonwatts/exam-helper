@@ -841,38 +841,47 @@
         return figureId ? figureUrl(figureId) : "#";
       }
 
-      function isSupportedFigureFile(file) {
+      const SUPPORTED_FIGURE_FILE_TYPES = [
+        { extension: "png", mime_type: "image/png" },
+        { extension: "jpg", mime_type: "image/jpeg" },
+        { extension: "jpeg", mime_type: "image/jpeg" },
+        { extension: "gif", mime_type: "image/gif" },
+        { extension: "webp", mime_type: "image/webp" },
+        { extension: "svg", mime_type: "image/svg+xml" },
+      ];
+      const SUPPORTED_FIGURE_MIME_TYPES = new Set(
+        SUPPORTED_FIGURE_FILE_TYPES.map((item) => item.mime_type)
+      );
+
+      function fileExtensionFromName(name) {
+        const lower = String(name || "").trim().toLowerCase();
+        const match = lower.match(/\.([a-z0-9]+)$/);
+        return match ? match[1] : "";
+      }
+
+      function figureFileTypeFromFile(file) {
         const mimeType = String(file?.type || "").trim().toLowerCase();
-        if (mimeType.startsWith("image/")) {
-          return true;
+        if (mimeType) {
+          return SUPPORTED_FIGURE_MIME_TYPES.has(mimeType)
+            ? SUPPORTED_FIGURE_FILE_TYPES.find((item) => item.mime_type === mimeType)
+            : null;
         }
-        const name = String(file?.name || "").trim().toLowerCase();
-        return /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+        const ext = fileExtensionFromName(file?.name || "");
+        return (
+          SUPPORTED_FIGURE_FILE_TYPES.find((item) => item.extension === ext) || null
+        );
+      }
+
+      function isSupportedFigureFile(file) {
+        return figureFileTypeFromFile(file) !== null;
       }
 
       function figureMimeTypeFromFile(file) {
-        const mimeType = String(file?.type || "").trim().toLowerCase();
-        if (mimeType.startsWith("image/")) {
-          return mimeType;
-        }
-        const name = String(file?.name || "").trim().toLowerCase();
-        if (name.endsWith(".jpg") || name.endsWith(".jpeg")) {
-          return "image/jpeg";
-        }
-        if (name.endsWith(".svg")) {
-          return "image/svg+xml";
-        }
-        if (name.endsWith(".gif")) {
-          return "image/gif";
-        }
-        if (name.endsWith(".webp")) {
-          return "image/webp";
-        }
-        return "image/png";
+        return figureFileTypeFromFile(file)?.mime_type || "image/png";
       }
 
       function allowedFigureFileList() {
-        return ".png, .jpg, .jpeg, .gif, .webp, .svg";
+        return SUPPORTED_FIGURE_FILE_TYPES.map((item) => `.${item.extension}`).join(", ");
       }
 
       function clearFigureNotice() {

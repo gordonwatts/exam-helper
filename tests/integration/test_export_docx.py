@@ -69,6 +69,47 @@ def test_export_docx_with_embedded_figure(tmp_path: Path) -> None:
     assert "<w:numPr>" in xml
 
 
+def test_export_docx_uses_svg_extension_for_svg_figures(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+
+    raw = b"<svg xmlns='http://www.w3.org/2000/svg'></svg>"
+    b64 = base64.b64encode(raw).decode("ascii")
+    raw_hash = hashlib.sha256(raw).hexdigest()
+    fig = FigureData(
+        id="fig_1",
+        mime_type="image/svg+xml",
+        data_base64=b64,
+        sha256=raw_hash,
+        caption="svg figure",
+    )
+    q = Question(
+        id="q1",
+        title="t",
+        points=5,
+        figures=[fig],
+        solution={"question_template_md": "p"},
+    )
+    repo.save_question(q)
+
+    def _fake_pandoc(cmd, check, capture_output, text, cwd):
+        md_path = Path(cmd[1])
+        markdown = md_path.read_text(encoding="utf-8")
+        assert "q1_fig_1.svg" in markdown
+        out_path = Path(cmd[cmd.index("-o") + 1])
+        d = Document()
+        d.add_paragraph("[5 points] p")
+        d.save(out_path)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr("exam_helper.export_docx.subprocess.run", _fake_pandoc)
+    content, warnings = render_project_docx_bytes(tmp_path)
+    assert warnings == []
+    assert content
+
+
 def test_export_docx_includes_solution_when_enabled(tmp_path: Path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")

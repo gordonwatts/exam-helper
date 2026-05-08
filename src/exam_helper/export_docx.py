@@ -22,6 +22,17 @@ _PANDOC_MISSING_WARNING = (
 _PANDOC_FAILED_WARNING = (
     "Pandoc conversion failed; DOCX was exported with plain-text math fallback."
 )
+_FIGURE_MIME_TYPES = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/svg+xml": "svg",
+}
+
+
+def _figure_file_extension(mime_type: str) -> str:
+    return _FIGURE_MIME_TYPES.get((mime_type or "").strip().lower(), "bin")
 
 
 def _render_prompt(question: Question) -> str:
@@ -164,11 +175,7 @@ def _build_project_markdown(
         for figure in q.figures:
             try:
                 raw = base64.b64decode(figure.data_base64.encode("ascii"))
-                ext = (
-                    figure.mime_type.split("/")[-1]
-                    if "/" in figure.mime_type
-                    else "bin"
-                )
+                ext = _figure_file_extension(figure.mime_type)
                 img_name = f"{q.id}_{figure.id}.{ext}"
                 img_path = image_dir / img_name
                 img_path.write_bytes(raw)
