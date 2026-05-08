@@ -287,6 +287,9 @@ def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
                     "(el) => el.getBoundingClientRect().height"
                 )
                 assert preview_height < 40
+                assert page.locator("#mc_preview_answers ol").count() == 1
+                assert page.locator("#mc_preview_rationale ol").count() == 1
+                assert page.locator("#mc_preview_rationale li").count() == 4
             finally:
                 browser.close()
     finally:
