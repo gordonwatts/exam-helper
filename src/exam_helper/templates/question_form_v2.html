@@ -558,7 +558,23 @@
           <button type="button" class="btn btn-secondary" id="btn_add_figure">Add Image File</button>
           <input type="file" id="figure_file_input" accept="image/*" multiple style="display:none;" />
           <input type="hidden" id="figures_json" name="figures_json" value='{{ figures_json }}' />
-          <div id="figures_preview"></div>
+          <div id="figures_preview">
+            {% if question and question.figures %}
+              {% for figure in question.figures %}
+              <div class="figure-item" data-figure-idx="{{ loop.index0 }}">
+                <button type="button" class="figure-preview-button" data-open-figure="{{ loop.index0 }}" aria-label="Open full-size preview of {{ figure.id }}">
+                  <img src="data:{{ figure.mime_type }};base64,{{ figure.data_base64 }}" alt="{{ figure.id }}" />
+                </button>
+                <div>
+                  <strong>{{ figure.id }}</strong>
+                  <div class="figure-meta">{{ figure.mime_type }} · {{ figure.data_base64 | length }} base64 chars</div>
+                  <div class="figure-meta">{{ figure.caption or "No caption" }}</div>
+                </div>
+                <button type="button" class="btn btn-secondary" data-remove-figure="{{ loop.index0 }}">Remove</button>
+              </div>
+              {% endfor %}
+            {% endif %}
+          </div>
         </div>
         <div id="figure_modal" class="figure-modal" aria-hidden="true">
           <div class="figure-modal__backdrop" data-close-figure-modal></div>
