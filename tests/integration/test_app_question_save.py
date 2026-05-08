@@ -117,6 +117,8 @@ def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
     assert 'id="figures_preview"' in html
     assert 'id="btn_add_figure"' in html
     assert 'id="figure_file_input"' in html
+    assert 'id="figure_notice"' in html
+    assert 'accept="image/*,.svg"' in html
 
     redirect = client.get("/questions/new", follow_redirects=False)
     assert redirect.status_code == 303
