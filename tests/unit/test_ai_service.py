@@ -342,6 +342,8 @@ def test_ai_service_chat_edit_question_includes_figure_metadata_in_prompt(
     assert "fig_1: small diagram (image/png)" in prompt_text
     assert '"figure_ids"' in prompt_text
     assert "fig_1" in prompt_text
+    assert '"figure_summaries"' in prompt_text
+    assert "small diagram" in prompt_text
 
 
 def test_ai_service_chat_edit_question_truncates_history_by_requested_count(
