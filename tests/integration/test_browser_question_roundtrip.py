@@ -377,6 +377,11 @@ def test_browser_figure_preview_modal_opens_and_closes(tmp_path: Path) -> None:
 
                 preview_button = page.locator("[data-open-figure='0']")
                 assert preview_button.is_visible()
+                assert (
+                    preview_button.locator("img")
+                    .get_attribute("src")
+                    .startswith("data:image/png;base64,")
+                )
                 preview_button.click()
 
                 modal = page.locator("#figure_modal")
@@ -388,6 +393,19 @@ def test_browser_figure_preview_modal_opens_and_closes(tmp_path: Path) -> None:
                 page.locator("#figure_modal .figure-modal__backdrop").click()
                 assert modal.get_attribute("aria-hidden") == "true"
 
+                page.get_by_role("button", name="Save and Return").click()
+                page.wait_for_url(base_url + "/")
+
+                page.get_by_role("link", name="Edit").click()
+                page.wait_for_url(base_url + "/questions/q_figure/edit")
+
+                preview_button = page.locator("[data-open-figure='0']")
+                assert preview_button.is_visible()
+                assert (
+                    preview_button.locator("img")
+                    .get_attribute("src")
+                    .startswith("data:image/png;base64,")
+                )
                 preview_button.click()
                 page.locator("#figure_modal_close").click()
                 assert modal.get_attribute("aria-hidden") == "true"
