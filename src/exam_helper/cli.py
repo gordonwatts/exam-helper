@@ -42,7 +42,7 @@ def cmd_init(
 def cmd_validate(path: str | Path) -> int:
     resolved = Path(path)
     if not resolved.exists():
-        raise SystemExit(f"Path does not exist: {resolved}")
+        raise typer.BadParameter(f"Path does not exist: {resolved}")
     if resolved.is_file():
         resolved = resolved.parent
     repo = ProjectRepository(resolved)
