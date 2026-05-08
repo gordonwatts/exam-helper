@@ -518,6 +518,25 @@
               formaction="/questions/{{ question.id }}/export/docx"
               formmethod="post"
               formnovalidate
+              onclick="
+                if (this.dataset.autosaveSubmitting === '1') {
+                  this.dataset.autosaveSubmitting = '';
+                  return true;
+                }
+                var button = this;
+                var form = button.form;
+                if (!form || typeof autosaveNow !== 'function') {
+                  return true;
+                }
+                event.preventDefault();
+                button.dataset.autosaveSubmitting = '1';
+                Promise.resolve(autosaveNow())
+                  .catch(function () {})
+                  .finally(function () {
+                    form.requestSubmit(button);
+                  });
+                return false;
+              "
             >Export this question to DOCX</button>
             <label><input type="checkbox" name="include_solutions" value="1" form="question-form" /> Include solutions</label>
           </div>
