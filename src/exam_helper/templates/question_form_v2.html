@@ -847,6 +847,49 @@
         return figureId ? figureUrl(figureId) : "#";
       }
 
+      const SUPPORTED_FIGURE_FILE_TYPES = [
+        { extension: "png", mime_type: "image/png" },
+        { extension: "jpg", mime_type: "image/jpeg" },
+        { extension: "jpeg", mime_type: "image/jpeg" },
+        { extension: "gif", mime_type: "image/gif" },
+        { extension: "webp", mime_type: "image/webp" },
+        { extension: "svg", mime_type: "image/svg+xml" },
+      ];
+      const SUPPORTED_FIGURE_MIME_TYPES = new Set(
+        SUPPORTED_FIGURE_FILE_TYPES.map((item) => item.mime_type)
+      );
+
+      function fileExtensionFromName(name) {
+        const lower = String(name || "").trim().toLowerCase();
+        const match = lower.match(/\.([a-z0-9]+)$/);
+        return match ? match[1] : "";
+      }
+
+      function figureFileTypeFromFile(file) {
+        const mimeType = String(file?.type || "").trim().toLowerCase();
+        if (mimeType) {
+          return SUPPORTED_FIGURE_MIME_TYPES.has(mimeType)
+            ? SUPPORTED_FIGURE_FILE_TYPES.find((item) => item.mime_type === mimeType)
+            : null;
+        }
+        const ext = fileExtensionFromName(file?.name || "");
+        return (
+          SUPPORTED_FIGURE_FILE_TYPES.find((item) => item.extension === ext) || null
+        );
+      }
+
+      function isSupportedFigureFile(file) {
+        return figureFileTypeFromFile(file) !== null;
+      }
+
+      function figureMimeTypeFromFile(file) {
+        return figureFileTypeFromFile(file)?.mime_type || "image/png";
+      }
+
+      function allowedFigureFileList() {
+        return SUPPORTED_FIGURE_FILE_TYPES.map((item) => `.${item.extension}`).join(", ");
+      }
+
       function clearFigureNotice() {
         if (figureNoticeTimer) {
           window.clearTimeout(figureNoticeTimer);
@@ -859,16 +902,43 @@
         figureNoticeEl.textContent = "";
       }
 
-      function showFigureNotice(message) {
+      function showFigureNotice(message, options = {}) {
         if (!figureNoticeEl) {
           return;
         }
         clearFigureNotice();
         figureNoticeEl.textContent = message;
         figureNoticeEl.classList.add("is-visible");
-        figureNoticeTimer = window.setTimeout(() => {
-          clearFigureNotice();
-        }, 6000);
+        const timeoutMs = options.timeoutMs === undefined ? 6000 : options.timeoutMs;
+        if (timeoutMs !== null) {
+          figureNoticeTimer = window.setTimeout(() => {
+            clearFigureNotice();
+          }, timeoutMs);
+        }
+      }
+
+      function summarizeRejectedFigureFiles(files) {
+        const names = files
+          .map((file) => String(file?.name || "unnamed file").trim())
+          .filter(Boolean)
+          .slice(0, 5);
+        const prefix = names.length
+          ? `Ignored ${names.join(", ")}.`
+          : "Ignored unsupported file.";
+        return `${prefix} Allowed figure files: ${allowedFigureFileList()}.`;
+      }
+
+      function splitSupportedFigureFiles(files) {
+        const valid = [];
+        const rejected = [];
+        for (const file of files || []) {
+          if (isSupportedFigureFile(file)) {
+            valid.push(file);
+          } else {
+            rejected.push(file);
+          }
+        }
+        return { valid, rejected };
       }
 
       async function summarizeFigureData(mimeType, dataBase64) {
@@ -980,7 +1050,7 @@
       }
 
       async function buildFigureFromFile(file) {
-        const mime = String(file.type || "").startsWith("image/") ? file.type : "image/png";
+        const mime = figureMimeTypeFromFile(file);
         const buf = await file.arrayBuffer();
         const dataBase64 = arrayBufferToBase64(buf);
         const validated = await validateFigureData(dataBase64);
@@ -993,12 +1063,12 @@
       }
 
       async function addFigureFromFile(file, fallbackAppend = true) {
-        if (!file || !String(file.type || "").startsWith("image/")) return false;
+        if (!file || !isSupportedFigureFile(file)) return false;
         const figures = parseFigures();
         const pendingId = nextFigureId(figures);
         setStatus("Processing image...", "warn");
         const figure = await buildFigureFromFile(file);
-        showFigureNotice("Generating figure summary...");
+        showFigureNotice("Generating figure summary...", { timeoutMs: null });
         try {
           figure.caption = await summarizeFigureData(figure.mime_type, figure.data_base64);
           clearFigureNotice();
@@ -1017,12 +1087,12 @@
       }
 
       async function addChatAttachmentFromFile(file) {
-        if (!file || !String(file.type || "").startsWith("image/")) return false;
+        if (!file || !isSupportedFigureFile(file)) return false;
         const figures = parseFigures();
         const pendingId = nextFigureId(figures);
         setChatStatus("Processing chat image...", "warn");
         const figure = await buildFigureFromFile(file);
-        showFigureNotice("Generating figure summary...");
+        showFigureNotice("Generating figure summary...", { timeoutMs: null });
         try {
           figure.caption = await summarizeFigureData(figure.mime_type, figure.data_base64);
           clearFigureNotice();
@@ -1050,6 +1120,26 @@
           }
         }
         return files;
+      }
+
+      function addFigureFiles(files, fallbackAppend = true) {
+        const { valid, rejected } = splitSupportedFigureFiles(files);
+        if (rejected.length) {
+          showFigureNotice(summarizeRejectedFigureFiles(rejected));
+        }
+        return Promise.all(
+          valid.map((file) => addFigureFromFile(file, fallbackAppend))
+        ).then((results) => results.some(Boolean));
+      }
+
+      function addChatFigureFiles(files) {
+        const { valid, rejected } = splitSupportedFigureFiles(files);
+        if (rejected.length) {
+          setChatStatus(summarizeRejectedFigureFiles(rejected), "warn");
+        }
+        return Promise.all(valid.map((file) => addChatAttachmentFromFile(file))).then(
+          (results) => results.some(Boolean)
+        );
       }
 
       function renderTemplate() {
@@ -1378,14 +1468,13 @@
       addFigureBtn.addEventListener("click", () => {
         figureFileInput.click();
       });
+      figureFileInput.accept = allowedFigureFileList();
 
       figureFileInput.addEventListener("change", async () => {
         const files = Array.from(figureFileInput.files || []);
         if (!files.length) return;
         try {
-          for (const file of files) {
-            await addFigureFromFile(file, true);
-          }
+          await addFigureFiles(files, true);
         } catch (err) {
           setStatus(`Image error: ${err.message}`, "warn");
         } finally {
@@ -1416,9 +1505,7 @@
         if (!files.length) return;
         event.preventDefault();
         try {
-          for (const file of files) {
-            await addFigureFromFile(file, false);
-          }
+          await addFigureFiles(files, false);
         } catch (err) {
           setStatus(`Image paste error: ${err.message}`, "warn");
         }
@@ -1429,9 +1516,7 @@
         if (!files.length) return;
         event.preventDefault();
         try {
-          for (const file of files) {
-            await addChatAttachmentFromFile(file);
-          }
+          await addChatFigureFiles(files);
         } catch (err) {
           setChatStatus(`Chat image error: ${err.message}`, "warn");
         }
@@ -1451,21 +1536,17 @@
 
       document.addEventListener("drop", async (event) => {
         figuresSectionEl.style.borderColor = "";
-        const files = Array.from(event.dataTransfer?.files || []).filter((f) => String(f.type || "").startsWith("image/"));
+        const files = Array.from(event.dataTransfer?.files || []);
         if (!files.length) return;
         event.preventDefault();
         try {
           const dropTarget = event.target instanceof Element ? event.target.closest(".chat-panel") : null;
           if (dropTarget) {
-            for (const file of files) {
-              await addChatAttachmentFromFile(file);
-            }
+            await addChatFigureFiles(files);
             return;
           }
           const appendFallback = document.activeElement !== templateEl;
-          for (const file of files) {
-            await addFigureFromFile(file, appendFallback);
-          }
+          await addFigureFiles(files, appendFallback);
         } catch (err) {
           setStatus(`Image drop error: ${err.message}`, "warn");
         }
