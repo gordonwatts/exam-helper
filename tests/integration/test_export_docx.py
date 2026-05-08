@@ -181,6 +181,41 @@ def test_export_docx_uses_a_paren_markers_for_pandoc_mc_lists(
     assert any(p.text == "opt A" for p in doc.paragraphs)
 
 
+def test_export_docx_keeps_prompt_blank_lines_inside_list_item(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Blank Lines", "Physics")
+    q = Question(
+        id="q1",
+        points=5,
+        solution={
+            "question_template_md": "Line 1\n\nLine 2",
+            "typed_solution_md": "Solution line",
+        },
+    )
+    repo.save_question(q)
+
+    def _fake_pandoc(cmd, check, capture_output, text, cwd):
+        md_path = Path(cmd[1])
+        markdown = md_path.read_text(encoding="utf-8")
+        assert "1. [5 points] Line 1" in markdown
+        assert "\n   \n   Line 2" in markdown
+        out_path = Path(cmd[cmd.index("-o") + 1])
+        d = Document()
+        d.add_paragraph("[5 points] Line 1")
+        d.add_paragraph("Line 2")
+        d.save(out_path)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr("exam_helper.export_docx.subprocess.run", _fake_pandoc)
+    content, warnings = render_project_docx_bytes(tmp_path)
+    assert warnings == []
+
+    doc = Document(io.BytesIO(content))
+    assert any("Line 1" in p.text for p in doc.paragraphs)
+
+
 def test_export_docx_excludes_soft_deleted_questions(tmp_path: Path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
