@@ -224,6 +224,26 @@
       .figure-preview-button img {
         cursor: zoom-in;
       }
+      #figures_section {
+        position: relative;
+      }
+      .figure-notice {
+        display: none;
+        position: absolute;
+        top: 4rem;
+        right: 1rem;
+        max-width: min(30rem, calc(100% - 2rem));
+        padding: 0.75rem 0.9rem;
+        border-radius: 14px;
+        border: 1px solid #a5b4fc;
+        background: #eef2ff;
+        color: #312e81;
+        box-shadow: 0 12px 24px rgba(90, 64, 28, 0.12);
+        z-index: 1;
+      }
+      .figure-notice.is-visible {
+        display: block;
+      }
       .figure-meta {
         font-size: 0.92rem;
         color: var(--muted);
@@ -271,6 +291,10 @@
       .figure-modal__meta {
         color: var(--muted);
         font-size: 0.95rem;
+      }
+      .figure-modal__summary {
+        color: var(--text);
+        font-weight: 700;
       }
       .figure-modal__close {
         justify-self: end;
@@ -599,7 +623,7 @@
                 <div>
                   <strong>{{ figure.id }}</strong>
                   <div class="figure-meta">{{ figure.mime_type }} · {{ figure.data_base64 | length }} base64 chars</div>
-                  <div class="figure-meta">{{ figure.caption or "No caption" }}</div>
+                  <div class="figure-meta">Summary: {{ figure.caption or "No summary yet" }}</div>
                 </div>
                 <button type="button" class="btn btn-secondary" data-remove-figure="{{ loop.index0 }}">Remove</button>
               </div>
@@ -614,6 +638,7 @@
             <h3 id="figure_modal_title">Figure preview</h3>
             <img id="figure_modal_image" alt="" />
             <div id="figure_modal_meta" class="figure-modal__meta"></div>
+            <div id="figure_modal_summary" class="figure-modal__summary"></div>
           </div>
         </div>
 
@@ -683,6 +708,7 @@
       const figureModalTitleEl = document.getElementById("figure_modal_title");
       const figureModalImageEl = document.getElementById("figure_modal_image");
       const figureModalMetaEl = document.getElementById("figure_modal_meta");
+      const figureModalSummaryEl = document.getElementById("figure_modal_summary");
       const figureModalCloseEl = document.getElementById("figure_modal_close");
       const addFigureBtn = document.getElementById("btn_add_figure");
       const figureFileInput = document.getElementById("figure_file_input");
@@ -896,16 +922,19 @@
         figureNoticeEl.textContent = "";
       }
 
-      function showFigureNotice(message) {
+      function showFigureNotice(message, options = {}) {
         if (!figureNoticeEl) {
           return;
         }
         clearFigureNotice();
         figureNoticeEl.textContent = message;
         figureNoticeEl.classList.add("is-visible");
-        figureNoticeTimer = window.setTimeout(() => {
-          clearFigureNotice();
-        }, 6000);
+        const timeoutMs = options.timeoutMs === undefined ? 6000 : options.timeoutMs;
+        if (timeoutMs !== null) {
+          figureNoticeTimer = window.setTimeout(() => {
+            clearFigureNotice();
+          }, timeoutMs);
+        }
       }
 
       function summarizeRejectedFigureFiles(files) {
@@ -919,6 +948,17 @@
         return `${prefix} Allowed figure files: ${allowedFigureFileList()}.`;
       }
 
+      async function summarizeFigureData(mimeType, dataBase64) {
+        const body = new FormData();
+        body.append("mime_type", mimeType);
+        body.append("data_base64", dataBase64);
+        const res = await fetch("/figures/summarize", { method: "POST", body });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || res.statusText || "Figure summary failed.");
+        }
+        return String(data.summary || "").trim();
+      }
       function renderFiguresPreview() {
         const figures = parseFigures();
         if (!figures.length) {
@@ -935,7 +975,7 @@
             `<button type="button" class="figure-preview-button" data-open-figure="${idx}" aria-label="Open full-size preview of ${figureId}">` +
             `<img src="${escapeHtml(figurePreviewSrc(figure, figure.id || `fig_${idx + 1}`))}" alt="${figureId}" />` +
             `</button>` +
-            `<div><strong>${figureId}</strong><div class="figure-meta">${mimeType} · ${dataSize} base64 chars</div><div class="figure-meta">${caption || "No caption"}</div></div>` +
+            `<div><strong>${figureId}</strong><div class="figure-meta">${mimeType} · ${dataSize} base64 chars</div><div class="figure-meta">Summary: ${caption || "No summary yet"}</div></div>` +
             `<button type="button" class="btn btn-secondary" data-remove-figure="${idx}">Remove</button>` +
             `</div>`
           );
@@ -949,6 +989,7 @@
         figureModalImageEl.alt = "";
         figureModalTitleEl.textContent = "Figure preview";
         figureModalMetaEl.textContent = "";
+        figureModalSummaryEl.textContent = "";
         if (figureModalLastFocus && typeof figureModalLastFocus.focus === "function") {
           figureModalLastFocus.focus();
         }
@@ -966,7 +1007,8 @@
         figureModalTitleEl.textContent = figureId;
         figureModalImageEl.src = figurePreviewSrc(figure, figureId);
         figureModalImageEl.alt = caption ? `${figureId}: ${caption}` : figureId;
-        figureModalMetaEl.textContent = `${mimeType} · ${dataSize} base64 chars${caption ? ` · ${caption}` : ""}`;
+        figureModalMetaEl.textContent = `${mimeType} · ${dataSize} base64 chars`;
+        figureModalSummaryEl.textContent = `Summary: ${caption || "No summary yet"}`;
         figureModalLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         figureModalEl.classList.add("is-open");
         figureModalEl.setAttribute("aria-hidden", "false");
@@ -1032,6 +1074,14 @@
         const pendingId = nextFigureId(figures);
         setStatus("Processing image...", "warn");
         const figure = await buildFigureFromFile(file);
+        showFigureNotice("Generating figure summary...", { timeoutMs: null });
+        try {
+          figure.caption = await summarizeFigureData(figure.mime_type, figure.data_base64);
+          clearFigureNotice();
+        } catch (err) {
+          figure.caption = "";
+          showFigureNotice(`Figure added without AI summary: ${err.message}`);
+        }
         figure.id = pendingId;
         figures.push(figure);
         setFigures(figures);
@@ -1048,6 +1098,14 @@
         const pendingId = nextFigureId(figures);
         setChatStatus("Processing chat image...", "warn");
         const figure = await buildFigureFromFile(file);
+        showFigureNotice("Generating figure summary...", { timeoutMs: null });
+        try {
+          figure.caption = await summarizeFigureData(figure.mime_type, figure.data_base64);
+          clearFigureNotice();
+        } catch (err) {
+          figure.caption = "";
+          showFigureNotice(`Figure added without AI summary: ${err.message}`);
+        }
         figure.id = pendingId;
         figures.push(figure);
         setFigures(figures);
@@ -1437,6 +1495,7 @@
       addFigureBtn.addEventListener("click", () => {
         figureFileInput.click();
       });
+      figureFileInput.accept = allowedFigureFileList();
 
       figureFileInput.addEventListener("change", async () => {
         const files = Array.from(figureFileInput.files || []);

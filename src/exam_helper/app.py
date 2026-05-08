@@ -918,6 +918,27 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         raw = base64.b64decode(data_base64.encode("ascii"))
         return {"sha256": sha256(raw).hexdigest(), "size": len(raw)}
 
+    @app.post("/figures/summarize", response_model=None)
+    def summarize_figure(
+        data_base64: str = Form(...), mime_type: str = Form("image/png")
+    ) -> Any:
+        try:
+            normalized_mime, normalized_data = AIService._prepare_figure_summary_input(
+                mime_type, data_base64
+            )
+            result = app.state.ai.summarize_figure(
+                mime_type=normalized_mime, data_base64=normalized_data
+            )
+            repo.add_ai_usage(result.usage)
+            return {"summary": result.text}
+        except Exception as ex:
+            logger.exception(
+                "figure.summarize failed mime_type=%s size=%s",
+                mime_type,
+                len(data_base64 or ""),
+            )
+            return JSONResponse({"ok": False, "error": str(ex)}, status_code=422)
+
     @app.post("/questions/{question_id}/validate")
     def validate_question_endpoint(question_id: str) -> dict:
         q = repo.get_question(question_id)
