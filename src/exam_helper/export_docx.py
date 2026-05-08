@@ -344,11 +344,38 @@ def render_project_docx_bytes(
     project = repo.load_project()
     questions = repo.list_questions()
 
+    return _render_docx_bytes(
+        project_name=project.name,
+        course=project.course,
+        questions=questions,
+        include_solutions=include_solutions,
+    )
+
+
+def render_question_docx_bytes(
+    project_root: Path, question_id: str, include_solutions: bool = False
+) -> tuple[bytes, list[str]]:
+    repo = ProjectRepository(project_root)
+    project = repo.load_project()
+    question = repo.get_question(question_id)
+
+    return _render_docx_bytes(
+        project_name=project.name,
+        course=project.course,
+        questions=[question],
+        include_solutions=include_solutions,
+    )
+
+
+def _render_docx_bytes(
+    project_name: str, course: str, questions: list[Question], include_solutions: bool
+) -> tuple[bytes, list[str]]:
     warnings: list[str] = []
+
     try:
         return _render_docx_with_pandoc(
-            project_name=project.name,
-            course=project.course,
+            project_name=project_name,
+            course=course,
             questions=questions,
             include_solutions=include_solutions,
         )
@@ -358,8 +385,8 @@ def render_project_docx_bytes(
         warnings.append(_PANDOC_FAILED_WARNING)
 
     bytes_out = _render_docx_with_python_docx(
-        project_name=project.name,
-        course=project.course,
+        project_name=project_name,
+        course=course,
         questions=questions,
         include_solutions=include_solutions,
     )
