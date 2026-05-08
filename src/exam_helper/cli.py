@@ -106,8 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "OpenAI key resolution:\n"
             "  1. --openai-key\n"
-            "  2. EXAM_HELPER_OPENAI_KEY in ~/.env\n"
-            "  3. EXAM_HELPER_OPENAI_KEY in the project .env path\n"
+            "  2. EXAM_HELPER_OPENAI_KEY in the project .env path\n"
+            "  3. EXAM_HELPER_OPENAI_KEY in ~/.env\n"
         ),
     )
     p_serve.add_argument(
