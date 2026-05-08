@@ -235,6 +235,8 @@ class AIService:
     def _figure_summaries(question: Question) -> list[str]:
         summaries: list[str] = []
         for fig in question.figures:
+            # Use author-provided caption first, then fall back to the figure id.
+            # This keeps the prompt stable without a second image-summary AI call.
             caption = (fig.caption or fig.id or "").strip() or fig.id
             summaries.append(f"{fig.id}: {caption} ({fig.mime_type})")
         return summaries
