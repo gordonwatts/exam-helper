@@ -840,6 +840,15 @@
         }
       }
 
+      function parseChatHistory() {
+        try {
+          const parsed = JSON.parse(chatHistoryEl.value || "[]");
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+
       function setFigures(figures) {
         figuresInput.value = JSON.stringify(figures);
         editorState = normalizeEditorState({ ...editorState, figures_json: figuresInput.value });
