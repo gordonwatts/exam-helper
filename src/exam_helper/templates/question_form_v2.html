@@ -751,6 +751,11 @@
         chatSendBtn.textContent = isBusy ? "Sending..." : "Send";
       }
 
+      function chatHistoryKeepCount() {
+        const parsed = Number.parseInt(chatHistoryKeepCountEl.value, 10);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
+      }
+
       function escapeHtml(text) {
         return String(text || "")
           .replace(/&/g, "&amp;")
