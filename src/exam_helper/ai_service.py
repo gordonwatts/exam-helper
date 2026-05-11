@@ -290,26 +290,21 @@ class AIService:
             mime_type, data_base64
         )
         client = self._client()
-        system_prompt = (
-            "You write concise figure summaries for a physics exam author. "
-            "Return plain text only, with one short sentence."
-        )
-        user_prompt = (
-            "Summarize the attached figure for the question author in one short "
-            "sentence. Mention the important objects, labels, and relationships. "
-            "Return plain text only."
+        bundle = self._catalog().render_prompt(
+            action="summarize_figure",
+            values={},
         )
         response = client.responses.create(
             model=self.model,
             input=[
                 {
                     "role": "system",
-                    "content": [{"type": "input_text", "text": system_prompt}],
+                    "content": [{"type": "input_text", "text": bundle.system_prompt}],
                 },
                 {
                     "role": "user",
                     "content": [
-                        {"type": "input_text", "text": user_prompt},
+                        {"type": "input_text", "text": bundle.user_prompt},
                         {
                             "type": "input_image",
                             "image_url": f"data:{normalized_mime};base64,{normalized_base64}",
@@ -755,31 +750,16 @@ class AIService:
         attached_ids = [
             str(fid).strip() for fid in (attached_figure_ids or []) if str(fid).strip()
         ]
-        system_prompt = (
-            "You are editing a single exam item for a physics-authoring app. "
-            "Use the provided tools to inspect and update the item. "
-            "Do not invent fields or return raw patches. "
-            "Use deterministic tools for answer and distractor changes. "
-            "For rewrite or parameter-extraction requests, call only the minimal tools needed. "
-            "Do not call compute_answer unless the author explicitly asks you to calculate, compute, or solve. "
-            "If the author is starting from a screenshot, pasted image, or other new-problem source, "
-            "treat that source as the ground truth and fill every relevant field: question text, "
-            "parameters, answer formula, distractors, and typed solution. "
-            "When you are done, call the finish tool exactly once with a short factual assistant_message."
+        bundle = self._catalog().render_prompt(
+            action="chat_edit_question",
+            values={
+                "editor_state_json": state_json,
+                "recent_chat_history": history_text,
+                "author_request": user_message.strip(),
+            },
         )
         user_content: list[dict[str, Any]] = [
-            {
-                "type": "input_text",
-                "text": (
-                    "Current editor state:\n"
-                    f"{state_json}\n\n"
-                    "Persisted recent chat history:\n"
-                    f"{history_text}\n\n"
-                    f"Current author request:\n{user_message.strip()}\n\n"
-                    "Figure metadata and summaries are included below. "
-                    "Only image bytes explicitly attached to this turn are included below."
-                ),
-            }
+            {"type": "input_text", "text": bundle.user_prompt}
         ]
         figure_prompt_text = self._figure_prompt_text(working)
         if figure_prompt_text:
@@ -798,7 +778,7 @@ class AIService:
             input=[
                 {
                     "role": "system",
-                    "content": [{"type": "input_text", "text": system_prompt}],
+                    "content": [{"type": "input_text", "text": bundle.system_prompt}],
                 },
                 {"role": "user", "content": user_content},
             ],

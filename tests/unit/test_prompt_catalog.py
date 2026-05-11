@@ -60,6 +60,30 @@ def test_prompt_catalog_applies_solution_and_mc_override_to_answer_generation() 
     assert "Keep units explicit in final_answer." in bundle.system_prompt
 
 
+def test_prompt_catalog_builds_figure_summary_prompt() -> None:
+    catalog = PromptCatalog.from_package_yaml()
+    bundle = catalog.render_prompt(action="summarize_figure", values={})
+    assert "figure summaries" in bundle.system_prompt
+    assert "Summarize the attached figure" in bundle.user_prompt
+    assert "plain text only" in bundle.user_prompt
+
+
+def test_prompt_catalog_builds_chat_editor_prompt() -> None:
+    catalog = PromptCatalog.from_package_yaml()
+    bundle = catalog.render_prompt(
+        action="chat_edit_question",
+        values={
+            "editor_state_json": "{}",
+            "recent_chat_history": "(none)",
+            "author_request": "rewrite this",
+        },
+    )
+    assert "physics-authoring app" in bundle.system_prompt
+    assert "screenshot or pasted image" in bundle.system_prompt
+    assert "Current editor state:" in bundle.user_prompt
+    assert "rewrite this" in bundle.user_prompt
+
+
 def test_prompt_catalog_omits_empty_old_code_sections() -> None:
     catalog = PromptCatalog.from_package_yaml()
     q = Question(id="q1", title="T", prompt_md="P")
