@@ -808,10 +808,6 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
 
     @app.get("/questions/new", response_class=HTMLResponse)
     def new_question(request: Request) -> HTMLResponse:
-        return RedirectResponse("/questions/new2", status_code=303)
-
-    @app.get("/questions/new2", response_class=HTMLResponse)
-    def new_question_v2(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
             request,
             "question_form_v2.html",

@@ -156,7 +156,7 @@ def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
     app = create_app(tmp_path, openai_key=None)
     client = TestClient(app)
 
-    resp = client.get("/questions/new2")
+    resp = client.get("/questions/new")
     assert resp.status_code == 200
     html = resp.text
     assert 'id="figures_json"' in html
@@ -166,18 +166,14 @@ def test_new_question_page_contains_figure_upload_controls(tmp_path) -> None:
     assert 'id="figure_notice"' in html
     assert 'accept="image/*,.svg"' in html
 
-    redirect = client.get("/questions/new", follow_redirects=False)
-    assert redirect.status_code == 303
-    assert redirect.headers["location"] == "/questions/new2"
 
-
-def test_new_question_2_page_contains_simplified_editor(tmp_path) -> None:
+def test_new_question_page_contains_simplified_editor(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key=None)
     client = TestClient(app)
 
-    resp = client.get("/questions/new2")
+    resp = client.get("/questions/new")
     assert resp.status_code == 200
     html = resp.text
     assert "<title>Question Editor - New Question</title>" in html
@@ -397,7 +393,7 @@ def test_new_question_id_skips_soft_deleted_ids(tmp_path) -> None:
     assert 'id="question_id" value="q2"' in new_page.text
 
 
-def test_home_shows_edit_and_new_question_2_links(tmp_path) -> None:
+def test_home_shows_edit_and_new_question_links(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key=None)
@@ -421,9 +417,8 @@ def test_home_shows_edit_and_new_question_2_links(tmp_path) -> None:
 
     home = client.get("/")
     assert home.status_code == 200
-    assert 'href="/questions/new2"' in home.text
+    assert 'href="/questions/new"' in home.text
     assert 'href="/questions/q1/edit"' in home.text
-    assert 'href="/questions/new"' not in home.text
 
 
 def test_save_persists_dollar_math_delimiters(tmp_path) -> None:
