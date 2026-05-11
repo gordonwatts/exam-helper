@@ -963,10 +963,11 @@
       }
 
       async function summarizeFigureData(mimeType, dataBase64) {
-        const body = new FormData();
-        body.append("mime_type", mimeType);
-        body.append("data_base64", dataBase64);
-        const res = await fetch("/figures/summarize", { method: "POST", body });
+        const res = await fetch("/figures/summarize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mime_type: mimeType, data_base64: dataBase64 }),
+        });
         const data = await res.json();
         if (!res.ok) {
           throw new Error(data.error || res.statusText || "Figure summary failed.");
