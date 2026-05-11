@@ -80,6 +80,7 @@ def test_question_editor_has_chat_workflow_hooks(tmp_path) -> None:
     assert 'title="Shift+Enter to send"' in resp.text
     assert 'title="No API key configured."' in resp.text
     assert "setChatBusy(true)" in resp.text
+    assert ".chat-log:empty" in resp.text
     assert 'event.key === "Enter" && event.shiftKey' in resp.text
 
 
