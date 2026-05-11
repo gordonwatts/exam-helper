@@ -31,6 +31,7 @@ actions:
       If the final line assigns a new variable, set answer to that same value.
       If you create an answer variable, do not overwrite it.
       Do not wrap the expressions in a solve() function.
+      Use SymPy's pi symbol instead of decimal approximations when the exact value matters.
       Use ** for powers in SymPy; write x**2, not x^2.
       If LaTeX-style backslashes are needed inside Python string literals, escape them (for example \\theta, \\(x\\)).
       Do not include any prose before or after the JSON object.
