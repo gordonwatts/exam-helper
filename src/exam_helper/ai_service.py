@@ -762,6 +762,9 @@ class AIService:
             "Use deterministic tools for answer and distractor changes. "
             "For rewrite or parameter-extraction requests, call only the minimal tools needed. "
             "Do not call compute_answer unless the author explicitly asks you to calculate, compute, or solve. "
+            "If the author is starting from a screenshot, pasted image, or other new-problem source, "
+            "treat that source as the ground truth and fill every relevant field: question text, "
+            "parameters, answer formula, distractors, and typed solution. "
             "When you are done, call the finish tool exactly once with a short factual assistant_message."
         )
         user_content: list[dict[str, Any]] = [
