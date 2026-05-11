@@ -51,11 +51,11 @@ class PromptCatalog:
                 raise ValueError(f"Action '{action_name}' missing user_prompt_template")
         return cls(actions=actions)
 
-    def compose(
+    def render_prompt(
         self,
         *,
         action: str,
-        question: Question,
+        values: dict[str, str],
         prompts_override: AIPromptConfig | None = None,
     ) -> PromptBundle:
         payload = self._actions.get(action)
@@ -71,6 +71,16 @@ class PromptCatalog:
             if action_override:
                 system_parts.append(action_override)
         system_prompt = "\n\n".join(p for p in system_parts if p)
+        user_prompt = self._safe_format(payload["user_prompt_template"], values)
+        return PromptBundle(system_prompt=system_prompt, user_prompt=user_prompt)
+
+    def compose(
+        self,
+        *,
+        action: str,
+        question: Question,
+        prompts_override: AIPromptConfig | None = None,
+    ) -> PromptBundle:
         rendered_question_md = render_template_from_values(
             question.solution.question_template_md or "",
             question.solution.parameters or {},
@@ -100,9 +110,11 @@ class PromptCatalog:
         values["context_sections"] = self._build_context_sections(
             action=action, values=values
         )
-        user_template = payload["user_prompt_template"]
-        user_prompt = self._safe_format(user_template, values)
-        return PromptBundle(system_prompt=system_prompt, user_prompt=user_prompt)
+        return self.render_prompt(
+            action=action,
+            values=values,
+            prompts_override=prompts_override,
+        )
 
     @staticmethod
     def figure_placeholders(question: Question) -> list[str]:

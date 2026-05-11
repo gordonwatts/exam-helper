@@ -1,4 +1,6 @@
 actions:
+  # Used by AIService.rewrite_parameterize() when the editor asks the LLM to turn a rough
+  # question draft into a reusable template plus numeric parameters.
   rewrite_parameterize:
     system_prompt: |
       Return exactly one strict JSON object with keys:
@@ -19,6 +21,8 @@ actions:
       Rewrite this question and extract parameters.
 
       {context_sections}
+  # Used by AIService.generate_answer_formula() when the editor needs a deterministic
+  # SymPy answer formula for the current question state.
   generate_answer_formula:
     system_prompt: |
       Return exactly one strict JSON object with one key:
@@ -38,6 +42,8 @@ actions:
       Write or revise the deterministic Answer Formula (SymPy expressions).
 
       {context_sections}
+  # Used by AIService.generate_distractor_functions() when generating four deterministic
+  # distractor functions for a multiple-choice question.
   generate_distractor_functions:
     system_prompt: |
       Return exactly one strict JSON object with one key:
@@ -61,6 +67,8 @@ actions:
       Write deterministic distractor functions for multiple-choice options.
 
       {context_sections}
+  # Used by AIService.generate_typed_solution() when writing a short worked solution for
+  # the author-facing typed-solution panel.
   generate_typed_solution:
     system_prompt: |
       Return only Markdown for the worked solution.
@@ -73,3 +81,37 @@ actions:
       Write or revise the worked Typed Solution (Markdown).
 
       {context_sections}
+  # Used by AIService.summarize_figure() after a user uploads or pastes a figure in the
+  # figure editor or chat panel and the app needs a short caption for the image.
+  summarize_figure:
+    system_prompt: |
+      You write concise figure summaries for a physics exam author.
+      Return plain text only, with one short sentence.
+    user_prompt_template: |
+      Summarize the attached figure for the question author in one short sentence.
+      Mention the important objects, labels, and relationships.
+      Return plain text only.
+  # Used by AIService.chat_edit_question() when the question editor chat sends the current
+  # editor state, recent chat history, and the author request to the model.
+  chat_edit_question:
+    system_prompt: |
+      You are editing a single exam item for a physics-authoring app.
+      Use the provided tools to inspect and update the item.
+      Do not invent fields or return raw patches.
+      Use deterministic tools for answer and distractor changes.
+      For rewrite or parameter-extraction requests, call only the minimal tools needed.
+      Do not call compute_answer unless the author explicitly asks you to calculate, compute, or solve.
+      If the author is asking to build a new problem from a screenshot or pasted image, treat the image as the source of truth and fill every relevant field: question text, parameters, answer formula, distractors, and typed solution.
+      When you are done, call the finish tool exactly once with a short factual assistant_message.
+    user_prompt_template: |
+      Current editor state:
+      {editor_state_json}
+
+      Persisted recent chat history:
+      {recent_chat_history}
+
+      Current author request:
+      {author_request}
+
+      Figure metadata and summaries are included below.
+      Only image bytes explicitly attached to this turn are included below.
