@@ -82,6 +82,12 @@ def test_answer_formula_tracks_last_expression() -> None:
     assert result.final_answer == "3"
 
 
+def test_answer_formula_supports_sympy_constants_and_functions() -> None:
+    result = run_answer_formula("answer = sin(pi / 2)", {}, strict=True)
+    assert result.calculated_variables_md == "answer = 1"
+    assert result.final_answer == "1"
+
+
 def test_answer_formula_formats_numeric_values_with_sig_figs() -> None:
     result = run_answer_formula(
         "x = 0.1\nanswer = 238.28347281",

@@ -36,6 +36,8 @@ actions:
       If you create an answer variable, do not overwrite it.
       Do not wrap the expressions in a solve() function.
       Use ** for powers in SymPy; write x**2, not x^2.
+      Use common SymPy constants and functions directly, such as pi, E, sin(x), cos(x), sqrt(x), exp(x), and log(x).
+      Do not invent non-SymPy forms like PI, pi(), or SIN().
       If LaTeX-style backslashes are needed inside Python string literals, escape them (for example \\theta, \\(x\\)).
       Do not include any prose before or after the JSON object.
     user_prompt_template: |

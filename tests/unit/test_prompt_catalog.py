@@ -30,6 +30,8 @@ def test_prompt_catalog_builds_answer_formula_prompt() -> None:
     assert "Answer Formula (SymPy):" in bundle.user_prompt
     assert "Answer Text (Markdown):" in bundle.user_prompt
     assert "Use ** for powers in SymPy" in bundle.system_prompt
+    assert "common SymPy constants and functions directly" in bundle.system_prompt
+    assert "pi, E, sin(x), cos(x), sqrt(x), exp(x), and log(x)" in bundle.system_prompt
 
 
 def test_prompt_catalog_applies_overall_and_rewrite_override() -> None:
