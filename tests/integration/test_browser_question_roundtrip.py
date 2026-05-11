@@ -298,6 +298,125 @@ def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
             proc.wait(timeout=10)
 
 
+def test_browser_chat_image_processing_disables_send(tmp_path: Path) -> None:
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import Error as PlaywrightError, sync_playwright
+
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Chat Image Exam", "Physics 1")
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "exam_helper.cli",
+            "serve",
+            str(tmp_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        _wait_for_server(base_url + "/", proc)
+        seed = httpx.post(
+            base_url + "/questions/save",
+            data={
+                "question_id": "q_chat_image",
+                "title": "Chat Image Test",
+                "question_type": "free_response",
+                "question_template_md": "Prompt.",
+                "solution_parameters_yaml": "{}",
+                "answer_formula_md": "answer = 1",
+                "answer_guidance": "",
+                "mc_options_guidance": "",
+                "distractor_functions_text": "",
+                "choices_yaml": "[]",
+                "typed_solution_md": "",
+                "typed_solution_status": "fresh",
+                "figures_json": "[]",
+                "points": 5,
+            },
+            follow_redirects=False,
+            timeout=5.0,
+        )
+        assert seed.status_code == 303
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
+            except PlaywrightError as exc:
+                pytest.skip(f"Chromium is not available: {exc}")
+            try:
+                page = browser.new_page()
+                page.goto(base_url + "/questions/q_chat_image/edit")
+                page.wait_for_url(base_url + "/questions/q_chat_image/edit")
+
+                page.evaluate("""() => {
+                        const originalFetch = window.fetch.bind(window);
+                        window.fetch = async (input, init) => {
+                          const url = typeof input === "string" ? input : String(input.url || "");
+                          if (url.includes("/figures/validate")) {
+                            return new Response(JSON.stringify({ sha256: "abc", size: 4 }), {
+                              status: 200,
+                              headers: { "Content-Type": "application/json" }
+                            });
+                          }
+                          if (url.includes("/figures/summarize")) {
+                            await new Promise((resolve) => setTimeout(resolve, 750));
+                            return new Response(JSON.stringify({ summary: "chat attachment" }), {
+                              status: 200,
+                              headers: { "Content-Type": "application/json" }
+                            });
+                          }
+                          return originalFetch(input, init);
+                        };
+                      }""")
+
+                page.evaluate("""() => {
+                        const textarea = document.querySelector("#chat_message");
+                        const transfer = new DataTransfer();
+                        transfer.items.add(new File(
+                          [new Uint8Array([1, 2, 3, 4])],
+                          "chat.png",
+                          { type: "image/png" }
+                        ));
+                        const event = new Event("paste", { bubbles: true, cancelable: true });
+                        Object.defineProperty(event, "clipboardData", {
+                          value: transfer
+                        });
+                        textarea.dispatchEvent(event);
+                    }""")
+
+                page.wait_for_function(
+                    "() => document.querySelector('#btn_send_chat')?.disabled"
+                )
+                assert page.locator("#btn_send_chat").is_disabled()
+
+                page.wait_for_function(
+                    "() => !document.querySelector('#btn_send_chat')?.disabled"
+                )
+                assert not page.locator("#btn_send_chat").is_disabled()
+                assert (
+                    page.locator("#chat_attachments .chat-attachment").inner_text()
+                    == "fig_1"
+                )
+            finally:
+                browser.close()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
+
+
 def test_browser_figure_preview_modal_opens_and_closes(tmp_path: Path) -> None:
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import Error as PlaywrightError, sync_playwright
