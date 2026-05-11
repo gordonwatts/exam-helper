@@ -840,6 +840,15 @@
         }
       }
 
+      function parseChatHistory() {
+        try {
+          const parsed = JSON.parse(chatHistoryEl.value || "[]");
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+
       function setFigures(figures) {
         figuresInput.value = JSON.stringify(figures);
         editorState = normalizeEditorState({ ...editorState, figures_json: figuresInput.value });
@@ -1321,6 +1330,45 @@
         }
       }
 
+      function renderEditorState(data = {}) {
+        const nextState = data.editor_state || { ...editorState, ...data };
+        editorState = normalizeEditorState(nextState);
+        titleEl.value = editorState.title;
+        pointsEl.value = editorState.points;
+        questionTypeEl.value = editorState.question_type;
+        templateEl.value = editorState.question_template_md;
+        paramsEl.value = editorState.solution_parameters_yaml;
+        answerFormulaEl.value = editorState.answer_formula_md;
+        answerGuidanceEl.value = editorState.answer_guidance;
+        mcOptionsGuidanceEl.value = editorState.mc_options_guidance;
+        distractorFnsEl.value = editorState.distractor_functions_text;
+        mcAnswerSpecsEl.value = editorState.mc_answer_specs_json;
+        choicesYamlEl.value = editorState.choices_yaml;
+        typedSolutionEl.value = editorState.typed_solution_md;
+        typedStatusEl.value = editorState.typed_solution_status;
+        chatHistoryEl.value = editorState.chat_history_json;
+        figuresInput.value = editorState.figures_json;
+        syncMCRowsFromSpecs(parseMCSpecs());
+        if (typeof data.calculated_variables_md === "string") {
+          calculatedVariablesEl.textContent = data.calculated_variables_md;
+        }
+        answerFormulaWarningEl.textContent = data.warning || data.answer_formula_warning
+          ? `Warning: ${data.warning || data.answer_formula_warning}`
+          : "";
+        renderTemplate();
+        renderMCPreviewFromData(data);
+        renderFiguresPreview();
+        renderChatHistory();
+        if (typeof data.rendered_answer_md === "string") {
+          renderMarkdownSurface(renderedAnswerEl, data.rendered_answer_md);
+        }
+        updateMCVisibility();
+      }
+
+      function setEditorValuesFromResponse(data) {
+        renderEditorState(data);
+      }
+
       function renderMarkdownSurface(el, markdown) {
         el.innerHTML = marked.parse(normalizeMathDelimitersForPreview(markdown || ""));
         if (window.MathJax && window.MathJax.typesetPromise) {
@@ -1445,6 +1493,10 @@
 
       function updateMCVisibility() {
         mcBlock.style.display = isMC() ? "block" : "none";
+      }
+
+      function isMC() {
+        return questionTypeEl.value === "multiple_choice";
       }
 
       function serializePayload() {
