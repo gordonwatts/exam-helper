@@ -391,6 +391,11 @@ def test_ai_service_chat_edit_question_includes_figure_metadata_in_prompt(
     out = svc.chat_edit_question(q, "rewrite this")
 
     assert out.assistant_message == "Updated."
+    system_prompt = recording_client.responses.calls[0]["input"][0]["content"][0][
+        "text"
+    ]
+    assert "screenshot, pasted image, or other new-problem source" in system_prompt
+    assert "fill every relevant field" in system_prompt
     prompt_text = "\n".join(
         item["text"]
         for item in recording_client.responses.calls[0]["input"][1]["content"]
