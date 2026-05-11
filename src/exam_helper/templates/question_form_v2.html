@@ -1051,9 +1051,11 @@
       }
 
       async function validateFigureData(dataBase64) {
-        const body = new FormData();
-        body.append("data_base64", dataBase64);
-        const res = await fetch("/figures/validate", { method: "POST", body });
+        const res = await fetch("/figures/validate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data_base64: dataBase64 }),
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText || "Figure validation failed.");
         return data;

@@ -60,7 +60,7 @@ def test_validate_figure_endpoint_returns_hash_and_size(tmp_path) -> None:
     b64 = base64.b64encode(raw).decode("ascii")
     digest = hashlib.sha256(raw).hexdigest()
 
-    resp = client.post("/figures/validate", data={"data_base64": b64})
+    resp = client.post("/figures/validate", json={"data_base64": b64})
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["sha256"] == digest
