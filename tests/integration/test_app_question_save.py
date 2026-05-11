@@ -60,7 +60,7 @@ def test_validate_figure_endpoint_returns_hash_and_size(tmp_path) -> None:
     b64 = base64.b64encode(raw).decode("ascii")
     digest = hashlib.sha256(raw).hexdigest()
 
-    resp = client.post("/figures/validate", data={"data_base64": b64})
+    resp = client.post("/figures/validate", json={"data_base64": b64})
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["sha256"] == digest
@@ -68,6 +68,35 @@ def test_validate_figure_endpoint_returns_hash_and_size(tmp_path) -> None:
 
 
 def test_summarize_figure_endpoint_returns_summary(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+
+    class FakeAI:
+        def summarize_figure(self, *, mime_type: str, data_base64: str):
+            assert mime_type == "image/png"
+            assert data_base64 == b64
+            return AIService.AIResult(
+                text="A block on an incline plane.",
+                usage=AIUsageTotals(),
+            )
+
+    app.state.ai = FakeAI()
+    client = TestClient(app)
+
+    raw = b"png-bytes"
+    b64 = base64.b64encode(raw).decode("ascii")
+
+    resp = client.post(
+        "/figures/summarize",
+        json={"data_base64": b64, "mime_type": "image/png"},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["summary"] == "A block on an incline plane."
+
+
+def test_summarize_figure_endpoint_accepts_form_payload(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
     app = create_app(tmp_path, openai_key="k")

@@ -910,15 +910,43 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
         return Response(content=raw, media_type=media_type)
 
     @app.post("/figures/validate")
-    def validate_figure(data_base64: str = Form(...)) -> dict:
+    async def validate_figure(request: Request) -> dict:
+        data_base64 = ""
+        content_type = request.headers.get("content-type", "")
+        if content_type.startswith("application/json"):
+            payload = await request.json()
+            if isinstance(payload, dict):
+                data_base64 = str(payload.get("data_base64", ""))
+        else:
+            form = await request.form()
+            data_base64 = str(form.get("data_base64", ""))
+        if not data_base64:
+            return JSONResponse(
+                {"ok": False, "error": "Missing data_base64 payload."}, status_code=400
+            )
         raw = base64.b64decode(data_base64.encode("ascii"))
         return {"sha256": sha256(raw).hexdigest(), "size": len(raw)}
 
     @app.post("/figures/summarize", response_model=None)
-    def summarize_figure(
-        data_base64: str = Form(...), mime_type: str = Form("image/png")
-    ) -> Any:
+    async def summarize_figure(request: Request) -> Any:
         try:
+            data_base64 = ""
+            mime_type = "image/png"
+            content_type = request.headers.get("content-type", "")
+            if content_type.startswith("application/json"):
+                payload = await request.json()
+                if isinstance(payload, dict):
+                    data_base64 = str(payload.get("data_base64", ""))
+                    mime_type = str(payload.get("mime_type", "image/png"))
+            else:
+                form = await request.form()
+                data_base64 = str(form.get("data_base64", ""))
+                mime_type = str(form.get("mime_type", "image/png"))
+            if not data_base64:
+                return JSONResponse(
+                    {"ok": False, "error": "Missing data_base64 payload."},
+                    status_code=400,
+                )
             normalized_mime, normalized_data = AIService._prepare_figure_summary_input(
                 mime_type, data_base64
             )
