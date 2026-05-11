@@ -15,6 +15,32 @@ from exam_helper.normalization import normalize_python_code_string_literals
 
 ureg = UnitRegistry()
 
+_SYMPY_NAMES: dict[str, Any] = {
+    "E": sp.E,
+    "I": sp.I,
+    "Abs": sp.Abs,
+    "acos": sp.acos,
+    "acosh": sp.acosh,
+    "asin": sp.asin,
+    "asinh": sp.asinh,
+    "atan": sp.atan,
+    "atanh": sp.atanh,
+    "ceiling": sp.ceiling,
+    "cos": sp.cos,
+    "cosh": sp.cosh,
+    "exp": sp.exp,
+    "floor": sp.floor,
+    "log": sp.log,
+    "oo": sp.oo,
+    "pi": sp.pi,
+    "sec": sp.sec,
+    "sin": sp.sin,
+    "sinh": sp.sinh,
+    "sqrt": sp.sqrt,
+    "tan": sp.tan,
+    "tanh": sp.tanh,
+}
+
 
 class SolutionRuntimeError(RuntimeError):
     pass
@@ -96,6 +122,7 @@ def _safe_globals() -> dict[str, Any]:
         "math": math,
         "sp": sp,
         "ureg": ureg,
+        **_SYMPY_NAMES,
         "symbolic_equivalent": symbolic_equivalent,
         "units_compatible": units_compatible,
     }
