@@ -69,6 +69,7 @@ AutosavePayload = QuestionEditorState
 class ChatPayload(BaseModel):
     message: str = ""
     attached_figure_ids: list[str] = Field(default_factory=list)
+    chat_images: list[dict[str, str]] = Field(default_factory=list)
     editor_state: QuestionEditorState
     history_keep_count: int = Field(default=5, ge=0)
 
@@ -986,6 +987,7 @@ def create_app(project_root: Path, openai_key: str | None) -> FastAPI:
                 live_question,
                 payload.message,
                 attached_figure_ids=payload.attached_figure_ids,
+                chat_images=payload.chat_images,
                 history_keep_count=payload.history_keep_count,
             )
             question_for_log = result.question

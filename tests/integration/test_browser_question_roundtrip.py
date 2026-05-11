@@ -184,6 +184,172 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
             proc.wait(timeout=10)
 
 
+def test_browser_chat_image_paste_defaults_to_llm_only_and_can_attach(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import Error as PlaywrightError, sync_playwright
+
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Chat Images Exam", "Physics 1")
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "exam_helper.cli",
+            "serve",
+            str(tmp_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        _wait_for_server(base_url + "/", proc)
+        seed = httpx.post(
+            base_url + "/questions/save",
+            data={
+                "question_id": "q_chat_images",
+                "title": "Chat Images Test",
+                "question_type": "free_response",
+                "question_template_md": "Prompt.",
+                "solution_parameters_yaml": "{}",
+                "answer_formula_md": "answer = 1",
+                "answer_guidance": "",
+                "mc_options_guidance": "",
+                "distractor_functions_text": "",
+                "choices_yaml": "[]",
+                "typed_solution_md": "",
+                "typed_solution_status": "fresh",
+                "figures_json": "[]",
+                "points": 5,
+            },
+            follow_redirects=False,
+            timeout=5.0,
+        )
+        assert seed.status_code == 303
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
+            except PlaywrightError as exc:
+                pytest.skip(f"Chromium is not available: {exc}")
+            try:
+                page = browser.new_page()
+                page.goto(base_url + "/questions/q_chat_images/edit")
+                page.wait_for_url(base_url + "/questions/q_chat_images/edit")
+
+                page.evaluate("""() => {
+                        window.__chatBodies = [];
+                        const originalFetch = window.fetch.bind(window);
+                        window.fetch = async (input, init) => {
+                          const url = typeof input === "string" ? input : String(input.url || "");
+                          if (url.includes("/figures/validate")) {
+                            return new Response(JSON.stringify({
+                              sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                              size: 4
+                            }), {
+                              status: 200,
+                              headers: { "Content-Type": "application/json" }
+                            });
+                          }
+                          if (url.includes("/figures/summarize")) {
+                            return new Response(JSON.stringify({ summary: "chat attachment" }), {
+                              status: 200,
+                              headers: { "Content-Type": "application/json" }
+                            });
+                          }
+                          if (url.includes("/questions/q_chat_images/ai/chat")) {
+                            window.__chatBodies.push(JSON.parse(String(init?.body || "{}")));
+                            return new Response(JSON.stringify({
+                              ok: true,
+                              assistant_message: "Done"
+                            }), {
+                              status: 200,
+                              headers: { "Content-Type": "application/json" }
+                            });
+                          }
+                          return originalFetch(input, init);
+                        };
+                      }""")
+
+                page.locator("#chat_message").evaluate("""(textarea) => {
+                        const transfer = new DataTransfer();
+                        transfer.items.add(new File(
+                          [new Uint8Array([1, 2, 3, 4])],
+                          "chat.png",
+                          { type: "image/png" }
+                        ));
+                        const event = new Event("paste", { bubbles: true, cancelable: true });
+                        Object.defineProperty(event, "clipboardData", {
+                          value: transfer
+                        });
+                        textarea.dispatchEvent(event);
+                    }""")
+
+                page.wait_for_function(
+                    "() => document.querySelector('#chat_attachments')?.innerText.includes('chat_img_1')"
+                )
+                assert (
+                    "No embedded figures yet."
+                    in page.locator("#figures_preview").inner_text()
+                )
+
+                page.locator("#chat_message").fill("Please rewrite this problem.")
+                page.locator("#btn_send_chat").click()
+                page.wait_for_function("() => window.__chatBodies?.length === 1")
+                first_body = page.evaluate("() => window.__chatBodies[0]")
+                assert first_body["attached_figure_ids"] == []
+                assert len(first_body["chat_images"]) == 1
+                assert "mime_type" in first_body["chat_images"][0]
+                assert "data_base64" in first_body["chat_images"][0]
+                assert (
+                    page.locator("#figures_preview").inner_text().strip()
+                    == "No embedded figures yet."
+                )
+
+                page.locator("#chat_attach_images_to_problem").check()
+                page.locator("#chat_message").evaluate("""(textarea) => {
+                        const transfer = new DataTransfer();
+                        transfer.items.add(new File(
+                          [new Uint8Array([5, 6, 7, 8])],
+                          "problem.png",
+                          { type: "image/png" }
+                        ));
+                        const event = new Event("paste", { bubbles: true, cancelable: true });
+                        Object.defineProperty(event, "clipboardData", {
+                          value: transfer
+                        });
+                        textarea.dispatchEvent(event);
+                    }""")
+                page.wait_for_function(
+                    "() => document.querySelectorAll('#figures_preview .figure-item').length === 1"
+                )
+
+                page.locator("#chat_message").fill("Attach this one to the problem.")
+                page.locator("#btn_send_chat").click()
+                page.wait_for_function("() => window.__chatBodies?.length === 2")
+                second_body = page.evaluate("() => window.__chatBodies[1]")
+                assert len(second_body["attached_figure_ids"]) == 1
+                assert second_body["chat_images"] == []
+                assert page.locator("#figures_preview .figure-item").count() == 1
+            finally:
+                browser.close()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
+
+
 def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import Error as PlaywrightError, sync_playwright

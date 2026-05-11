@@ -241,6 +241,34 @@ class AIService:
             )
         return items
 
+    @classmethod
+    def _chat_image_content(
+        cls, chat_images: list[dict[str, Any]] | None = None
+    ) -> list[dict]:
+        items: list[dict] = []
+        for idx, image in enumerate(chat_images or [], start=1):
+            mime_type = str(image.get("mime_type", "") or "").strip()
+            data_base64 = str(image.get("data_base64", "") or "").strip()
+            if not data_base64:
+                continue
+            normalized_mime, normalized_base64 = cls._prepare_figure_summary_input(
+                mime_type, data_base64
+            )
+            items.append(
+                {
+                    "type": "input_text",
+                    "text": f"Chat image {idx}:",
+                }
+            )
+            items.append(
+                {
+                    "type": "input_image",
+                    "image_url": (f"data:{normalized_mime};base64,{normalized_base64}"),
+                    "detail": "low",
+                }
+            )
+        return items
+
     @staticmethod
     def _figure_summaries(question: Question) -> list[str]:
         summaries: list[str] = []
@@ -729,6 +757,7 @@ class AIService:
         question: Question,
         user_message: str,
         attached_figure_ids: list[str] | None = None,
+        chat_images: list[dict[str, Any]] | None = None,
         history_keep_count: int = 5,
     ) -> QuestionEditorResult:
         client = self._client()
@@ -773,6 +802,17 @@ class AIService:
                 }
             )
             user_content.extend(self._figure_content(working, attached_ids))
+        chat_image_items = self._chat_image_content(chat_images)
+        if chat_image_items:
+            user_content.append(
+                {
+                    "type": "input_text",
+                    "text": (
+                        "Chat-only pasted images for this turn are included below."
+                    ),
+                }
+            )
+            user_content.extend(chat_image_items)
         response = client.responses.create(
             model=self.model,
             input=[
