@@ -1486,6 +1486,10 @@
         mcBlock.style.display = isMC() ? "block" : "none";
       }
 
+      function isMC() {
+        return questionTypeEl.value === "multiple_choice";
+      }
+
       function serializePayload() {
         return { ...collectEditorStateFromDOM() };
       }

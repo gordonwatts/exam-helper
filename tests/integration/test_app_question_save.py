@@ -190,6 +190,7 @@ def test_new_question_page_contains_simplified_editor(tmp_path) -> None:
     assert 'id="mc_preview_answers"' in html
     assert 'id="mc_preview_rationale"' in html
     assert 'class="mc-preview-text"' in html
+    assert "function isMC(" in html
     assert "function renderEditorState(" in html
     assert 'id="btn_rewrite"' not in html
     assert 'id="btn_generate_answer"' not in html
@@ -252,6 +253,7 @@ def test_edit_existing_question_save_preserves_legacy_fields(tmp_path) -> None:
     assert 'id="rendered_answer_md"' in edit_html
     assert 'id="mc_preview_answers"' in edit_html
     assert 'id="mc_preview_rationale"' in edit_html
+    assert "function isMC(" in edit_html
     assert "function renderEditorState(" in edit_html
     assert "Export this question to DOCX" in edit_html
     assert 'formaction="/questions/legacy-editor/export/docx"' in edit_html
