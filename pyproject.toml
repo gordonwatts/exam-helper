@@ -48,21 +48,7 @@ extend-exclude = "\\.pytest-tmp"
 max-line-length = 88
 select = ["E", "F", "W", "B", "B950"]
 ignore = ["E203", "E501", "W503"]
-exclude = [
-  ".git",
-  ".venv",
-  "__pycache__",
-  "build",
-  "dist",
-]
+exclude = [".git", ".venv", "__pycache__", "build", "dist"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/exam_helper"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/exam_helper/templates" = "exam_helper/templates"
-"src/exam_helper/prompt_templates.yaml" = "exam_helper/prompt_templates.yaml"
-
-[tool.hatch.build.targets.sdist.force-include]
-"src/exam_helper/templates" = "src/exam_helper/templates"
-"src/exam_helper/prompt_templates.yaml" = "src/exam_helper/prompt_templates.yaml"
