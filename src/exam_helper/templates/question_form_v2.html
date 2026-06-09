@@ -436,6 +436,22 @@
         background: #fff;
         font-size: 0.9rem;
       }
+      .chat-attachment--ephemeral {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #0f172a;
+      }
+      .chat-attachment-mode {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+      .chat-attachment-mode input {
+        width: auto;
+        margin: 0;
+      }
       @media (max-width: 900px) {
         .row, .row3, .mc-preview-grid {
           grid-template-columns: 1fr;
@@ -521,6 +537,14 @@
                 {% if not ai_enabled %}disabled{% endif %}
               ></textarea>
               <div id="chat_attachments" class="chat-attachments"></div>
+              <label class="chat-attachment-mode">
+                <input
+                  type="checkbox"
+                  id="chat_attach_images_to_problem"
+                  {% if not ai_enabled %}disabled{% endif %}
+                />
+                Attach pasted images to problem
+              </label>
               <div class="actions">
                 <button
                   type="button"
@@ -724,11 +748,13 @@
       const chatSendBtn = document.getElementById("btn_send_chat");
       const chatStatusEl = document.getElementById("chat_status");
       const chatAttachmentsEl = document.getElementById("chat_attachments");
+      const chatAttachImagesToProblemEl = document.getElementById("chat_attach_images_to_problem");
       const chatPanelEl = document.querySelector(".chat-panel");
       const chatEnabled = {{ 'true' if ai_enabled else 'false' }};
       let editorState = {{ editor_state | tojson }};
       let autosaveTimer = null;
       let pendingChatFigureIds = [];
+      let pendingChatImages = [];
       let figureModalLastFocus = null;
       let figureNoticeTimer = null;
 
@@ -1111,25 +1137,37 @@
 
       async function addChatAttachmentFromFile(file) {
         if (!file || !isSupportedFigureFile(file)) return false;
-        const figures = parseFigures();
-        const pendingId = nextFigureId(figures);
+        const attachToProblem = !!chatAttachImagesToProblemEl?.checked;
         setChatStatus("Processing chat image...", "warn");
         const figure = await buildFigureFromFile(file);
-        showFigureNotice("Generating figure summary...", { timeoutMs: null });
-        try {
-          figure.caption = await summarizeFigureData(figure.mime_type, figure.data_base64);
-          clearFigureNotice();
-        } catch (err) {
-          figure.caption = "";
-          showFigureNotice(`Figure added without AI summary: ${err.message}`);
+        if (attachToProblem) {
+          const figures = parseFigures();
+          const pendingId = nextFigureId(figures);
+          showFigureNotice("Generating figure summary...", { timeoutMs: null });
+          try {
+            figure.caption = await summarizeFigureData(figure.mime_type, figure.data_base64);
+            clearFigureNotice();
+          } catch (err) {
+            figure.caption = "";
+            showFigureNotice(`Figure added without AI summary: ${err.message}`);
+          }
+          figure.id = pendingId;
+          figures.push(figure);
+          setFigures(figures);
+          pendingChatFigureIds.push(pendingId);
+          renderPendingChatAttachments();
+          scheduleAutosave();
+          setChatStatus(`Attached ${pendingId}`, "good");
+        } else {
+          const pendingLabel = `chat_img_${pendingChatImages.length + 1}`;
+          pendingChatImages.push({
+            label: pendingLabel,
+            mime_type: figure.mime_type,
+            data_base64: figure.data_base64,
+          });
+          renderPendingChatAttachments();
+          setChatStatus(`Queued ${pendingLabel} for the LLM`, "good");
         }
-        figure.id = pendingId;
-        figures.push(figure);
-        setFigures(figures);
-        pendingChatFigureIds.push(pendingId);
-        renderPendingChatAttachments();
-        scheduleAutosave();
-        setChatStatus(`Attached ${pendingId}`, "good");
         return true;
       }
 
@@ -1380,31 +1418,60 @@
       }
 
       function renderPendingChatAttachments() {
-        if (!pendingChatFigureIds.length) {
+        if (!pendingChatFigureIds.length && !pendingChatImages.length) {
           chatAttachmentsEl.innerHTML = "";
           return;
         }
-        chatAttachmentsEl.innerHTML = pendingChatFigureIds.map((id) => (
+        const figureChips = pendingChatFigureIds.map((id) => (
           `<span class="chat-attachment">${escapeHtml(id)}</span>`
-        )).join("");
+        ));
+        const chatImageChips = pendingChatImages.map((item) => (
+          `<span class="chat-attachment chat-attachment--ephemeral">${
+            escapeHtml(item.label)
+          }</span>`
+        ));
+        chatAttachmentsEl.innerHTML = [...figureChips, ...chatImageChips].join("");
       }
 
-      function createChatMessageElement(role, text, attachedFigureIds = []) {
+      function createChatMessageElement(
+        role,
+        text,
+        attachedFigureIds = [],
+        attachedChatImages = [],
+      ) {
         const item = document.createElement("div");
         item.className = `chat-message ${role}`;
-        const attachments = Array.isArray(attachedFigureIds) && attachedFigureIds.length
-          ? `<div class="hint">Figures: ${attachedFigureIds.map((id) => escapeHtml(id)).join(", ")}</div>`
-          : "";
+        const attachments = [];
+        if (Array.isArray(attachedFigureIds) && attachedFigureIds.length) {
+          attachments.push(
+            `<div class="hint">Figures: ${attachedFigureIds.map((id) => escapeHtml(id)).join(", ")}</div>`
+          );
+        }
+        if (Array.isArray(attachedChatImages) && attachedChatImages.length) {
+          attachments.push(
+            `<div class="hint">Chat images: ${attachedChatImages.map((id) => escapeHtml(id)).join(", ")}</div>`
+          );
+        }
         item.innerHTML = `
           <div class="chat-role">${role === "assistant" ? "Assistant" : "You"}</div>
           <div>${escapeHtml(String(text || "")).replace(/\n/g, "<br>")}</div>
-          ${attachments}
+          ${attachments.join("")}
         `;
         return item;
       }
 
-      function renderChatMessage(role, text, attachedFigureIds = []) {
-        const item = createChatMessageElement(role, text, attachedFigureIds);
+      function renderChatMessage(
+        role,
+        text,
+        attachedFigureIds = [],
+        attachedChatImages = [],
+      ) {
+        const item = createChatMessageElement(
+          role,
+          text,
+          attachedFigureIds,
+          attachedChatImages,
+        );
         chatThreadEl.appendChild(item);
         chatThreadEl.scrollTop = chatThreadEl.scrollHeight;
       }
@@ -1463,8 +1530,9 @@
         if (autosaveTimer) clearTimeout(autosaveTimer);
         setChatBusy(true);
         const attachedFigureIds = pendingChatFigureIds.slice();
+        const attachedChatImages = pendingChatImages.map((item) => item.label);
         setChatStatus("Thinking...", "warn");
-        renderChatMessage("user", message, attachedFigureIds);
+        renderChatMessage("user", message, attachedFigureIds, attachedChatImages);
         chatMessageEl.value = "";
         try {
           const res = await fetch(`/questions/${qid}/ai/chat`, {
@@ -1473,6 +1541,10 @@
             body: JSON.stringify({
               message,
               attached_figure_ids: attachedFigureIds,
+              chat_images: pendingChatImages.map((item) => ({
+                mime_type: item.mime_type,
+                data_base64: item.data_base64,
+              })),
               history_keep_count: chatHistoryKeepCount(),
               editor_state: serializePayload(),
             }),
@@ -1484,6 +1556,7 @@
           renderChatMessage("assistant", data.assistant_message || "(no response)");
           applyAssistantResponse(data);
           pendingChatFigureIds = [];
+          pendingChatImages = [];
           renderPendingChatAttachments();
         } catch (err) {
           setChatStatus(`Chat error: ${err.message}`, "warn");

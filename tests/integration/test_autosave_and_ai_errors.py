@@ -655,6 +655,7 @@ def test_ai_chat_updates_question_and_returns_payload(tmp_path) -> None:
             question,
             user_message,
             attached_figure_ids=None,
+            chat_images=None,
             history_keep_count=None,
         ):
             assert question.id == "q_chat"
@@ -715,6 +716,7 @@ def test_ai_chat_refreshes_rendered_answer_when_guidance_changes(tmp_path) -> No
             question,
             user_message,
             attached_figure_ids=None,
+            chat_images=None,
             history_keep_count=None,
         ):
             updated = question.model_copy(deep=True)
@@ -764,6 +766,7 @@ def test_ai_chat_uses_live_editor_state_and_persists_full_history(tmp_path) -> N
             question,
             user_message,
             attached_figure_ids=None,
+            chat_images=None,
             history_keep_count=None,
         ):
             assert question.title == "Unsaved local title"
@@ -821,6 +824,63 @@ def test_ai_chat_uses_live_editor_state_and_persists_full_history(tmp_path) -> N
     assert saved.solution.chat_history[0].user_message == "user 1"
 
 
+def test_ai_chat_forwards_chat_images_without_persisting_figures(tmp_path) -> None:
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Exam", "Physics")
+    app = create_app(tmp_path, openai_key="k")
+    client = TestClient(app)
+    _seed_question(client, "q_chat_images")
+
+    captured: dict[str, object] = {}
+
+    class _AI:
+        def chat_edit_question(
+            self,
+            question,
+            user_message,
+            attached_figure_ids=None,
+            chat_images=None,
+            history_keep_count=None,
+        ):
+            captured["question_figures"] = [fig.id for fig in question.figures]
+            captured["attached_figure_ids"] = attached_figure_ids
+            captured["chat_images"] = chat_images
+            updated = question.model_copy(deep=True)
+            updated.solution.last_computed_answer_md = "ok"
+            return AIService.QuestionEditorResult(
+                assistant_message="Stored the answer.",
+                question=updated,
+                warnings=[],
+                usage=AIUsageTotals(),
+                changed_fields=[],
+            )
+
+    app.state.ai = _AI()
+    original = repo.get_question("q_chat_images")
+    chat_image_b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+        "/w8AAgMBgU7Y5e0AAAAASUVORK5CYII="
+    )
+    resp = client.post(
+        "/questions/q_chat_images/ai/chat",
+        json={
+            "message": "Please rewrite this problem.",
+            "attached_figure_ids": [],
+            "chat_images": [
+                {"mime_type": "image/png", "data_base64": chat_image_b64},
+            ],
+            "editor_state": _editor_state_for_question(original),
+        },
+    )
+    assert resp.status_code == 200
+    assert captured["attached_figure_ids"] == []
+    assert len(captured["chat_images"]) == 1
+    assert captured["question_figures"] == []
+    saved = repo.get_question("q_chat_images")
+    assert saved.figures == []
+    assert saved.solution.chat_history[-1].attached_figure_ids == []
+
+
 def test_ai_chat_forwards_requested_history_window(tmp_path) -> None:
     repo = ProjectRepository(tmp_path)
     repo.init_project("Exam", "Physics")
@@ -834,6 +894,7 @@ def test_ai_chat_forwards_requested_history_window(tmp_path) -> None:
             question,
             user_message,
             attached_figure_ids=None,
+            chat_images=None,
             history_keep_count=None,
         ):
             assert history_keep_count == 2
@@ -874,6 +935,7 @@ def test_autosave_after_chat_keeps_chat_applied_solution_fields(tmp_path) -> Non
             question,
             user_message,
             attached_figure_ids=None,
+            chat_images=None,
             history_keep_count=None,
         ):
             updated = question.model_copy(deep=True)
