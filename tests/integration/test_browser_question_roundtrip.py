@@ -184,6 +184,107 @@ def test_browser_question_roundtrip(tmp_path: Path) -> None:
             proc.wait(timeout=10)
 
 
+def test_browser_chat_send_disables_while_waiting_for_ai(tmp_path: Path) -> None:
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import Error as PlaywrightError, sync_playwright
+
+    repo = ProjectRepository(tmp_path)
+    repo.init_project("Chat Wait Exam", "Physics 1")
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "exam_helper.cli",
+            "serve",
+            str(tmp_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        _wait_for_server(base_url + "/", proc)
+        seed = httpx.post(
+            base_url + "/questions/save",
+            data={
+                "question_id": "q_chat_wait",
+                "title": "Chat Wait Test",
+                "question_type": "free_response",
+                "question_template_md": "Prompt.",
+                "solution_parameters_yaml": "{}",
+                "answer_formula_md": "answer = 1",
+                "answer_guidance": "",
+                "mc_options_guidance": "",
+                "distractor_functions_text": "",
+                "choices_yaml": "[]",
+                "typed_solution_md": "",
+                "typed_solution_status": "fresh",
+                "figures_json": "[]",
+                "points": 5,
+            },
+            follow_redirects=False,
+            timeout=5.0,
+        )
+        assert seed.status_code == 303
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
+            except PlaywrightError as exc:
+                pytest.skip(f"Chromium is not available: {exc}")
+            try:
+                page = browser.new_page()
+                page.goto(base_url + "/questions/q_chat_wait/edit")
+                page.wait_for_url(base_url + "/questions/q_chat_wait/edit")
+
+                page.evaluate("""() => {
+                        const originalFetch = window.fetch.bind(window);
+                        window.fetch = async (input, init) => {
+                          const url = typeof input === "string" ? input : String(input.url || "");
+                          if (url.includes("/questions/q_chat_wait/ai/chat")) {
+                            await new Promise((resolve) => setTimeout(resolve, 750));
+                            return new Response(JSON.stringify({
+                              ok: true,
+                              assistant_message: "Done"
+                            }), {
+                              status: 200,
+                              headers: { "Content-Type": "application/json" }
+                            });
+                          }
+                          return originalFetch(input, init);
+                        };
+                      }""")
+
+                page.locator("#chat_message").fill("Please clean this up.")
+                page.locator("#btn_send_chat").click()
+
+                page.wait_for_function(
+                    "() => document.querySelector('#btn_send_chat')?.disabled"
+                )
+                assert page.locator("#btn_send_chat").is_disabled()
+
+                page.wait_for_function(
+                    "() => !document.querySelector('#btn_send_chat')?.disabled"
+                )
+                assert not page.locator("#btn_send_chat").is_disabled()
+                assert "Done" in page.locator("#chat_thread").inner_text()
+            finally:
+                browser.close()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
+
+
 def test_browser_chat_response_updates_visible_mc_rows(tmp_path: Path) -> None:
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import Error as PlaywrightError, sync_playwright
