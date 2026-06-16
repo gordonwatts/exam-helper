@@ -729,6 +729,8 @@
       let editorState = {{ editor_state | tojson }};
       let autosaveTimer = null;
       let pendingChatFigureIds = [];
+      let chatSendingBusy = false;
+      let chatAttachmentBusy = false;
       let figureModalLastFocus = null;
       let figureNoticeTimer = null;
 
@@ -742,13 +744,24 @@
         chatStatusEl.className = `status ${cls || ""}`;
       }
 
+      function updateChatBusyState() {
+        const sendDisabled = !chatEnabled || chatSendingBusy || chatAttachmentBusy;
+        const sendOnlyDisabled = !chatEnabled || chatSendingBusy;
+        chatHistoryKeepCountEl.disabled = sendOnlyDisabled;
+        chatSendBtn.disabled = sendDisabled;
+        chatMessageEl.disabled = sendOnlyDisabled;
+        chatPanelEl.classList.toggle("is-busy", chatSendingBusy || chatAttachmentBusy);
+        chatSendBtn.textContent = chatSendingBusy ? "Sending..." : "Send";
+      }
+
       function setChatBusy(isBusy) {
-        const disabled = !chatEnabled || isBusy;
-        chatHistoryKeepCountEl.disabled = disabled;
-        chatSendBtn.disabled = disabled;
-        chatMessageEl.disabled = disabled;
-        chatPanelEl.classList.toggle("is-busy", isBusy);
-        chatSendBtn.textContent = isBusy ? "Sending..." : "Send";
+        chatSendingBusy = isBusy;
+        updateChatBusyState();
+      }
+
+      function setChatAttachmentBusy(isBusy) {
+        chatAttachmentBusy = isBusy;
+        updateChatBusyState();
       }
 
       function chatHistoryKeepCount() {
@@ -1180,8 +1193,13 @@
         if (!valid.length) {
           return false;
         }
-        for (const file of valid) {
-          await addChatAttachmentFromFile(file);
+        setChatAttachmentBusy(true);
+        try {
+          for (const file of valid) {
+            await addChatAttachmentFromFile(file);
+          }
+        } finally {
+          setChatAttachmentBusy(false);
         }
         return true;
       }
